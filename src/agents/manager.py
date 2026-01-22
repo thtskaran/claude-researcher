@@ -142,7 +142,11 @@ Think step by step about the best next action."""
         if self._should_create_directive(thought):
             directive = await self._create_directive(thought)
             if directive:
-                self._log(f"Directing Intern: {directive.action} - {directive.topic}", style="green")
+                self._log("═" * 70, style="bold blue")
+                self._log(f"[DIRECTIVE] {directive.action.upper()}: {directive.topic}", style="bold green")
+                self._log(f"  Instructions: {directive.instructions}", style="dim")
+                self._log(f"  Priority: {directive.priority}/10 | Max Searches: {directive.max_searches}", style="dim")
+                self._log("═" * 70, style="bold blue")
 
                 # Execute the directive via the intern
                 intern_report = await self.intern.execute_directive(
@@ -154,8 +158,20 @@ Think step by step about the best next action."""
                 # Critique the report
                 critique = await self._critique_report(intern_report)
 
+                # Show critique
+                self._log("─" * 70, style="dim")
+                self._log("[MANAGER CRITIQUE]", style="bold magenta")
+                self.console.print(critique)
+                self._log("─" * 70, style="dim")
+
                 # Add follow-up topics to queue
                 await self._process_followups(intern_report, directive)
+
+                # Show follow-up topics added
+                if intern_report.suggested_followups:
+                    self._log(f"[Follow-up Topics Added: {len(intern_report.suggested_followups)}]", style="cyan")
+                    for ft in intern_report.suggested_followups[:3]:
+                        self._log(f"  → {ft}", style="cyan")
 
                 return {
                     "action": "intern_task",
@@ -175,7 +191,10 @@ Think step by step about the best next action."""
                 max_searches=5,
             )
 
-            self._log(f"Assigning queued topic: {topic.topic}", style="green")
+            self._log("═" * 70, style="bold blue")
+            self._log(f"[QUEUED TOPIC] Depth {topic.depth}: {topic.topic}", style="bold green")
+            self._log(f"  Priority: {topic.priority}/10 | Remaining in queue: {len(self.topics_queue)}", style="dim")
+            self._log("═" * 70, style="bold blue")
 
             intern_report = await self.intern.execute_directive(
                 directive, self.session_id
@@ -190,7 +209,20 @@ Think step by step about the best next action."""
             )
 
             critique = await self._critique_report(intern_report)
+
+            # Show critique
+            self._log("─" * 70, style="dim")
+            self._log("[MANAGER CRITIQUE]", style="bold magenta")
+            self.console.print(critique)
+            self._log("─" * 70, style="dim")
+
             await self._process_followups(intern_report, directive, topic)
+
+            # Show follow-up topics added
+            if intern_report.suggested_followups:
+                self._log(f"[Follow-up Topics Added: {len(intern_report.suggested_followups)}]", style="cyan")
+                for ft in intern_report.suggested_followups[:3]:
+                    self._log(f"  → {ft}", style="cyan")
 
             return {
                 "action": "intern_task",

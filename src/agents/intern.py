@@ -6,6 +6,11 @@ from typing import Any, Optional
 from datetime import datetime
 
 from .base import BaseAgent, AgentConfig
+
+
+def _get_current_year() -> int:
+    """Get the current year for search queries."""
+    return datetime.now().year
 from ..models.findings import (
     AgentRole,
     Finding,
@@ -44,7 +49,8 @@ class InternAgent(BaseAgent):
 
     @property
     def system_prompt(self) -> str:
-        return """You are a Research Intern agent. Your ONLY job is to generate search queries and analyze search results.
+        current_year = _get_current_year()
+        return f"""You are a Research Intern agent. Your ONLY job is to generate search queries and analyze search results.
 
 CRITICAL RULES:
 1. You MUST use web search for ALL information - NEVER use your training data
@@ -54,7 +60,7 @@ CRITICAL RULES:
 
 SEARCH STRATEGY:
 - Start broad, then narrow down
-- Use specific terms, dates (2024, 2025), and key phrases
+- Use specific terms, dates ({current_year}), and key phrases
 - Search for recent developments, not general knowledge
 - Look for primary sources, research papers, official announcements
 
@@ -115,10 +121,39 @@ Be brief - just state your decision and reason."""
         results, search_summary = await self.search_tool.search(search_query)
         self.searches_performed += 1
 
+        # Show search summary
+        if search_summary:
+            self._log("─" * 60, style="dim")
+            self._log("[Search Summary]", style="bold cyan")
+            # Show first 1000 chars of summary
+            summary_preview = search_summary[:1500] + "..." if len(search_summary) > 1500 else search_summary
+            self.console.print(summary_preview)
+            self._log("─" * 60, style="dim")
+
+        # Show search results
+        if results:
+            self._log(f"[Search Results: {len(results)} found]", style="bold yellow")
+            for i, r in enumerate(results[:5], 1):
+                self._log(f"  {i}. {r.title}", style="yellow")
+                if r.url:
+                    self._log(f"     URL: {r.url}", style="dim")
+                if r.snippet:
+                    snippet = r.snippet[:200] + "..." if len(r.snippet) > 200 else r.snippet
+                    self._log(f"     {snippet}", style="dim")
+
         # Process results and extract findings
         new_findings = await self._process_search_results(
             results, search_query, session_id, search_summary
         )
+
+        # Show extracted findings
+        if new_findings:
+            self._log(f"[Extracted {len(new_findings)} Findings]", style="bold green")
+            for f in new_findings:
+                self._log(f"  [{f.finding_type.value.upper()}] {f.content[:150]}...", style="green")
+                if f.source_url:
+                    self._log(f"    Source: {f.source_url}", style="dim")
+                self._log(f"    Confidence: {f.confidence:.0%}", style="dim")
 
         return {
             "action": "search",
@@ -126,6 +161,7 @@ Be brief - just state your decision and reason."""
             "results_count": len(results),
             "findings_extracted": len(new_findings),
             "results": results,
+            "summary": search_summary,
         }
 
     async def observe(self, action_result: dict[str, Any]) -> str:
@@ -191,16 +227,17 @@ Be brief - just state your decision and reason."""
             return None
 
         # Generate a search query based on the directive and progress
+        current_year = _get_current_year()
         if self.searches_performed == 0:
             # First search - use the directive topic directly with current year
-            return f"{directive.topic} 2024 2025 latest"
+            return f"{directive.topic} {current_year} latest"
 
         # Subsequent searches - ask Claude for a follow-up query
         prompt = f"""Topic: {directive.topic}
 Searches done: {self.searches_performed}
 Previous findings: {len(self.findings)}
 
-Generate ONE specific search query to find more information. Focus on recent developments (2024-2025).
+Generate ONE specific search query to find more information. Focus on recent developments ({current_year}).
 Output ONLY the search query, nothing else."""
 
         response = await self.call_claude(prompt)
@@ -212,7 +249,7 @@ Output ONLY the search query, nothing else."""
 
         # Don't search for error messages or meta-text
         if "error" in query.lower() or len(query) > 200:
-            return f"{directive.topic} recent research 2024"
+            return f"{directive.topic} recent research {current_year}"
 
         return query if query and query.upper() != "STOP" else None
 
