@@ -13,6 +13,7 @@ from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBl
 
 from ..models.findings import AgentRole, AgentMessage
 from ..storage.database import ResearchDatabase
+from ..costs.tracker import get_cost_tracker
 
 
 def _get_api_key() -> Optional[str]:
@@ -322,6 +323,15 @@ class BaseAgent(ABC):
             self._log(f"Error calling Claude: {e}", style="red")
             response_text = f"Error: {e}"
 
+        # Track costs
+        tracker = get_cost_tracker()
+        tracker.track_call(
+            model=model,
+            input_text=prompt,
+            output_text=response_text,
+            system_prompt=self.system_prompt,
+        )
+
         return response_text
 
     async def call_claude_with_tools(
@@ -377,6 +387,23 @@ class BaseAgent(ABC):
         except Exception as e:
             self._log(f"Error calling Claude with tools: {e}", style="red")
             response_text = f"Error: {e}"
+
+        # Track costs
+        tracker = get_cost_tracker()
+        tracker.track_call(
+            model=self.config.model,
+            input_text=prompt,
+            output_text=response_text,
+            system_prompt=self.system_prompt,
+        )
+
+        # Track web searches and fetches
+        for tr in tool_results:
+            tool_name = tr.get("tool", "").lower()
+            if "websearch" in tool_name or "web_search" in tool_name:
+                tracker.track_web_search()
+            elif "webfetch" in tool_name or "web_fetch" in tool_name:
+                tracker.track_web_fetch()
 
         return response_text, tool_results
 

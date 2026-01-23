@@ -12,6 +12,7 @@ from ..models.findings import AgentRole, ManagerReport, ResearchSession
 from ..storage.database import ResearchDatabase
 from ..reports.writer import DeepReportWriter
 from ..interaction import InteractionConfig, UserInteraction
+from ..costs.tracker import get_cost_tracker, reset_cost_tracker, CostSummary
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -171,8 +172,9 @@ When presenting results:
         Returns:
             ManagerReport with findings and recommendations
         """
-        # Reset interaction state
+        # Reset interaction state and cost tracker
         self.interaction.reset()
+        reset_cost_tracker()
 
         # Clarify goal if enabled
         if not skip_clarification and self.interaction_config.enable_clarification:
@@ -322,6 +324,80 @@ When presenting results:
             for topic in report.topics_remaining[:5]:
                 self.console.print(f"  - {topic}")
 
+        # Display cost summary
+        self._display_costs()
+
+    def _display_costs(self) -> None:
+        """Display API cost summary."""
+        cost_summary = get_cost_tracker().get_summary()
+
+        # Build cost table
+        table = Table(title="API Cost Estimate", show_header=True, header_style="bold")
+        table.add_column("Model", style="cyan", width=10)
+        table.add_column("Calls", justify="right", width=6)
+        table.add_column("Input", justify="right", width=10)
+        table.add_column("Output", justify="right", width=10)
+        table.add_column("Thinking", justify="right", width=10)
+        table.add_column("Cost", justify="right", style="green", width=10)
+
+        # Add rows for each model (only if used)
+        if cost_summary.sonnet_usage.calls > 0:
+            table.add_row(
+                "Sonnet 4.5",
+                str(cost_summary.sonnet_usage.calls),
+                f"{cost_summary.sonnet_usage.input_tokens:,}",
+                f"{cost_summary.sonnet_usage.output_tokens:,}",
+                f"{cost_summary.sonnet_usage.thinking_tokens:,}",
+                f"${cost_summary.sonnet_cost:.4f}",
+            )
+
+        if cost_summary.opus_usage.calls > 0:
+            table.add_row(
+                "Opus 4.5",
+                str(cost_summary.opus_usage.calls),
+                f"{cost_summary.opus_usage.input_tokens:,}",
+                f"{cost_summary.opus_usage.output_tokens:,}",
+                f"{cost_summary.opus_usage.thinking_tokens:,}",
+                f"${cost_summary.opus_cost:.4f}",
+            )
+
+        if cost_summary.haiku_usage.calls > 0:
+            table.add_row(
+                "Haiku 4.5",
+                str(cost_summary.haiku_usage.calls),
+                f"{cost_summary.haiku_usage.input_tokens:,}",
+                f"{cost_summary.haiku_usage.output_tokens:,}",
+                f"{cost_summary.haiku_usage.thinking_tokens:,}",
+                f"${cost_summary.haiku_cost:.4f}",
+            )
+
+        # Add web searches row if any
+        if cost_summary.web_searches > 0 or cost_summary.web_fetches > 0:
+            table.add_row(
+                "Web",
+                f"{cost_summary.web_searches + cost_summary.web_fetches}",
+                f"{cost_summary.web_searches} srch",
+                f"{cost_summary.web_fetches} fetch",
+                "-",
+                f"${cost_summary.search_cost:.4f}",
+            )
+
+        # Add total row
+        table.add_row(
+            "[bold]TOTAL[/bold]",
+            f"[bold]{cost_summary.total_calls}[/bold]",
+            f"[bold]{cost_summary.total_input_tokens:,}[/bold]",
+            f"[bold]{cost_summary.total_output_tokens - cost_summary.total_thinking_tokens:,}[/bold]",
+            f"[bold]{cost_summary.total_thinking_tokens:,}[/bold]",
+            f"[bold]${cost_summary.total_cost:.4f}[/bold]",
+            style="bold",
+        )
+
+        self.console.print()
+        self.console.print(table)
+        self.console.print("[dim]Pricing: Opus $5/$25, Sonnet $3/$15, Haiku $1/$5 per MTok (input/output). Search: $0.01/search[/dim]")
+        self.console.print("[dim]Note: Token counts are estimates (~4 chars/token). Thinking tokens billed as output.[/dim]")
+
     async def get_session_findings(self) -> list:
         """Get all findings from the current session."""
         if not self.current_session:
@@ -376,6 +452,7 @@ When presenting results:
             ],
             "topics_explored": [t.topic for t in self.manager.completed_topics] if self.manager.completed_topics else [],
             "topics_remaining": [t.topic for t in self.manager.topics_queue] if self.manager.topics_queue else [],
+            "costs": get_cost_tracker().get_summary().to_dict(),
         }
         json_file = output_dir / "findings.json"
         json_file.write_text(json.dumps(json_output, indent=2))

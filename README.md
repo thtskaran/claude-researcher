@@ -247,6 +247,35 @@ At the end of research, you'll see:
 | **Max Depth** | Deepest level reached (see above) |
 | **Time Used** | Actual research duration |
 
+### Cost Tracking
+
+The system tracks API costs in real-time and displays an estimate at the end:
+
+```
+                        API Cost Estimate
+┌────────────┬──────┬──────────┬──────────┬──────────┬──────────┐
+│ Model      │ Calls│ Input    │ Output   │ Thinking │ Cost     │
+├────────────┼──────┼──────────┼──────────┼──────────┼──────────┤
+│ Sonnet 4.5 │ 45   │ 125,000  │ 45,000   │ 0        │ $1.0500  │
+│ Opus 4.5   │ 12   │ 80,000   │ 35,000   │ 50,000   │ $2.5250  │
+│ Haiku 4.5  │ 8    │ 15,000   │ 8,000    │ 0        │ $0.0550  │
+│ Web        │ 23   │ 23 srch  │ 0 fetch  │ -        │ $0.2300  │
+├────────────┼──────┼──────────┼──────────┼──────────┼──────────┤
+│ TOTAL      │ 65   │ 220,000  │ 88,000   │ 50,000   │ $3.8600  │
+└────────────┴──────┴──────────┴──────────┴──────────┴──────────┘
+```
+
+**Current Pricing (per million tokens):**
+
+| Model | Input | Output | Notes |
+|-------|-------|--------|-------|
+| Opus 4.5 | $5 | $25 | Extended thinking tokens billed as output |
+| Sonnet 4.5 | $3 | $15 | Extended thinking tokens billed as output |
+| Haiku 4.5 | $1 | $5 | Extended thinking tokens billed as output |
+| Web Search | - | - | $0.01 per search |
+
+Cost data is also saved to `findings.json` for tracking across sessions.
+
 ---
 
 ## Architecture
@@ -416,6 +445,8 @@ claude-researcher/
 │   │   ├── config.py     # InteractionConfig
 │   │   ├── handler.py    # UserInteraction class
 │   │   └── listener.py   # Background input listener
+│   ├── costs/            # API cost tracking
+│   │   └── tracker.py    # CostTracker, CostSummary, pricing
 │   ├── knowledge/
 │   │   ├── graph.py      # Incremental KG construction
 │   │   ├── store.py      # NetworkX + SQLite hybrid
