@@ -1,229 +1,290 @@
 # Claude Deep Researcher
 
-A hierarchical multi-agent research system built on the Claude Agent SDK. Inspired by [Gemini Deep Research](https://gemini.google/overview/deep-research/), [Perplexity](https://www.perplexity.ai/), and [GPT Researcher](https://github.com/assafelovic/gpt-researcher), this tool performs autonomous, deep research on any topic by coordinating multiple AI agents that search the web, analyze findings, critique results, and synthesize comprehensive narrative reports.
+A hierarchical multi-agent research system that performs autonomous deep research on any topic. Inspired by Gemini Deep Research, Perplexity, and GPT Researcher.
 
-## Architecture
+## Quick Start
 
-The system uses a three-tier agent hierarchy with specialized models:
+```bash
+# Install
+pip install -e .
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     DIRECTOR (Sonnet)                       │
-│  - User interface & session management                      │
-│  - Progress display & report export                         │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│              MANAGER (Opus + Extended Thinking)             │
-│  - Research strategy & topic decomposition                  │
-│  - Critical evaluation of findings                          │
-│  - Gap identification & follow-up planning                  │
-│  - Final narrative synthesis                                │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      INTERN (Sonnet)                        │
-│  - Web searches via Claude WebSearch                        │
-│  - Finding extraction & categorization                      │
-│  - Source identification & follow-up suggestions            │
-└─────────────────────────────────────────────────────────────┘
+# Run (requires Claude Code CLI authenticated)
+researcher "What are the latest AI safety research directions?" --time 10
 ```
 
-Each agent implements a **ReAct (Reason + Act) loop**:
-1. **Think** - Reason about current state and decide next action
-2. **Act** - Execute the action (search, analyze, critique)
-3. **Observe** - Process results and update state
+Reports are saved to `output/research_{id}.md`.
 
-## Features
+---
 
-### Research Capabilities
-- **Autonomous Research**: Set a time limit (1 min to 8 hours) and let the system research independently
-- **Deep Diving**: Automatically follows promising threads to configurable depth (default: 5 levels)
-- **Real Web Search**: Uses Claude's WebSearch tool for current, up-to-date information
-- **Dynamic Date Awareness**: Automatically uses current year in search queries for latest results
-- **Finding Extraction**: Categorizes findings as facts, insights, connections, sources, questions, or contradictions
-- **Manager Critique**: Each research batch is critically evaluated using Opus with extended thinking (10K+ thinking tokens)
+## Key Concepts
 
-### Verbose Console Output
-See exactly what's happening during research:
-- Search queries being executed
-- Full search summaries from Claude
-- Individual search results with URLs and snippets
-- Extracted findings with type, source, and confidence scores
-- Manager critiques and reasoning
-- Follow-up topics identified
+### Research Depth
 
-### Deep Narrative Reports
-Generates comprehensive reports in the style of Gemini Deep Research and Perplexity:
+Depth = how many levels deep the research goes from your original question.
 
-| Section | Description |
-|---------|-------------|
-| **Executive Summary** | 3-4 paragraph overview of key findings |
-| **Table of Contents** | Linked navigation to all sections |
-| **Introduction** | Background context and research scope |
-| **Thematic Sections** | 4-6 AI-identified themes with narrative prose |
-| **Analysis & Insights** | Cross-cutting patterns and connections |
-| **Conclusions** | Direct answers and recommendations |
-| **References** | All sources with single retrieval date |
-| **Appendix** | Methodology and statistics |
+```
+Depth 0: "What are the latest AI safety research directions?"  ← Your question
+         │
+         ├─ Depth 1: "Mechanistic interpretability 2026"       ← Decomposed aspects
+         │           │
+         │           └─ Depth 2: "Sparse autoencoders scaling" ← Follow-up topics
+         │
+         ├─ Depth 1: "AI alignment techniques"
+         │
+         └─ Depth 1: "AI governance frameworks"
+```
 
-Reports are synthesized using **Opus with 16K extended thinking tokens** for deep analysis.
+- **Depth 0**: Your original question
+- **Depth 1**: Sub-topics the system breaks your question into (parallel phase)
+- **Depth 2+**: Follow-up topics discovered during research
+- **Max Depth** (default: 5): Prevents infinite rabbit holes
 
-### Persistence
-- **SQLite Database**: All findings stored for later analysis
-- **Session Management**: Resume or review past research sessions
+### Research Phases
+
+1. **Parallel Initial Phase**: Decomposes your goal into 3 aspects, researches them simultaneously
+2. **Deep Dive Phase**: ReAct loop - manager critiques findings, identifies gaps, directs follow-up research
+3. **Synthesis Phase**: Generates narrative report with extended thinking
+
+### Agent Hierarchy
+
+| Agent | Model | Role |
+|-------|-------|------|
+| **Director** | Sonnet | User interface, session management |
+| **Manager** | Opus | Strategy, critique, synthesis (uses extended thinking) |
+| **Intern** | Sonnet | Web searches, finding extraction |
+
+### Finding Types
+
+| Type | What it means |
+|------|---------------|
+| `FACT` | Verified specific information |
+| `INSIGHT` | Analysis or interpretation |
+| `CONNECTION` | Links between topics |
+| `SOURCE` | Valuable primary source |
+| `QUESTION` | Unanswered question for follow-up |
+| `CONTRADICTION` | Conflicting information across sources |
+
+---
 
 ## Installation
 
 ```bash
-# Clone the repository
 git clone <repo-url>
 cd claude-researcher
-
-# Create virtual environment (recommended)
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or: venv\Scripts\activate  # Windows
-
-# Install in development mode
 pip install -e .
 ```
 
 ### Requirements
 
 - Python 3.10+
-- Claude Code CLI installed and authenticated (`claude` command available)
-- Valid Anthropic API credentials (automatically uses Claude Code's credentials)
+- Claude Code CLI installed and authenticated (`claude` command works)
+- API credentials (uses Claude Code's credentials automatically)
+
+---
 
 ## Usage
 
-### Basic Research
-
 ```bash
-# Research a topic for 60 minutes (default)
-researcher "What are the latest advances in fusion energy?"
+# Basic research (default 60 min)
+researcher "Your research question here"
 
-# Set a custom time limit
-researcher "History of quantum computing" --time 30
-
-# Short research session (good for testing)
-researcher "Current AI safety research directions" --time 5
-```
-
-### Command Options
-
-```
-researcher [OPTIONS] GOAL
-
-Arguments:
-  GOAL                  The research goal or question to investigate
-
-Options:
-  -t, --time INTEGER    Time limit in minutes (default: 60, max: 480)
-  -d, --db PATH         Path to SQLite database file (default: research.db)
-  -e, --export FORMAT   Export results to file (json or markdown)
-  --help                Show this message and exit
-```
-
-### Examples
-
-```bash
-# Quick 5-minute research
+# Quick research
 researcher "What is WebAssembly?" --time 5
 
-# Long deep research session
-researcher "Comprehensive overview of renewable energy technologies" --time 120
+# Long deep research
+researcher "Comprehensive overview of quantum computing" --time 120
 
-# Use a specific database for project isolation
-researcher "Machine learning in healthcare" --db ml_research.db
+# Custom database (isolate projects)
+researcher "ML in healthcare" --db ml_research.db
 
-# Export to JSON instead of markdown
-researcher "Quantum computing applications" --time 30 --export json
+# Export as JSON instead of markdown
+researcher "Topic" --time 30 --export json
 ```
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--time`, `-t` | Time limit in minutes | 60 |
+| `--db`, `-d` | SQLite database path | research.db |
+| `--export`, `-e` | Export format (json/markdown) | markdown |
+
+---
 
 ## Output
 
-### Generated Files
+### Console Output
 
-Reports are saved to the `output/` folder (auto-created):
+You'll see real-time progress:
+- Search queries and results
+- Extracted findings with confidence scores
+- Manager critiques
+- Knowledge graph statistics
+- Follow-up topics being added
+
+### Generated Files
 
 ```
 output/
-├── research_1.md    # Deep narrative report
+├── research_1.md           # Narrative report
 ├── research_2.md
-└── research_3.json  # If --export json used
+└── knowledge_graph.html    # Interactive visualization
 ```
 
-### Sample Report Structure
+### Session Statistics
 
-```markdown
-# What are the latest AI safety research directions?
+At the end of research, you'll see:
 
-*Deep Research Report*
+| Stat | Meaning |
+|------|---------|
+| **Topics Explored** | Number of sub-topics researched |
+| **Total Findings** | Facts, insights, etc. extracted |
+| **Unique Searches** | Web searches performed |
+| **Max Depth** | Deepest level reached (see above) |
+| **Time Used** | Actual research duration |
 
-**Generated:** January 23, 2026 at 06:02
-**Session ID:** 15
+---
 
-## Table of Contents
-- 1. Executive Summary
-- 2. Introduction
-- 3. Global Institutionalization of AI Safety
-- 4. Mechanistic Interpretability Advances
-- 5. AI Control Research
-- ...
+## Architecture
 
-## 1. Executive Summary
-
-The latest AI safety research is coalescing around two primary
-technical directions—alignment and interpretability—while
-simultaneously experiencing unprecedented international coordination...
-
-## References
-
-*All sources accessed on January 23, 2026.*
-
-[1] International AI Safety Report 2025. *internationalaisafetyreport.org*.
-    https://internationalaisafetyreport.org/publication/...
-
-[2] Anthropic Alignment Recommendations. *alignment.anthropic.com*.
-    https://alignment.anthropic.com/2025/recommended-directions/
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     DIRECTOR (Sonnet)                       │
+│  Session management, progress display, report export        │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│              MANAGER (Opus + Extended Thinking)             │
+│  • Decomposes goal into parallel research threads           │
+│  • Critiques findings, identifies gaps                      │
+│  • Steers research using knowledge graph insights           │
+│  • Synthesizes final report                                 │
+└─────────────────────────────────────────────────────────────┘
+                              │
+          ┌───────────────────┼───────────────────┐
+          ▼                   ▼                   ▼
+┌──────────────────┐ ┌──────────────────┐ ┌────────────────┐
+│  INTERN POOL     │ │  KNOWLEDGE GRAPH │ │    MEMORY      │
+│  (Parallel)      │ │                  │ │                │
+│  • Web searches  │ │  • Entities      │ │  • Hybrid      │
+│  • Query expand  │ │  • Relations     │ │    buffer      │
+│  • Extract facts │ │  • Gaps          │ │  • Compression │
+│                  │ │  • Contradictions│ │  • External DB │
+└──────────────────┘ └──────────────────┘ └────────────────┘
 ```
 
-### Database Schema
+### Parallel Execution
 
-All research is persisted to SQLite:
+The system uses an **intern pool** (default: 3 parallel interns) for:
+- Initial research phase: 3 aspects researched simultaneously
+- Queued topics: Multiple topics processed in parallel when available
 
-| Table | Contents |
-|-------|----------|
-| `sessions` | Research sessions with goals and timestamps |
-| `findings` | Individual findings with type, content, source, confidence |
-| `topics` | Research topics with depth and status |
-| `messages` | Inter-agent communication logs |
+This significantly speeds up research compared to sequential execution.
+
+### Knowledge Graph
+
+Built in real-time as research progresses:
+- **Entities**: Concepts, claims, evidence, methods extracted from findings
+- **Relations**: How entities connect (causes, supports, contradicts)
+- **Gap Detection**: Graph analysis identifies missing knowledge
+- **Contradiction Detection**: Flags conflicting claims for investigation
+
+The manager uses KG insights to decide what to research next.
+
+### Hybrid Memory
+
+For long research sessions:
+- **Recent Buffer**: Full recent messages (high fidelity)
+- **Compressed Summary**: Older context summarized to save tokens
+- **External Store**: Findings persisted to SQLite for retrieval
+
+---
+
+## Report Structure
+
+Generated reports include:
+
+| Section | Content |
+|---------|---------|
+| Executive Summary | 3-4 paragraph overview |
+| Introduction | Background and scope |
+| Thematic Sections | 4-6 AI-identified themes with narrative |
+| Analysis & Insights | Cross-cutting patterns |
+| Conclusions | Direct answers, recommendations |
+| References | All sources with URLs |
+| Appendix | Methodology, stats, KG analysis |
+
+Reports use **Opus with extended thinking** for deep synthesis.
+
+---
 
 ## Configuration
 
-### Agent Configuration
+### Adjust Research Depth
+
+In `src/agents/manager.py`:
+```python
+self.max_depth: int = 5  # How deep to follow threads
+```
+
+### Adjust Parallel Pool Size
 
 ```python
-from src.agents.base import AgentConfig
-
-config = AgentConfig(
-    model="opus",              # sonnet, opus, or haiku
-    max_turns=10,              # Max turns per Claude call
-    max_iterations=100,        # Max ReAct loop iterations
-    max_thinking_tokens=10000, # Extended thinking tokens
-    allowed_tools=["WebSearch", "WebFetch"],
+manager = ManagerAgent(
+    db, intern, config,
+    pool_size=3,        # Number of parallel interns
+    use_parallel=True,  # Enable/disable parallel execution
 )
 ```
 
-### Research Parameters
+### Model Selection
 
-The Manager agent controls research depth:
-- `max_depth=5` - How deep to follow topic threads
-- `time_limit_minutes` - Overall session time limit
-- Manager automatically uses Opus for deep reasoning
+The system automatically routes tasks to appropriate models:
+
+| Task | Model |
+|------|-------|
+| Classification, simple extraction | Haiku |
+| Web search, query expansion | Sonnet |
+| Strategic planning, synthesis, critique | Opus |
+
+---
+
+## Database
+
+All research persists to SQLite:
+
+| Table | Contents |
+|-------|----------|
+| `sessions` | Research sessions with goals |
+| `findings` | Extracted findings with sources |
+| `topics` | Research topics with depth/status |
+| `kg_entities` | Knowledge graph entities |
+| `kg_relations` | Entity relationships |
+| `kg_contradictions` | Detected conflicts |
+
+Files created:
+- `research.db` - Main database
+- `research_kg.db` - Knowledge graph
+- `research_memory.db` - External memory store
+
+---
+
+## Troubleshooting
+
+### "Topics Explored: 0"
+Fixed in latest version. Update and reinstall: `pip install -e .`
+
+### Research hangs during KG processing
+KG now uses batch processing (5 findings per LLM call). Should be fast.
+
+### Report generation fails
+Now uses direct Anthropic API instead of subprocess. Ensure `anthropic` package installed.
+
+### API errors
+Check Claude Code is authenticated: `claude --version`
+
+---
 
 ## Project Structure
 
@@ -231,103 +292,49 @@ The Manager agent controls research depth:
 claude-researcher/
 ├── src/
 │   ├── agents/
-│   │   ├── base.py       # Base agent with ReAct loop
-│   │   ├── intern.py     # Web search agent (Sonnet)
-│   │   ├── manager.py    # Research coordinator (Opus + extended thinking)
-│   │   └── director.py   # User interface agent
-│   ├── models/
-│   │   └── findings.py   # Data models (Finding, Session, etc.)
+│   │   ├── base.py       # ReAct loop, model routing
+│   │   ├── intern.py     # Web search, query expansion
+│   │   ├── manager.py    # Strategy, critique, KG integration
+│   │   ├── director.py   # User interface
+│   │   └── parallel.py   # Parallel intern pool
+│   ├── knowledge/
+│   │   ├── graph.py      # Incremental KG construction
+│   │   ├── store.py      # NetworkX + SQLite hybrid
+│   │   ├── query.py      # Gap detection interface
+│   │   ├── credibility.py # Source scoring
+│   │   └── visualize.py  # Pyvis, Mermaid output
+│   ├── memory/
+│   │   ├── hybrid.py     # Buffer + summary compression
+│   │   └── external.py   # SQLite external store
 │   ├── reports/
-│   │   └── writer.py     # Deep narrative report generator (Opus)
+│   │   └── writer.py     # Narrative report generator
+│   ├── models/
+│   │   └── findings.py   # Data models
 │   ├── storage/
-│   │   └── database.py   # SQLite persistence layer
-│   ├── tools/
-│   │   └── web_search.py # WebSearch tool wrapper
+│   │   └── database.py   # SQLite persistence
 │   └── main.py           # CLI entry point
-├── output/               # Generated reports (auto-created)
-├── research.db           # SQLite database (auto-created)
+├── output/               # Generated reports
 ├── pyproject.toml
 └── README.md
 ```
 
-## How It Works
-
-```
-User Query
-    │
-    ▼
-┌─────────────────────────────────────────────────────────┐
-│ 1. DIRECTOR creates session, delegates to Manager       │
-└─────────────────────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────────────────┐
-│ 2. MANAGER (Opus) analyzes goal, creates search plan    │
-│    Uses extended thinking for strategic planning        │
-└─────────────────────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────────────────┐
-│ 3. INTERN executes web searches                         │
-│    - Shows search summaries                             │
-│    - Displays results with URLs                         │
-│    - Extracts and categorizes findings                  │
-└─────────────────────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────────────────┐
-│ 4. MANAGER critiques findings                           │
-│    - Identifies gaps and contradictions                 │
-│    - Creates follow-up directives                       │
-│    - Decides: go deeper or synthesize?                  │
-└─────────────────────────────────────────────────────────┘
-    │
-    ▼ (repeat 3-4 until time limit or sufficient coverage)
-    │
-    ▼
-┌─────────────────────────────────────────────────────────┐
-│ 5. REPORT WRITER (Opus + 16K thinking)                  │
-│    - Generates executive summary                        │
-│    - Identifies thematic sections                       │
-│    - Writes narrative prose for each section            │
-│    - Synthesizes analysis and conclusions               │
-│    - Compiles references                                │
-└─────────────────────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────────────────┐
-│ 6. OUTPUT: output/research_{id}.md                      │
-└─────────────────────────────────────────────────────────┘
-```
-
-## Finding Types
-
-| Type | Description | Example |
-|------|-------------|---------|
-| **FACT** | Verified, specific information | "GPT-4 was released on March 14, 2023" |
-| **INSIGHT** | Analysis or interpretation | "The trend suggests increasing adoption..." |
-| **CONNECTION** | Links between topics | "This relates to earlier findings on..." |
-| **SOURCE** | Valuable primary source | "The official documentation at..." |
-| **QUESTION** | Unanswered question | "It remains unclear whether..." |
-| **CONTRADICTION** | Conflicting information | "Source A claims X, but Source B states Y" |
-
-## Inspiration
-
-This project draws inspiration from:
-
-- **[Gemini Deep Research](https://gemini.google/overview/deep-research/)** - Google's multi-page research reports with narrative synthesis
-- **[Perplexity Deep Research](https://www.perplexity.ai/)** - Multi-pass querying with source confidence ratings
-- **[GPT Researcher](https://github.com/assafelovic/gpt-researcher)** - Planner + execution agent architecture
-- **[OpenAI Deep Research](https://openai.com/index/introducing-deep-research/)** - o3-powered autonomous research
-
-## License
-
-MIT
+---
 
 ## Credits
 
 Built with:
-- [Claude Agent SDK](https://docs.anthropic.com/) - Anthropic's SDK for building on Claude
-- [Rich](https://github.com/Textualize/rich) - Beautiful terminal output
-- [Typer](https://github.com/tiangolo/typer) - CLI framework
-- [aiosqlite](https://github.com/omnilib/aiosqlite) - Async SQLite
+- [Claude Agent SDK](https://docs.anthropic.com/) - Agent framework
+- [Anthropic API](https://docs.anthropic.com/) - Direct API for reports
+- [Rich](https://github.com/Textualize/rich) - Terminal output
+- [NetworkX](https://networkx.org/) - Graph algorithms
+- [Pyvis](https://pyvis.readthedocs.io/) - Graph visualization
+
+Inspired by:
+- [Gemini Deep Research](https://gemini.google/overview/deep-research/)
+- [Perplexity](https://www.perplexity.ai/)
+- [GPT Researcher](https://github.com/assafelovic/gpt-researcher)
+- [Stanford STORM](https://arxiv.org/abs/2402.14207)
+
+## License
+
+MIT

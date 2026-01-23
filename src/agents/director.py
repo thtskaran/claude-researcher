@@ -280,16 +280,25 @@ When presenting results:
             topics_explored = [t.topic for t in self.manager.completed_topics] if self.manager.completed_topics else []
             topics_remaining = [t.topic for t in self.manager.topics_queue] if self.manager.topics_queue else []
 
+            # Get knowledge graph exports
+            output_dir = Path("output")
+            output_dir.mkdir(exist_ok=True)
+            try:
+                kg_exports = self.manager.get_knowledge_graph_exports(str(output_dir))
+                self.console.print(f"[dim]Knowledge graph: {kg_exports.get('stats', {}).get('num_entities', 0)} entities, {kg_exports.get('stats', {}).get('num_relations', 0)} relations[/dim]")
+            except Exception as e:
+                self.console.print(f"[dim]Knowledge graph export skipped: {e}[/dim]")
+                kg_exports = None
+
             report = await writer.generate_report(
                 session=self.current_session,
                 findings=findings,
                 topics_explored=topics_explored,
                 topics_remaining=topics_remaining,
+                kg_exports=kg_exports,
             )
 
             # Save to output folder
-            output_dir = Path("output")
-            output_dir.mkdir(exist_ok=True)
             filename = output_dir / f"research_{self.current_session.id}.md"
             filename.write_text(report)
             return str(filename)

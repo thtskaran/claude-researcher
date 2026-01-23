@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 
 from .base import BaseAgent, AgentConfig
 from .intern import InternAgent
+from .parallel import ParallelInternPool
 from ..models.findings import (
     AgentRole,
     Finding,
@@ -15,6 +16,14 @@ from ..models.findings import (
     ResearchTopic,
 )
 from ..storage.database import ResearchDatabase
+from ..knowledge import (
+    IncrementalKnowledgeGraph,
+    HybridKnowledgeGraphStore,
+    ManagerQueryInterface,
+    KGFinding,
+    CredibilityScorer,
+)
+from ..memory import HybridMemory, ExternalMemoryStore
 from rich.console import Console
 
 
@@ -38,6 +47,8 @@ class ManagerAgent(BaseAgent):
         intern: InternAgent,
         config: Optional[AgentConfig] = None,
         console: Optional[Console] = None,
+        pool_size: int = 3,
+        use_parallel: bool = True,
     ):
         # Force Opus model for manager's deep reasoning
         if config is None:
@@ -55,6 +66,54 @@ class ManagerAgent(BaseAgent):
         self.max_depth: int = 5
         self.start_time: Optional[datetime] = None
         self.time_limit_minutes: int = 60
+
+        # Knowledge graph integration
+        self.kg_store = HybridKnowledgeGraphStore(db_path=str(db.db_path).replace('.db', '_kg.db'))
+        self.knowledge_graph = IncrementalKnowledgeGraph(
+            llm_callback=self._kg_llm_callback,
+            store=self.kg_store,
+        )
+        self.kg_query = ManagerQueryInterface(self.kg_store)
+        self.credibility_scorer = CredibilityScorer()
+
+        # Parallel execution pool
+        self.use_parallel = use_parallel
+        self.pool_size = pool_size
+        self.intern_pool = ParallelInternPool(
+            db=db,
+            pool_size=pool_size,
+            config=config,
+            console=console,
+        ) if use_parallel else None
+
+        # Hybrid memory for long research sessions
+        self.memory = HybridMemory(
+            max_recent_tokens=8000,
+            summary_threshold=0.8,
+            llm_callback=self._memory_llm_callback,
+        )
+        self.external_memory = ExternalMemoryStore(
+            db_path=str(db.db_path).replace('.db', '_memory.db')
+        )
+
+    async def _kg_llm_callback(self, prompt: str) -> str:
+        """LLM callback for knowledge graph extraction (uses faster model)."""
+        # Use a simpler model for KG extraction to save costs
+        original_model = self.config.model
+        self.config.model = "sonnet"  # Faster for extraction tasks
+        try:
+            return await self.call_claude(prompt)
+        finally:
+            self.config.model = original_model
+
+    async def _memory_llm_callback(self, prompt: str) -> str:
+        """LLM callback for memory summarization (uses faster model)."""
+        original_model = self.config.model
+        self.config.model = "haiku"  # Fast model for summarization
+        try:
+            return await self.call_claude(prompt)
+        finally:
+            self.config.model = original_model
 
     @property
     def system_prompt(self) -> str:
@@ -105,6 +164,13 @@ Provide structured analysis with clear reasoning. When creating directives:
         # Summarize current state
         findings_summary = self._summarize_findings()
 
+        # Get knowledge graph insights
+        kg_summary = self.kg_query.get_research_summary()
+        research_directions = self.kg_query.get_next_research_directions()
+
+        # Get memory context for continuity
+        memory_context = self.memory.get_context_for_prompt(max_tokens=2000)
+
         prompt = f"""Research Goal: {self.research_goal}
 
 Current Status:
@@ -121,16 +187,35 @@ Last report from Intern:
 Findings summary:
 {findings_summary}
 
+{kg_summary}
+
+Suggested research directions from knowledge analysis:
+{chr(10).join(['- ' + d for d in research_directions[:5]]) if research_directions else 'None yet'}
+
+{f"Session Memory Context:{chr(10)}{memory_context}" if memory_context else ""}
+
 What should I do next? Consider:
-1. Are there gaps in the research?
+1. Are there gaps in the research identified by knowledge graph analysis?
 2. Should I go deeper on any topic?
-3. Are there new angles to explore?
+3. Are there contradictions that need resolution?
 4. Should I ask for verification of any findings?
 5. Is it time to synthesize and report?
 
 Think step by step about the best next action."""
 
-        return await self.call_claude(prompt, use_thinking=True)
+        thought = await self.call_claude(prompt, use_thinking=True)
+
+        # Track in memory
+        self.memory.add_message(
+            role="assistant",
+            content=f"Reasoning: {thought[:500]}...",
+            metadata={"type": "thought", "iteration": self.state.iteration}
+        )
+
+        # Compress memory if needed
+        await self.memory.maybe_compress()
+
+        return thought
 
     async def act(self, thought: str, context: dict[str, Any]) -> dict[str, Any]:
         """Execute management actions based on thinking."""
@@ -161,6 +246,9 @@ Think step by step about the best next action."""
                 self.all_reports.append(intern_report)
                 self.all_findings.extend(intern_report.findings)
 
+                # Process findings into knowledge graph
+                await self._process_findings_to_kg(intern_report.findings)
+
                 # Critique the report
                 critique = await self._critique_report(intern_report)
 
@@ -186,8 +274,38 @@ Think step by step about the best next action."""
                     "critique": critique,
                 }
 
-        # Check pending topics
+        # Check pending topics - use parallel execution if multiple topics queued
         if self.topics_queue:
+            # Use parallel execution if we have multiple topics and pool is available
+            if len(self.topics_queue) >= 2 and self.intern_pool:
+                # Pop multiple topics for parallel execution
+                topics_to_run = []
+                for _ in range(min(self.pool_size, len(self.topics_queue))):
+                    if self.topics_queue:
+                        topics_to_run.append(self.topics_queue.pop(0))
+
+                self._log("═" * 70, style="bold blue")
+                self._log(f"[PARALLEL TOPICS] Running {len(topics_to_run)} topics in parallel", style="bold green")
+                for t in topics_to_run:
+                    self._log(f"  • {t.topic}", style="dim")
+                self._log("═" * 70, style="bold blue")
+
+                await self._run_parallel_topics(topics_to_run, max_parallel=self.pool_size)
+
+                # Track in memory
+                self.memory.add_message(
+                    role="system",
+                    content=f"Completed parallel research on {len(topics_to_run)} topics",
+                    metadata={"topics": [t.topic for t in topics_to_run]}
+                )
+
+                return {
+                    "action": "parallel_topics",
+                    "topics": topics_to_run,
+                    "findings_count": len(self.all_findings),
+                }
+
+            # Single topic - use regular intern
             topic = self.topics_queue.pop(0)
             directive = ManagerDirective(
                 action="search",
@@ -209,6 +327,16 @@ Think step by step about the best next action."""
             self.all_findings.extend(intern_report.findings)
             self.completed_topics.append(topic)
             self.current_depth = max(self.current_depth, topic.depth)
+
+            # Process findings into knowledge graph
+            await self._process_findings_to_kg(intern_report.findings)
+
+            # Track in memory
+            self.memory.add_message(
+                role="system",
+                content=f"Completed research on: {topic.topic} - {len(intern_report.findings)} findings",
+                metadata={"topic": topic.topic, "findings": len(intern_report.findings)}
+            )
 
             await self.db.update_topic_status(
                 topic.id, "completed", len(intern_report.findings)
@@ -263,6 +391,14 @@ Think step by step about the best next action."""
 - Follow-ups suggested: {len(report.suggested_followups)}
 - Critique: {critique[:200]}..."""
 
+        if action == "parallel_topics":
+            topics = action_result.get("topics", [])
+            findings_count = action_result.get("findings_count", 0)
+            return f"""Parallel research completed:
+- Topics researched: {len(topics)}
+- Total findings so far: {findings_count}
+- Topics: {[t.topic for t in topics]}"""
+
         return "Unknown action"
 
     def is_done(self, context: dict[str, Any]) -> bool:
@@ -306,6 +442,64 @@ Think step by step about the best next action."""
                 summary_parts.append(f"  * {f.content[:100]}...")
 
         return "\n".join(summary_parts)
+
+    async def _process_findings_to_kg(self, findings: list[Finding]) -> None:
+        """Process findings into the knowledge graph in real-time.
+
+        Uses batch processing for speed (multiple findings per LLM call)
+        while still building the full KG that agents can query during research.
+
+        Args:
+            findings: List of findings to process
+        """
+        if not findings:
+            return
+
+        self._log(f"[KG] Processing {len(findings)} findings into knowledge graph", style="dim")
+
+        # Convert all findings to KGFindings
+        kg_findings = []
+        for finding in findings:
+            try:
+                kg_finding = KGFinding(
+                    id=str(finding.id or hash(finding.content)),
+                    content=finding.content,
+                    source_url=finding.source_url or "",
+                    source_title=finding.source_url.split("/")[-1] if finding.source_url else "",
+                    timestamp=finding.created_at.isoformat(),
+                    credibility_score=finding.confidence,
+                    finding_type=finding.finding_type.value,
+                    search_query=finding.search_query,
+                )
+                kg_findings.append(kg_finding)
+            except Exception as e:
+                self._log(f"[KG] Error converting finding: {e}", style="dim")
+
+        # Use batch processing for speed (5 findings per LLM call)
+        if len(kg_findings) > 3:
+            result = await self.knowledge_graph.add_findings_batch(kg_findings, batch_size=5)
+            self._log(
+                f"[KG] Extracted {result['total_entities']} entities, "
+                f"{result['total_relations']} relations",
+                style="dim"
+            )
+            if result['total_contradictions'] > 0:
+                self._log(
+                    f"[KG] Contradictions detected: {result['total_contradictions']}",
+                    style="yellow"
+                )
+        else:
+            # Process individually for small batches
+            for kg_finding in kg_findings:
+                try:
+                    result = await self.knowledge_graph.add_finding(kg_finding, fast_mode=True)
+                    if result.get('contradictions_found', 0) > 0:
+                        self._log(
+                            f"[KG] Contradiction detected: {result['contradictions_found']} conflicts",
+                            style="yellow"
+                        )
+                except Exception as e:
+                    self._log(f"[KG] Error processing finding: {e}", style="dim")
 
     def _should_synthesize(self, thought: str, time_remaining: float) -> bool:
         """Determine if it's time to synthesize results."""
@@ -482,33 +676,218 @@ Be thorough and insightful."""
             time_remaining_minutes=time_remaining,
         )
 
+    async def _run_parallel_initial_research(self, goal: str, max_aspects: int = 3) -> None:
+        """Run parallel initial research to quickly gather broad findings.
+
+        Decomposes the goal into distinct aspects and researches them in parallel
+        using the intern pool.
+
+        Args:
+            goal: The main research goal
+            max_aspects: Maximum number of parallel research threads
+        """
+        if not self.intern_pool:
+            return
+
+        self._log("=" * 70, style="bold cyan")
+        self._log("[PARALLEL RESEARCH] Starting parallel initial research phase", style="bold cyan")
+        self._log("=" * 70, style="bold cyan")
+
+        # Record in memory
+        self.memory.add_message(
+            role="system",
+            content=f"Starting parallel research on: {goal}",
+            metadata={"phase": "parallel_init"}
+        )
+
+        # Decompose goal into aspects first
+        aspects = await self.intern_pool._decompose_goal(
+            goal=goal,
+            llm_callback=self._kg_llm_callback,
+            max_aspects=max_aspects,
+        )
+
+        self._log(f"[PARALLEL] Decomposed into {len(aspects)} aspects:", style="cyan")
+        for aspect in aspects:
+            self._log(f"  • {aspect}", style="dim")
+
+        # Create topics in database for tracking
+        aspect_topics = []
+        for aspect in aspects:
+            topic = await self.db.create_topic(
+                session_id=self.session_id,
+                topic=aspect,
+                depth=1,
+                priority=9,
+            )
+            aspect_topics.append(topic)
+
+        # Create directives from aspects
+        directives = [
+            ManagerDirective(
+                action="search",
+                topic=aspect,
+                instructions=f"Research this specific aspect thoroughly: {aspect}",
+                priority=8,
+                max_searches=5,
+            )
+            for aspect in aspects
+        ]
+
+        # Execute in parallel
+        result = await self.intern_pool.research_parallel(directives, self.session_id)
+
+        # Process results
+        self.all_findings.extend(result.total_findings)
+        self.all_reports.extend(result.reports)
+
+        # Mark topics as completed and track them
+        for topic in aspect_topics:
+            self.completed_topics.append(topic)
+            await self.db.update_topic_status(topic.id, "completed", len(result.total_findings) // len(aspects))
+
+        # Update depth tracking
+        self.current_depth = max(self.current_depth, 1)
+
+        # Process all findings into KG in real-time (fast mode)
+        await self._process_findings_to_kg(result.total_findings)
+
+        # Store findings summary in external memory for later retrieval
+        if result.total_findings:
+            findings_summary = "\n".join([
+                f"- {f.content[:200]}" for f in result.total_findings[:20]
+            ])
+            self.external_memory.store(
+                session_id=self.session_id,
+                content=f"Parallel research findings:\n{findings_summary}",
+                memory_type="finding",
+                tags=["parallel", "initial"],
+                metadata={"count": len(result.total_findings)}
+            )
+
+        # Record completion in memory
+        self.memory.add_message(
+            role="system",
+            content=f"Parallel research complete: {len(result.total_findings)} findings from {result.total_searches} searches in {result.execution_time_seconds:.1f}s",
+            metadata={"phase": "parallel_complete", "findings_count": len(result.total_findings)}
+        )
+
+        self._log("=" * 70, style="bold cyan")
+        self._log(
+            f"[PARALLEL RESEARCH] Complete: {len(result.total_findings)} findings, "
+            f"{result.total_searches} searches, {result.execution_time_seconds:.1f}s",
+            style="bold green"
+        )
+        if result.errors:
+            self._log(f"  Errors: {len(result.errors)}", style="yellow")
+        self._log("=" * 70, style="bold cyan")
+
+    async def _run_parallel_topics(self, topics: list[ResearchTopic], max_parallel: int = 3) -> None:
+        """Run multiple queued topics in parallel.
+
+        Args:
+            topics: List of topics to research in parallel
+            max_parallel: Maximum number to run at once
+        """
+        if not self.intern_pool or not topics:
+            return
+
+        # Create directives from topics
+        from ..models.findings import ManagerDirective
+
+        directives = [
+            ManagerDirective(
+                action="search",
+                topic=topic.topic,
+                instructions=f"Research this topic thoroughly: {topic.topic}",
+                priority=topic.priority,
+                max_searches=5,
+            )
+            for topic in topics[:max_parallel]
+        ]
+
+        self._log(f"[PARALLEL] Running {len(directives)} topics in parallel", style="cyan")
+
+        result = await self.intern_pool.research_parallel(directives, self.session_id)
+
+        # Process results
+        self.all_findings.extend(result.total_findings)
+        self.all_reports.extend(result.reports)
+
+        # Mark topics as completed and update database
+        findings_per_topic = len(result.total_findings) // max(len(topics[:max_parallel]), 1)
+        for topic in topics[:max_parallel]:
+            self.completed_topics.append(topic)
+            self.current_depth = max(self.current_depth, topic.depth)
+            await self.db.update_topic_status(topic.id, "completed", findings_per_topic)
+
+        # Process findings to KG
+        await self._process_findings_to_kg(result.total_findings)
+
+        # Compress memory if needed
+        await self.memory.maybe_compress()
+
     async def run_research(
         self,
         goal: str,
         session_id: int,
         time_limit_minutes: int = 60,
+        use_parallel_init: bool = True,
     ) -> ManagerReport:
-        """Run a complete research session."""
+        """Run a complete research session.
+
+        Args:
+            goal: The main research goal
+            session_id: Session ID for persistence
+            time_limit_minutes: Time budget for research
+            use_parallel_init: If True, start with parallel decomposition phase
+        """
         self.research_goal = goal
         self.session_id = session_id
         self.time_limit_minutes = time_limit_minutes
         self.start_time = datetime.now()
 
-        # Initialize with the main goal as the first topic
-        initial_topic = await self.db.create_topic(
-            session_id=session_id,
-            topic=goal,
-            depth=0,
-            priority=10,
+        # Initialize memory for this session
+        self.memory.add_message(
+            role="user",
+            content=f"Research goal: {goal}",
+            metadata={"session_id": session_id}
         )
-        self.topics_queue.append(initial_topic)
+
+        # Phase 1: Parallel initial research (if enabled and pool available)
+        if use_parallel_init and self.intern_pool:
+            await self._run_parallel_initial_research(goal, max_aspects=self.pool_size)
+
+        # Initialize with the main goal as the first topic (if not enough findings yet)
+        if len(self.all_findings) < 5:
+            initial_topic = await self.db.create_topic(
+                session_id=session_id,
+                topic=goal,
+                depth=0,
+                priority=10,
+            )
+            self.topics_queue.append(initial_topic)
 
         context = {
             "goal": goal,
             "session_id": session_id,
         }
 
+        # Phase 2: ReAct loop for deeper research
         result = await self.run(context)
+
+        # Store final summary in external memory
+        self.external_memory.store(
+            session_id=self.session_id,
+            content=f"Research completed on: {goal}\nTotal findings: {len(self.all_findings)}\nTopics explored: {len(self.completed_topics)}",
+            memory_type="summary",
+            tags=["final", "session_complete"],
+            metadata={
+                "findings_count": len(self.all_findings),
+                "topics_count": len(self.completed_topics),
+                "time_minutes": self._get_elapsed_minutes(),
+            }
+        )
 
         # Return the final report
         if "last_action" in result and result["last_action"].get("action") == "synthesize":
@@ -517,8 +896,13 @@ Be thorough and insightful."""
         # Generate final report if not already done
         return await self._synthesize_report()
 
-    def reset(self) -> None:
-        """Reset the manager state."""
+    def reset(self, clear_knowledge_graph: bool = False, clear_memory: bool = False) -> None:
+        """Reset the manager state.
+
+        Args:
+            clear_knowledge_graph: If True, also clear the knowledge graph data
+            clear_memory: If True, also clear hybrid memory
+        """
         self.research_goal = ""
         self.session_id = 0
         self.topics_queue = []
@@ -529,3 +913,47 @@ Be thorough and insightful."""
         self.start_time = None
         self.state = type(self.state)()
         self.intern.reset()
+
+        if self.intern_pool:
+            self.intern_pool.reset_all()
+
+        if clear_knowledge_graph:
+            self.kg_store.clear()
+
+        if clear_memory:
+            self.memory.clear()
+
+    def get_knowledge_graph_exports(self, output_dir: str = ".") -> dict:
+        """Get knowledge graph visualizations and summaries for reports.
+
+        Args:
+            output_dir: Directory to save visualizations
+
+        Returns:
+            Dict with visualization paths and summary data
+        """
+        from ..knowledge import KnowledgeGraphVisualizer
+        from pathlib import Path
+
+        visualizer = KnowledgeGraphVisualizer(self.kg_store)
+        output_path = Path(output_dir)
+
+        exports = {
+            'stats': self.kg_store.get_stats(),
+            'key_concepts': self.kg_query.get_key_concepts(10),
+            'gaps': [g.to_dict() for g in self.kg_query.identify_gaps()],
+            'contradictions': self.kg_query.get_contradictions(),
+            'mermaid_diagram': visualizer.create_mermaid_diagram(max_nodes=20),
+            'stats_card': visualizer.create_summary_stats_card(),
+        }
+
+        # Try to create interactive HTML visualization
+        try:
+            html_path = visualizer.create_interactive_graph(
+                str(output_path / "knowledge_graph.html")
+            )
+            exports['html_visualization'] = html_path
+        except Exception:
+            exports['html_visualization'] = None
+
+        return exports

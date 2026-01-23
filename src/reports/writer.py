@@ -8,7 +8,12 @@ from typing import Optional
 from pathlib import Path
 from dataclasses import dataclass
 
-from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
+try:
+    import anthropic
+    HAS_ANTHROPIC = True
+except ImportError:
+    anthropic = None
+    HAS_ANTHROPIC = False
 
 from ..models.findings import Finding, ResearchSession
 
@@ -31,6 +36,10 @@ def _get_api_key() -> Optional[str]:
         except Exception:
             pass
     return None
+
+
+# Maximum tokens for prompts to avoid overflows
+MAX_FINDINGS_CHARS = 15000  # ~4k tokens for findings context
 
 
 @dataclass
@@ -62,31 +71,46 @@ class DeepReportWriter:
         self.model = model
 
     async def _call_claude(self, prompt: str, system_prompt: str = "") -> str:
-        """Call Claude for report generation."""
-        env = {}
-        if api_key := _get_api_key():
-            env["ANTHROPIC_API_KEY"] = api_key
+        """Call Claude for report generation using direct Anthropic API."""
+        api_key = _get_api_key()
+        if not api_key:
+            return "[Error: No API key available for report generation]"
 
-        options = ClaudeAgentOptions(
-            model=self.model,
-            max_turns=1,
-            allowed_tools=[],
-            system_prompt=system_prompt,
-            env=env,
-            max_thinking_tokens=16000,  # Extended thinking for synthesis
-        )
+        if not HAS_ANTHROPIC:
+            return "[Error: anthropic package not installed]"
 
-        response_text = ""
+        # Map model name to full model ID
+        model_map = {
+            "opus": "claude-sonnet-4-20250514",  # Use Sonnet for report gen (faster, reliable)
+            "sonnet": "claude-sonnet-4-20250514",
+            "haiku": "claude-haiku-3-5-20241022",
+        }
+        model_id = model_map.get(self.model, "claude-sonnet-4-20250514")
+
         try:
-            async for message in query(prompt=prompt, options=options):
-                if isinstance(message, AssistantMessage):
-                    for block in message.content:
-                        if isinstance(block, TextBlock):
-                            response_text += block.text
-        except Exception as e:
-            response_text = f"Error generating report section: {e}"
+            client = anthropic.Anthropic(api_key=api_key)
 
-        return response_text
+            # Use extended thinking for synthesis (if sonnet)
+            message = client.messages.create(
+                model=model_id,
+                max_tokens=8000,
+                system=system_prompt if system_prompt else "You are an expert research analyst.",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+            )
+
+            response_text = ""
+            for block in message.content:
+                if hasattr(block, 'text'):
+                    response_text += block.text
+
+            return response_text
+
+        except anthropic.APIError as e:
+            return f"[API Error: {e.message}]"
+        except Exception as e:
+            return f"[Error generating report section: {str(e)[:200]}]"
 
     async def generate_report(
         self,
@@ -94,6 +118,7 @@ class DeepReportWriter:
         findings: list[Finding],
         topics_explored: list[str],
         topics_remaining: list[str],
+        kg_exports: dict = None,
     ) -> str:
         """Generate a comprehensive deep research report.
 
@@ -102,6 +127,7 @@ class DeepReportWriter:
             findings: All findings from the research
             topics_explored: Topics that were researched
             topics_remaining: Topics that could be researched with more time
+            kg_exports: Optional knowledge graph exports (stats, visualization, gaps)
 
         Returns:
             Complete markdown report
@@ -141,6 +167,7 @@ class DeepReportWriter:
             sources=sources,
             findings=findings,
             topics_explored=topics_explored,
+            kg_exports=kg_exports,
         )
 
         return report
@@ -191,15 +218,23 @@ class DeepReportWriter:
                 }
         return list(sources.values())
 
+    def _truncate_findings_text(self, findings_text: str, max_chars: int = None) -> str:
+        """Truncate findings text to stay within token limits."""
+        max_chars = max_chars or MAX_FINDINGS_CHARS
+        if len(findings_text) <= max_chars:
+            return findings_text
+        return findings_text[:max_chars] + "\n... [truncated for length]"
+
     async def _generate_executive_summary(
         self, goal: str, findings: list[Finding], topics: list[str]
     ) -> str:
         """Generate executive summary."""
         # Get top findings by confidence
-        top_findings = sorted(findings, key=lambda f: f.confidence, reverse=True)[:15]
+        top_findings = sorted(findings, key=lambda f: f.confidence, reverse=True)[:20]
         findings_text = "\n".join([
-            f"- [{f.finding_type.value}] {f.content}" for f in top_findings
+            f"- [{f.finding_type.value}] {f.content[:300]}" for f in top_findings
         ])
+        findings_text = self._truncate_findings_text(findings_text)
 
         prompt = f"""You are writing the Executive Summary for a deep research report.
 
@@ -251,10 +286,13 @@ Output ONLY the introduction text, no headers."""
     async def _generate_main_sections(self, goal: str, findings: list[Finding]) -> list[ReportSection]:
         """Generate main narrative sections organized by theme."""
         # First, ask Claude to identify the main themes/sections
+        # Use top findings by confidence
+        top_findings = sorted(findings, key=lambda f: f.confidence, reverse=True)[:40]
         findings_summary = "\n".join([
             f"- [{f.finding_type.value}] {f.content[:200]}"
-            for f in findings[:50]  # Use top 50 findings for theme identification
+            for f in top_findings
         ])
+        findings_summary = self._truncate_findings_text(findings_summary, 10000)
 
         theme_prompt = f"""Analyze these research findings and identify 4-6 main thematic sections for organizing a comprehensive report.
 
@@ -303,11 +341,13 @@ Choose themes that:
         self, goal: str, section_title: str, findings: list[Finding]
     ) -> str:
         """Generate content for a specific section."""
-        # Select relevant findings for this section
+        # Select relevant findings for this section (top by confidence)
+        top_findings = sorted(findings, key=lambda f: f.confidence, reverse=True)[:30]
         findings_text = "\n".join([
-            f"- [{f.finding_type.value}] {f.content}"
-            for f in findings[:40]  # Use subset to avoid token limits
+            f"- [{f.finding_type.value}] {f.content[:250]}"
+            for f in top_findings
         ])
+        findings_text = self._truncate_findings_text(findings_text, 12000)
 
         prompt = f"""You are writing a section of a deep research report.
 
@@ -420,6 +460,7 @@ Output ONLY the conclusions text, no headers."""
         sources: list[dict],
         findings: list[Finding],
         topics_explored: list[str],
+        kg_exports: dict = None,
     ) -> str:
         """Compile all sections into the final report."""
         # Build table of contents
@@ -522,15 +563,76 @@ This report was generated using a hierarchical multi-agent research system:
 2. **Information Gathering**: AI intern agents conducted {len(sources)} web searches, analyzing sources for relevance and credibility.
 3. **Finding Extraction**: {len(findings)} discrete findings were extracted and categorized by type (facts, insights, connections, etc.).
 4. **Critical Review**: Each batch of findings was critiqued for accuracy, relevance, and gaps.
-5. **Narrative Synthesis**: An AI writer (Claude Opus) synthesized findings into this cohesive narrative report using extended thinking for deep analysis.
+5. **Knowledge Graph Construction**: Findings were integrated into a real-time knowledge graph for gap detection and contradiction analysis.
+6. **Narrative Synthesis**: An AI writer (Claude Opus) synthesized findings into this cohesive narrative report using extended thinking for deep analysis.
 
 {stats}
 
 **Topics Researched:**
 {chr(10).join(['- ' + t for t in topics_explored[:15]]) if topics_explored else '- ' + session.goal}
 
+{self._format_kg_section(kg_exports) if kg_exports else ''}
+
 ---
 
 *Report generated by Claude Deep Researcher*
 """
         return report
+
+    def _format_kg_section(self, kg_exports: dict) -> str:
+        """Format knowledge graph section for the report."""
+        if not kg_exports:
+            return ""
+
+        sections = ["---", "", "## Appendix: Knowledge Graph Analysis"]
+
+        # Stats
+        stats = kg_exports.get('stats', {})
+        if stats:
+            sections.append(f"""
+**Knowledge Graph Statistics:**
+- Entities extracted: {stats.get('num_entities', 0)}
+- Relations identified: {stats.get('num_relations', 0)}
+- Connected components: {stats.get('num_components', 0)}
+- Graph density: {stats.get('density', 0):.3f}
+""")
+
+        # Key concepts
+        key_concepts = kg_exports.get('key_concepts', [])
+        if key_concepts:
+            sections.append("**Key Concepts by Importance (PageRank):**")
+            for c in key_concepts[:5]:
+                sections.append(f"- {c['name']} ({c['type']}) - importance: {c['importance']}")
+            sections.append("")
+
+        # Gaps identified
+        gaps = kg_exports.get('gaps', [])
+        if gaps:
+            sections.append(f"**Knowledge Gaps Identified ({len(gaps)}):**")
+            for g in gaps[:5]:
+                sections.append(f"- {g.get('recommendation', g.get('gap_type', 'Unknown'))}")
+            sections.append("")
+
+        # Contradictions
+        contradictions = kg_exports.get('contradictions', [])
+        if contradictions:
+            sections.append(f"**Contradictions Detected ({len(contradictions)}):**")
+            for c in contradictions[:3]:
+                sections.append(f"- {c.get('description', c.get('recommendation', 'Unknown'))}")
+            sections.append("")
+
+        # Mermaid diagram (if available and not too large)
+        mermaid = kg_exports.get('mermaid_diagram', '')
+        if mermaid and 'No data yet' not in mermaid and len(mermaid) < 5000:
+            sections.append("**Knowledge Graph Visualization:**")
+            sections.append("")
+            sections.append(mermaid)
+            sections.append("")
+
+        # Link to HTML visualization
+        html_viz = kg_exports.get('html_visualization')
+        if html_viz:
+            sections.append(f"*Interactive visualization available at: {html_viz}*")
+            sections.append("")
+
+        return "\n".join(sections)

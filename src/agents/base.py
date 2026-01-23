@@ -49,6 +49,70 @@ class AgentConfig:
     max_thinking_tokens: int = 10000  # Extended thinking for deep reasoning
 
 
+class ModelRouter:
+    """Routes tasks to appropriate models based on complexity.
+
+    Model selection strategy:
+    - Haiku: Quick classification, simple extraction, yes/no decisions
+    - Sonnet: Web search analysis, finding extraction, moderate reasoning
+    - Opus: Strategic planning, deep synthesis, complex reasoning
+    """
+
+    # Task to model mapping
+    TASK_MODELS = {
+        # Haiku tasks (fast, cheap)
+        'classify': 'haiku',
+        'extract_simple': 'haiku',
+        'yes_no': 'haiku',
+        'format': 'haiku',
+
+        # Sonnet tasks (balanced)
+        'search': 'sonnet',
+        'extract_findings': 'sonnet',
+        'summarize': 'sonnet',
+        'analyze_results': 'sonnet',
+        'query_expansion': 'sonnet',
+
+        # Opus tasks (deep reasoning)
+        'strategic_planning': 'opus',
+        'synthesis': 'opus',
+        'critique': 'opus',
+        'deep_analysis': 'opus',
+        'report_writing': 'opus',
+    }
+
+    @classmethod
+    def get_model_for_task(cls, task: str, default: str = 'sonnet') -> str:
+        """Get the appropriate model for a task.
+
+        Args:
+            task: The task type
+            default: Default model if task not found
+
+        Returns:
+            Model name (haiku, sonnet, or opus)
+        """
+        return cls.TASK_MODELS.get(task, default)
+
+    @classmethod
+    def should_use_thinking(cls, task: str) -> bool:
+        """Determine if a task should use extended thinking.
+
+        Extended thinking is best for:
+        - Complex synthesis
+        - Strategic planning
+        - Deep analysis
+        """
+        thinking_tasks = {
+            'strategic_planning',
+            'synthesis',
+            'critique',
+            'deep_analysis',
+            'report_writing',
+        }
+        return task in thinking_tasks
+
+
 @dataclass
 class AgentState:
     """Current state of an agent."""
@@ -212,6 +276,7 @@ class BaseAgent(ABC):
         prompt: str,
         tools: Optional[list[str]] = None,
         use_thinking: bool = False,
+        task_type: Optional[str] = None,
     ) -> str:
         """Call Claude via the Agent SDK.
 
@@ -219,6 +284,7 @@ class BaseAgent(ABC):
             prompt: The prompt to send
             tools: Optional list of tools to enable (default: none for pure reasoning)
             use_thinking: Enable extended thinking for deep reasoning (Opus recommended)
+            task_type: Optional task type for automatic model routing
 
         Returns:
             The text response from Claude
@@ -228,8 +294,16 @@ class BaseAgent(ABC):
         if api_key := _get_api_key():
             env["ANTHROPIC_API_KEY"] = api_key
 
+        # Use model routing if task_type specified
+        model = self.config.model
+        if task_type:
+            model = ModelRouter.get_model_for_task(task_type, default=self.config.model)
+            # Also check if we should use thinking for this task
+            if not use_thinking and ModelRouter.should_use_thinking(task_type):
+                use_thinking = True
+
         options = ClaudeAgentOptions(
-            model=self.config.model,
+            model=model,
             max_turns=1,  # Single turn for reasoning
             allowed_tools=tools or [],
             system_prompt=self.system_prompt,

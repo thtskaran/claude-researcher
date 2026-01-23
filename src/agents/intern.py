@@ -229,15 +229,24 @@ Be brief - just state your decision and reason."""
         # Generate a search query based on the directive and progress
         current_year = _get_current_year()
         if self.searches_performed == 0:
-            # First search - use the directive topic directly with current year
-            return f"{directive.topic} {current_year} latest"
+            # First search - use expanded query for broader coverage
+            return await self._expand_query(directive.topic, current_year)
 
-        # Subsequent searches - ask Claude for a follow-up query
+        # Subsequent searches - use diverse query expansion
         prompt = f"""Topic: {directive.topic}
 Searches done: {self.searches_performed}
 Previous findings: {len(self.findings)}
 
-Generate ONE specific search query to find more information. Focus on recent developments ({current_year}).
+Recent findings summary:
+{self._get_findings_summary()}
+
+Generate ONE specific search query to find NEW information not covered by existing findings.
+Focus on:
+- Different angles or perspectives
+- Recent developments ({current_year})
+- Specific subtopics not yet explored
+- Primary sources (research papers, official docs)
+
 Output ONLY the search query, nothing else."""
 
         response = await self.call_claude(prompt)
@@ -252,6 +261,47 @@ Output ONLY the search query, nothing else."""
             return f"{directive.topic} recent research {current_year}"
 
         return query if query and query.upper() != "STOP" else None
+
+    async def _expand_query(self, topic: str, year: int) -> str:
+        """Expand a query to improve search coverage.
+
+        Uses query expansion techniques:
+        - Synonym expansion
+        - Temporal scoping
+        - Specificity adjustment
+        """
+        prompt = f"""Expand this research topic into an effective web search query.
+
+Topic: {topic}
+
+Create a search query that:
+1. Includes specific keywords and synonyms
+2. Targets recent information ({year})
+3. Avoids overly generic terms
+4. Is optimized for finding authoritative sources
+
+Output ONLY the search query (15-25 words max), nothing else."""
+
+        response = await self.call_claude(prompt, task_type='query_expansion')
+        query = response.strip().strip('"').strip("'")
+
+        # Fallback if expansion fails
+        if not query or len(query) > 200 or "error" in query.lower():
+            return f"{topic} {year} latest research developments"
+
+        return query
+
+    def _get_findings_summary(self) -> str:
+        """Get a brief summary of recent findings to avoid duplicate searches."""
+        if not self.findings:
+            return "None yet"
+
+        recent = self.findings[-5:]  # Last 5 findings
+        summaries = []
+        for f in recent:
+            content = f.content[:80] + "..." if len(f.content) > 80 else f.content
+            summaries.append(f"- {content}")
+        return "\n".join(summaries)
 
     async def _process_search_results(
         self,
