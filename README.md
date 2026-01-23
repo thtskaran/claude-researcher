@@ -1,6 +1,6 @@
 # Claude Deep Researcher
 
-A hierarchical multi-agent research system that performs autonomous deep research on any topic. Inspired by Gemini Deep Research, Perplexity, and GPT Researcher.
+A hierarchical multi-agent research system that performs autonomous deep research on any topic. Built with real-time knowledge graphs, contradiction detection, and extended thinking.
 
 ## Quick Start
 
@@ -8,11 +8,39 @@ A hierarchical multi-agent research system that performs autonomous deep researc
 # Install
 pip install -e .
 
-# Run (requires Claude Code CLI authenticated)
-researcher "What are the latest AI safety research directions?" --time 10
+# Run research (requires Claude Code CLI authenticated)
+researcher "What are the latest AI safety research directions?" --time 30
+
+# Benchmark your research quality
+researcher benchmark
 ```
 
-Reports are saved to `output/research_{id}.md`.
+Reports saved to `output/{topic}_{session-id}/`
+
+---
+
+## Real-World Comparison: claude-researcher vs ChatGPT Deep Research
+
+Same topic: **"AI-powered penetration testing systems"** (1 hour research)
+
+| Metric | claude-researcher | ChatGPT Deep Research |
+|--------|------------------|----------------------|
+| **Sources** | **127** | ~25 |
+| **Findings** | **303** | Not tracked |
+| **Knowledge Graph** | **2,688 entities** | None |
+| **Contradiction Detection** | **Yes** | No |
+| **Latest Sources** | **Jan 2026** | Older |
+
+### What claude-researcher found that ChatGPT missed:
+- OWASP Top 10 for Agentic Applications 2026 (brand new framework)
+- 94.4% of LLM agents vulnerable to prompt injection (specific statistic)
+- IBM Bob exploitation case study (Jan 2026)
+- US Federal Register RFI on AI agent security
+- Hexstrike-AI's 150-agent orchestration architecture
+
+See full comparison: [`examples/`](./examples/)
+
+---
 
 ---
 
