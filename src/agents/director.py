@@ -62,6 +62,18 @@ class DirectorAgent(BaseAgent):
             on_resume=self.resume_progress,
         )
 
+        # Input listener (set later, started after clarification)
+        self._input_listener = None
+
+    def set_input_listener(self, listener) -> None:
+        """Set the input listener (will be started after clarification)."""
+        self._input_listener = listener
+
+    async def _start_input_listener(self) -> None:
+        """Start the input listener (called after clarification is done)."""
+        if self._input_listener:
+            await self._input_listener.start()
+
     def pause_progress(self) -> None:
         """Pause the progress spinner (for interact mode)."""
         if self._progress:
@@ -167,6 +179,9 @@ When presenting results:
             effective_goal = await self.clarify_research_goal(goal)
         else:
             effective_goal = goal
+
+        # Start input listener AFTER clarification is done
+        await self._start_input_listener()
 
         # Create session with the effective goal
         self.current_session = await self.db.create_session(

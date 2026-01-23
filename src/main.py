@@ -108,12 +108,12 @@ def main(
 
     async def run():
         global _harness
-        listener: Optional[InputListener] = None
 
         async with ResearchHarness(db_path, interaction_config=interaction_config) as harness:
             _harness = harness
 
-            # Start input listener if not autonomous
+            # Create listener but don't start it yet - will be started after clarification
+            listener: Optional[InputListener] = None
             if not interaction_config.autonomous_mode:
                 listener = InputListener(
                     harness.director.interaction,
@@ -121,7 +121,8 @@ def main(
                     on_interact_start=harness.director.pause_progress,
                     on_interact_end=harness.director.resume_progress,
                 )
-                await listener.start()
+                # Pass listener to director so it can start it after clarification
+                harness.director.set_input_listener(listener)
 
             try:
                 report = await harness.research(goal, time_limit)
