@@ -154,23 +154,40 @@ class DeepReportWriter:
         return by_type
 
     def _extract_sources(self, findings: list[Finding]) -> list[dict]:
-        """Extract unique sources from findings."""
+        """Extract unique sources from findings with titles."""
         sources = {}
         for f in findings:
             if f.source_url and f.source_url not in sources:
-                # Try to extract domain for title
+                # Try to extract domain and create a better title
                 domain = ""
+                title = ""
                 try:
-                    from urllib.parse import urlparse
+                    from urllib.parse import urlparse, unquote
                     parsed = urlparse(f.source_url)
                     domain = parsed.netloc.replace("www.", "")
+
+                    # Try to extract title from path
+                    path = unquote(parsed.path)
+                    path_parts = [p for p in path.split('/') if p and p not in ['index', 'html', 'htm']]
+                    if path_parts:
+                        # Get the last meaningful part
+                        title_part = path_parts[-1]
+                        # Clean up common patterns
+                        title_part = title_part.replace('-', ' ').replace('_', ' ')
+                        title_part = title_part.replace('.html', '').replace('.htm', '').replace('.pdf', '')
+                        # Capitalize
+                        title = title_part.title()
+
+                    if not title or len(title) < 5:
+                        title = domain.split('.')[0].title()
                 except Exception:
                     domain = f.source_url[:50]
+                    title = domain
 
                 sources[f.source_url] = {
                     "url": f.source_url,
                     "domain": domain,
-                    "accessed": datetime.now().strftime("%Y-%m-%d"),
+                    "title": title,
                 }
         return list(sources.values())
 
@@ -425,19 +442,24 @@ Output ONLY the conclusions text, no headers."""
         for i, section in enumerate(main_sections, 3):
             main_content += f"\n## {i}. {section.title}\n\n{section.content}\n"
 
-        # Build references in APA-ish format
+        # Build references in cleaner format (no redundant dates)
         references = []
         for i, source in enumerate(sources, 1):
+            title = source.get('title', source['domain'])
             references.append(
-                f"[{i}] {source['domain']}. Retrieved {source['accessed']} from {source['url']}"
+                f"[{i}] {title}. *{source['domain']}*. {source['url']}"
             )
         references_text = "\n\n".join(references)
 
-        # Stats
+        # Add retrieval date once at the top
+        retrieval_date = datetime.now().strftime("%B %d, %Y")
+
+        # Stats - use sources count if topics_explored is empty
+        topics_count = len(topics_explored) if topics_explored else len(sources)
         stats = f"""**Research Statistics:**
 - Total Findings: {len(findings)}
 - Sources Analyzed: {len(sources)}
-- Topics Explored: {len(topics_explored)}
+- Topics Explored: {topics_count}
 - Research Duration: {session.started_at.strftime('%Y-%m-%d %H:%M')} to {session.ended_at.strftime('%Y-%m-%d %H:%M') if session.ended_at else 'In Progress'}"""
 
         # Compile full report
@@ -486,6 +508,8 @@ Output ONLY the conclusions text, no headers."""
 
 ## {len(main_sections) + 5}. References
 
+*All sources accessed on {retrieval_date}.*
+
 {references_text}
 
 ---
@@ -494,13 +518,16 @@ Output ONLY the conclusions text, no headers."""
 
 This report was generated using a hierarchical multi-agent research system:
 
-1. **Research Planning**: An AI manager agent analyzed the research question and developed a systematic research strategy.
+1. **Research Planning**: An AI manager agent (powered by Claude Opus with extended thinking) analyzed the research question and developed a systematic research strategy.
 2. **Information Gathering**: AI intern agents conducted {len(sources)} web searches, analyzing sources for relevance and credibility.
 3. **Finding Extraction**: {len(findings)} discrete findings were extracted and categorized by type (facts, insights, connections, etc.).
 4. **Critical Review**: Each batch of findings was critiqued for accuracy, relevance, and gaps.
-5. **Narrative Synthesis**: An AI writer synthesized findings into this cohesive narrative report.
+5. **Narrative Synthesis**: An AI writer (Claude Opus) synthesized findings into this cohesive narrative report using extended thinking for deep analysis.
 
 {stats}
+
+**Topics Researched:**
+{chr(10).join(['- ' + t for t in topics_explored[:15]]) if topics_explored else '- ' + session.goal}
 
 ---
 

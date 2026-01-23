@@ -262,9 +262,12 @@ When presenting results:
                     for f in findings
                 ],
             }
-            filename = f"research_{self.current_session.id}.json"
-            Path(filename).write_text(json.dumps(output, indent=2))
-            return filename
+            # Save to output folder
+            output_dir = Path("output")
+            output_dir.mkdir(exist_ok=True)
+            filename = output_dir / f"research_{self.current_session.id}.json"
+            filename.write_text(json.dumps(output, indent=2))
+            return str(filename)
 
         elif format == "markdown":
             # Use the deep report writer for narrative synthesis
@@ -284,9 +287,12 @@ When presenting results:
                 topics_remaining=topics_remaining,
             )
 
-            filename = f"research_{self.current_session.id}.md"
-            Path(filename).write_text(report)
-            return filename
+            # Save to output folder
+            output_dir = Path("output")
+            output_dir.mkdir(exist_ok=True)
+            filename = output_dir / f"research_{self.current_session.id}.md"
+            filename.write_text(report)
+            return str(filename)
 
         raise ValueError(f"Unknown format: {format}")
 

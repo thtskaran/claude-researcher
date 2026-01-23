@@ -1,3 +1,4 @@
 /myenv
 *.db
 *.pyc
+/output
