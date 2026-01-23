@@ -24,6 +24,7 @@ from ..knowledge import (
     CredibilityScorer,
 )
 from ..memory import HybridMemory, ExternalMemoryStore
+from ..retrieval import FindingsRetriever, get_findings_retriever
 from rich.console import Console
 
 if TYPE_CHECKING:
@@ -101,6 +102,12 @@ class ManagerAgent(BaseAgent):
         )
         self.external_memory = ExternalMemoryStore(
             db_path=str(db.db_path).replace('.db', '_memory.db')
+        )
+
+        # Hybrid retrieval for semantic search over findings
+        self.findings_retriever = get_findings_retriever(
+            persist_dir=str(db.db_path).replace('.db', '_retrieval'),
+            use_reranker=True,  # Quality is priority
         )
 
     async def _kg_llm_callback(self, prompt: str) -> str:
@@ -186,6 +193,23 @@ Provide structured analysis with clear reasoning. When creating directives:
         kg_summary = self.kg_query.get_research_summary()
         research_directions = self.kg_query.get_next_research_directions()
 
+        # Use hybrid retrieval to find semantically relevant past findings
+        relevant_findings_text = ""
+        if self.findings_retriever.count() > 0:
+            try:
+                # Search for findings relevant to the research goal
+                relevant = self.findings_retriever.search(
+                    query=self.research_goal,
+                    limit=5,
+                    session_id=self.session_id,
+                )
+                if relevant:
+                    relevant_findings_text = "Most relevant findings (via semantic search):\n"
+                    for r in relevant:
+                        relevant_findings_text += f"- [{r.finding.finding_type.value}] {r.finding.content[:200]}... (score: {r.score:.2f})\n"
+            except Exception as e:
+                self._log(f"[RETRIEVAL] Search error: {e}", style="dim")
+
         # Get memory context for continuity
         memory_context = self.memory.get_context_for_prompt(max_tokens=2000)
 
@@ -206,6 +230,8 @@ Last report from Intern:
 
 Findings summary:
 {findings_summary}
+
+{relevant_findings_text}
 
 {kg_summary}
 
@@ -505,10 +531,11 @@ Think step by step about the best next action."""
         return response
 
     async def _process_findings_to_kg(self, findings: list[Finding]) -> None:
-        """Process findings into the knowledge graph in real-time.
+        """Process findings into the knowledge graph and hybrid retrieval index.
 
         Uses batch processing for speed (multiple findings per LLM call)
         while still building the full KG that agents can query during research.
+        Also indexes findings for semantic search via hybrid retrieval.
 
         Args:
             findings: List of findings to process
@@ -517,6 +544,16 @@ Think step by step about the best next action."""
             return
 
         self._log(f"[KG] Processing {len(findings)} findings into knowledge graph", style="dim")
+
+        # Index findings for hybrid retrieval (semantic + lexical search)
+        try:
+            self.findings_retriever.add_findings(
+                findings=findings,
+                session_id=self.session_id,
+            )
+            self._log(f"[RETRIEVAL] Indexed {len(findings)} findings for semantic search", style="dim")
+        except Exception as e:
+            self._log(f"[RETRIEVAL] Error indexing findings: {e}", style="yellow")
 
         # Convert all findings to KGFindings
         kg_findings = []
@@ -983,6 +1020,52 @@ Be thorough and insightful."""
 
         if clear_memory:
             self.memory.clear()
+            # Also clear the findings retrieval index for fresh start
+            try:
+                self.findings_retriever.clear()
+            except Exception:
+                pass
+
+    def search_past_research(
+        self,
+        query: str,
+        limit: int = 10,
+        min_confidence: float = 0.5,
+    ) -> list[dict]:
+        """Search past research sessions for relevant findings.
+
+        Uses hybrid semantic + lexical search for high-quality retrieval.
+
+        Args:
+            query: Search query
+            limit: Maximum results
+            min_confidence: Minimum confidence threshold
+
+        Returns:
+            List of dicts with finding info and relevance scores
+        """
+        results = self.findings_retriever.search(
+            query=query,
+            limit=limit,
+            min_confidence=min_confidence,
+            use_reranker=True,  # Use reranker for best quality
+        )
+
+        return [
+            {
+                "content": r.finding.content,
+                "finding_type": r.finding.finding_type.value,
+                "confidence": r.finding.confidence,
+                "source_url": r.finding.source_url,
+                "score": r.score,
+                "reranked": r.reranked,
+            }
+            for r in results
+        ]
+
+    def get_retrieval_stats(self) -> dict:
+        """Get statistics about the hybrid retrieval system."""
+        return self.findings_retriever.stats()
 
     def get_knowledge_graph_exports(self, output_dir: str = ".") -> dict:
         """Get knowledge graph visualizations and summaries for reports.
