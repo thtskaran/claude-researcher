@@ -11,6 +11,7 @@ from .intern import InternAgent
 from ..models.findings import AgentRole, ManagerReport, ResearchSession
 from ..storage.database import ResearchDatabase
 from ..reports.writer import DeepReportWriter
+from ..interaction import InteractionConfig, UserInteraction
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -33,12 +34,35 @@ class DirectorAgent(BaseAgent):
         db: ResearchDatabase,
         config: Optional[AgentConfig] = None,
         console: Optional[Console] = None,
+        interaction_config: Optional[InteractionConfig] = None,
     ):
         super().__init__(AgentRole.DIRECTOR, db, config, console)
         self.intern = InternAgent(db, config, console)
-        self.manager = ManagerAgent(db, self.intern, config, console)
+
+        # Set up interaction handler
+        self.interaction_config = interaction_config or InteractionConfig()
+        self.interaction = UserInteraction(
+            config=self.interaction_config,
+            console=self.console,
+            llm_callback=self._interaction_llm_callback,
+        )
+
+        # Pass interaction to manager
+        self.manager = ManagerAgent(
+            db, self.intern, config, console,
+            interaction=self.interaction,
+        )
         self.current_session: Optional[ResearchSession] = None
         self._progress_task = None
+
+    async def _interaction_llm_callback(self, prompt: str) -> str:
+        """LLM callback for interaction module (uses fast model)."""
+        original_model = self.config.model
+        self.config.model = "haiku"  # Fast model for clarification questions
+        try:
+            return await self.call_claude(prompt)
+        finally:
+            self.config.model = original_model
 
     @property
     def system_prompt(self) -> str:
@@ -79,31 +103,65 @@ When presenting results:
         """Director is done when the session ends."""
         return context.get("session_ended", False)
 
+    async def clarify_research_goal(self, goal: str) -> str:
+        """Ask clarification questions before starting research.
+
+        Args:
+            goal: The original research goal
+
+        Returns:
+            The enriched goal after clarification, or original if skipped
+        """
+        clarified = await self.interaction.clarify_research_goal(goal)
+
+        if not clarified.skipped and clarified.clarifications:
+            self.console.print()
+            self.console.print(Panel(
+                f"[bold]Original:[/bold] {clarified.original}\n\n"
+                f"[bold]Refined:[/bold] {clarified.enriched_context}",
+                title="[green]Research Goal Refined[/green]",
+                border_style="green",
+            ))
+            self.console.print()
+
+        return clarified.enriched_context
+
     async def start_research(
         self,
         goal: str,
         time_limit_minutes: int = 60,
+        skip_clarification: bool = False,
     ) -> ManagerReport:
         """Start a new research session.
 
         Args:
             goal: The research goal/question to investigate
             time_limit_minutes: Maximum time for the research session
+            skip_clarification: Skip pre-research clarification questions
 
         Returns:
             ManagerReport with findings and recommendations
         """
-        # Create session
+        # Reset interaction state
+        self.interaction.reset()
+
+        # Clarify goal if enabled
+        if not skip_clarification and self.interaction_config.enable_clarification:
+            effective_goal = await self.clarify_research_goal(goal)
+        else:
+            effective_goal = goal
+
+        # Create session with the effective goal
         self.current_session = await self.db.create_session(
-            goal=goal,
+            goal=effective_goal,
             time_limit_minutes=time_limit_minutes,
         )
 
-        self._log_header(goal, time_limit_minutes)
+        self._log_header(effective_goal, time_limit_minutes)
 
         # Run research with progress display
         try:
-            report = await self._run_with_progress(goal, time_limit_minutes)
+            report = await self._run_with_progress(effective_goal, time_limit_minutes)
 
             # Update session
             self.current_session.status = "completed"
@@ -332,17 +390,26 @@ class ResearchHarness:
     This is the primary entry point for running the hierarchical research system.
     """
 
-    def __init__(self, db_path: str = "research.db"):
+    def __init__(
+        self,
+        db_path: str = "research.db",
+        interaction_config: Optional[InteractionConfig] = None,
+    ):
         self.db_path = db_path
         self.db: Optional[ResearchDatabase] = None
         self.director: Optional[DirectorAgent] = None
         self.console = Console()
+        self.interaction_config = interaction_config
 
     async def __aenter__(self):
         """Async context manager entry."""
         self.db = ResearchDatabase(self.db_path)
         await self.db.connect()
-        self.director = DirectorAgent(self.db, console=self.console)
+        self.director = DirectorAgent(
+            self.db,
+            console=self.console,
+            interaction_config=self.interaction_config,
+        )
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):

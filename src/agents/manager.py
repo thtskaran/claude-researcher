@@ -1,7 +1,7 @@
 """Manager agent - coordinates research and critiques findings."""
 
 import json
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 from datetime import datetime, timedelta
 
 from .base import BaseAgent, AgentConfig
@@ -26,6 +26,9 @@ from ..knowledge import (
 from ..memory import HybridMemory, ExternalMemoryStore
 from rich.console import Console
 
+if TYPE_CHECKING:
+    from ..interaction import UserInteraction
+
 
 class ManagerAgent(BaseAgent):
     """The Manager agent coordinates research and critiques the Intern's work.
@@ -49,6 +52,7 @@ class ManagerAgent(BaseAgent):
         console: Optional[Console] = None,
         pool_size: int = 3,
         use_parallel: bool = True,
+        interaction: Optional["UserInteraction"] = None,
     ):
         # Force Opus model for manager's deep reasoning
         if config is None:
@@ -66,6 +70,9 @@ class ManagerAgent(BaseAgent):
         self.max_depth: int = 5
         self.start_time: Optional[datetime] = None
         self.time_limit_minutes: int = 60
+
+        # User interaction support
+        self.interaction = interaction
 
         # Knowledge graph integration
         self.kg_store = HybridKnowledgeGraphStore(db_path=str(db.db_path).replace('.db', '_kg.db'))
@@ -161,6 +168,17 @@ Provide structured analysis with clear reasoning. When creating directives:
         time_elapsed = self._get_elapsed_minutes()
         time_remaining = self.time_limit_minutes - time_elapsed
 
+        # Check for user guidance messages
+        user_guidance = ""
+        if self.interaction:
+            messages = self.interaction.get_pending_messages()
+            if messages:
+                guidance_texts = [m.content for m in messages]
+                user_guidance = "USER GUIDANCE (please incorporate this into your research):\n" + "\n".join(f"- {g}" for g in guidance_texts)
+                self._log(f"[USER GUIDANCE] Received {len(messages)} message(s)", style="bold yellow")
+                for m in messages:
+                    self._log(f"  → {m.content[:100]}{'...' if len(m.content) > 100 else ''}", style="yellow")
+
         # Summarize current state
         findings_summary = self._summarize_findings()
 
@@ -172,6 +190,8 @@ Provide structured analysis with clear reasoning. When creating directives:
         memory_context = self.memory.get_context_for_prompt(max_tokens=2000)
 
         prompt = f"""Research Goal: {self.research_goal}
+
+{user_guidance}
 
 Current Status:
 - Time elapsed: {time_elapsed:.1f} minutes
@@ -442,6 +462,47 @@ Think step by step about the best next action."""
                 summary_parts.append(f"  * {f.content[:100]}...")
 
         return "\n".join(summary_parts)
+
+    async def _maybe_ask_user(
+        self,
+        question: str,
+        context: str = "",
+        options: Optional[list[str]] = None,
+    ) -> Optional[str]:
+        """Ask the user a question during research if interaction is enabled.
+
+        This is non-blocking with a timeout - if the user doesn't respond,
+        research continues autonomously.
+
+        Args:
+            question: The question to ask
+            context: Context about why this is being asked
+            options: Optional suggested answers
+
+        Returns:
+            User's response, or None if no interaction or timeout
+        """
+        if not self.interaction:
+            return None
+
+        response = await self.interaction.ask_with_timeout(
+            question=question,
+            context=context,
+            options=options,
+        )
+
+        if response:
+            # Log that we got a response
+            self._log(f"[USER RESPONSE] {response[:100]}{'...' if len(response) > 100 else ''}", style="bold green")
+
+            # Add to memory for context
+            self.memory.add_message(
+                role="user",
+                content=f"User guidance: {response}",
+                metadata={"type": "mid_research_response"}
+            )
+
+        return response
 
     async def _process_findings_to_kg(self, findings: list[Finding]) -> None:
         """Process findings into the knowledge graph in real-time.

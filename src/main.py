@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from .agents.director import ResearchHarness
+from .interaction import InteractionConfig, InputListener
 
 console = Console()
 
@@ -38,6 +39,23 @@ def main(
         "--db", "-d",
         help="Path to SQLite database file",
     ),
+    no_clarify: bool = typer.Option(
+        False,
+        "--no-clarify",
+        help="Skip pre-research clarification questions",
+    ),
+    autonomous: bool = typer.Option(
+        False,
+        "--autonomous", "-a",
+        help="Run fully autonomous (no user interaction)",
+    ),
+    timeout: int = typer.Option(
+        60,
+        "--timeout",
+        help="Timeout in seconds for mid-research questions (default: 60)",
+        min=10,
+        max=300,
+    ),
 ):
     """Deep hierarchical research agent powered by Claude.
 
@@ -49,10 +67,16 @@ def main(
       - findings.json     Structured findings data
       - knowledge_graph.html  Interactive visualization
 
+    Interactive Features:
+        By default, the researcher asks 2-4 clarification questions before
+        starting to refine the research scope. During research, you can type
+        messages to inject guidance. Use --autonomous to disable all interaction.
+
     Examples:
         researcher "What are the latest advances in fusion energy?"
         researcher "History of the Internet" --time 120
-        researcher "Climate change solutions" -t 30
+        researcher "Climate change solutions" -t 30 --no-clarify
+        researcher "AI developments" --autonomous
     """
     global _harness
 
@@ -67,10 +91,33 @@ def main(
     signal.signal(signal.SIGINT, _handle_interrupt)
     signal.signal(signal.SIGTERM, _handle_interrupt)
 
+    # Create interaction config from CLI args
+    interaction_config = InteractionConfig.from_cli_args(
+        no_clarify=no_clarify,
+        autonomous=autonomous,
+        timeout=timeout,
+    )
+
+    # Show interaction mode
+    if autonomous:
+        console.print("[dim]Running in autonomous mode (no user interaction)[/dim]")
+    elif no_clarify:
+        console.print("[dim]Skipping clarification questions[/dim]")
+    else:
+        console.print("[dim]Interactive mode: clarification questions enabled, type during research to inject guidance[/dim]")
+
     async def run():
         global _harness
-        async with ResearchHarness(db_path) as harness:
+        listener: Optional[InputListener] = None
+
+        async with ResearchHarness(db_path, interaction_config=interaction_config) as harness:
             _harness = harness
+
+            # Start input listener if not autonomous
+            if not interaction_config.autonomous_mode:
+                listener = InputListener(harness.director.interaction, console=console)
+                await listener.start()
+
             try:
                 report = await harness.research(goal, time_limit)
                 return report
@@ -78,6 +125,10 @@ def main(
             except asyncio.CancelledError:
                 console.print("[yellow]Research cancelled[/yellow]")
                 return None
+
+            finally:
+                if listener:
+                    listener.stop()
 
     try:
         asyncio.run(run())
