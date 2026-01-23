@@ -114,9 +114,9 @@ When presenting results:
             # Display results
             await self._display_report(report)
 
-            # Auto-export to markdown
-            md_file = await self.export_findings("markdown")
-            self.console.print(f"\n[bold green]Report saved to: {md_file}[/bold green]")
+            # Auto-export all outputs
+            output_path = await self.export_findings()
+            self.console.print(f"\n[bold green]Research saved to: {output_path}/[/bold green]")
 
             return report
 
@@ -235,8 +235,17 @@ When presenting results:
             return []
         return await self.db.get_session_findings(self.current_session.id)
 
-    async def export_findings(self, format: str = "json") -> str:
-        """Export findings to a file."""
+    async def export_findings(self) -> str:
+        """Export all research outputs to a dedicated folder.
+
+        Creates: output/{slug}_{session_id}/
+            - report.md       - Narrative report
+            - findings.json   - Structured data
+            - knowledge_graph.html - Interactive visualization
+
+        Returns:
+            Path to the output directory
+        """
         import json
 
         if not self.current_session:
@@ -244,66 +253,71 @@ When presenting results:
 
         findings = await self.get_session_findings()
 
-        if format == "json":
-            output = {
-                "session": {
-                    "id": self.current_session.id,
-                    "goal": self.current_session.goal,
-                    "started_at": self.current_session.started_at.isoformat(),
-                    "ended_at": self.current_session.ended_at.isoformat() if self.current_session.ended_at else None,
-                },
-                "findings": [
-                    {
-                        "content": f.content,
-                        "type": f.finding_type.value,
-                        "source_url": f.source_url,
-                        "confidence": f.confidence,
-                    }
-                    for f in findings
-                ],
-            }
-            # Save to output folder
-            output_dir = Path("output")
-            output_dir.mkdir(exist_ok=True)
-            filename = output_dir / f"research_{self.current_session.id}.json"
-            filename.write_text(json.dumps(output, indent=2))
-            return str(filename)
+        # Create output directory: output/{slug}_{session_id}/
+        slug = self.current_session.slug or "research"
+        session_id = self.current_session.id
+        output_dir = Path("output") / f"{slug}_{session_id}"
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-        elif format == "markdown":
-            # Use the deep report writer for narrative synthesis
-            self.console.print("\n[bold cyan]Generating deep research report...[/bold cyan]")
-            self.console.print("[dim]This uses extended thinking to synthesize findings into a narrative report.[/dim]\n")
+        self.console.print(f"\n[bold cyan]Exporting research to: {output_dir}/[/bold cyan]")
 
-            writer = DeepReportWriter(model="opus")
+        # 1. Export JSON data
+        json_output = {
+            "session": {
+                "id": self.current_session.id,
+                "goal": self.current_session.goal,
+                "slug": self.current_session.slug,
+                "started_at": self.current_session.started_at.isoformat(),
+                "ended_at": self.current_session.ended_at.isoformat() if self.current_session.ended_at else None,
+                "status": self.current_session.status,
+            },
+            "findings": [
+                {
+                    "content": f.content,
+                    "type": f.finding_type.value,
+                    "source_url": f.source_url,
+                    "confidence": f.confidence,
+                    "search_query": f.search_query,
+                }
+                for f in findings
+            ],
+            "topics_explored": [t.topic for t in self.manager.completed_topics] if self.manager.completed_topics else [],
+            "topics_remaining": [t.topic for t in self.manager.topics_queue] if self.manager.topics_queue else [],
+        }
+        json_file = output_dir / "findings.json"
+        json_file.write_text(json.dumps(json_output, indent=2))
+        self.console.print(f"  [dim]Saved findings.json[/dim]")
 
-            # Get topics explored and remaining from manager
-            topics_explored = [t.topic for t in self.manager.completed_topics] if self.manager.completed_topics else []
-            topics_remaining = [t.topic for t in self.manager.topics_queue] if self.manager.topics_queue else []
+        # 2. Export knowledge graph
+        try:
+            kg_exports = self.manager.get_knowledge_graph_exports(str(output_dir))
+            self.console.print(f"  [dim]Knowledge graph: {kg_exports.get('stats', {}).get('num_entities', 0)} entities, {kg_exports.get('stats', {}).get('num_relations', 0)} relations[/dim]")
+        except Exception as e:
+            self.console.print(f"  [dim]Knowledge graph export skipped: {e}[/dim]")
+            kg_exports = None
 
-            # Get knowledge graph exports
-            output_dir = Path("output")
-            output_dir.mkdir(exist_ok=True)
-            try:
-                kg_exports = self.manager.get_knowledge_graph_exports(str(output_dir))
-                self.console.print(f"[dim]Knowledge graph: {kg_exports.get('stats', {}).get('num_entities', 0)} entities, {kg_exports.get('stats', {}).get('num_relations', 0)} relations[/dim]")
-            except Exception as e:
-                self.console.print(f"[dim]Knowledge graph export skipped: {e}[/dim]")
-                kg_exports = None
+        # 3. Generate markdown report
+        self.console.print("[bold cyan]Generating deep research report...[/bold cyan]")
+        self.console.print("[dim]This uses extended thinking to synthesize findings into a narrative report.[/dim]\n")
 
-            report = await writer.generate_report(
-                session=self.current_session,
-                findings=findings,
-                topics_explored=topics_explored,
-                topics_remaining=topics_remaining,
-                kg_exports=kg_exports,
-            )
+        writer = DeepReportWriter(model="opus")
 
-            # Save to output folder
-            filename = output_dir / f"research_{self.current_session.id}.md"
-            filename.write_text(report)
-            return str(filename)
+        topics_explored = [t.topic for t in self.manager.completed_topics] if self.manager.completed_topics else []
+        topics_remaining = [t.topic for t in self.manager.topics_queue] if self.manager.topics_queue else []
 
-        raise ValueError(f"Unknown format: {format}")
+        report = await writer.generate_report(
+            session=self.current_session,
+            findings=findings,
+            topics_explored=topics_explored,
+            topics_remaining=topics_remaining,
+            kg_exports=kg_exports,
+        )
+
+        md_file = output_dir / "report.md"
+        md_file.write_text(report)
+        self.console.print(f"  [dim]Saved report.md[/dim]")
+
+        return str(output_dir)
 
     def stop_research(self) -> None:
         """Request the research to stop gracefully."""

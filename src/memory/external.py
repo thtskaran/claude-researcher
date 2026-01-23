@@ -12,7 +12,7 @@ from dataclasses import dataclass
 class StoredMemory:
     """A memory item stored externally."""
     id: str
-    session_id: int
+    session_id: str
     content: str
     memory_type: str  # 'finding', 'summary', 'context', 'decision'
     tags: list[str]
@@ -90,7 +90,7 @@ class ExternalMemoryStore:
 
     def store(
         self,
-        session_id: int,
+        session_id: str,
         content: str,
         memory_type: str,
         tags: Optional[list[str]] = None,
@@ -227,7 +227,7 @@ class ExternalMemoryStore:
 
     def get_by_session(
         self,
-        session_id: int,
+        session_id: str,
         memory_type: Optional[str] = None,
     ) -> list[StoredMemory]:
         """Get all memories for a session.
@@ -275,7 +275,7 @@ class ExternalMemoryStore:
 
     def get_recent(
         self,
-        session_id: int,
+        session_id: str,
         limit: int = 10,
     ) -> list[StoredMemory]:
         """Get most recent memories for a session.
@@ -314,7 +314,7 @@ class ExternalMemoryStore:
             for row in rows
         ]
 
-    def delete_session(self, session_id: int) -> int:
+    def delete_session(self, session_id: str) -> int:
         """Delete all memories for a session.
 
         Args:

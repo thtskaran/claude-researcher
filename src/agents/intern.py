@@ -307,7 +307,7 @@ Output ONLY the search query (15-25 words max), nothing else."""
         self,
         results: list[SearchResult],
         query: str,
-        session_id: int,
+        session_id: str,
         search_summary: str = "",
     ) -> list[Finding]:
         """Process search results and extract findings."""
@@ -395,7 +395,7 @@ Format your response as JSON:
 
         return findings
 
-    async def _compile_report(self, topic: str, session_id: int) -> InternReport:
+    async def _compile_report(self, topic: str, session_id: str) -> InternReport:
         """Compile findings into a report for the Manager."""
         return InternReport(
             topic=topic,
@@ -415,7 +415,7 @@ Format your response as JSON:
         self.state = type(self.state)()
 
     async def execute_directive(
-        self, directive: ManagerDirective, session_id: int
+        self, directive: ManagerDirective, session_id: str
     ) -> InternReport:
         """Execute a directive from the Manager and return a report."""
         self.reset()

@@ -26,7 +26,7 @@ class AgentRole(str, Enum):
 class Finding(BaseModel):
     """A single research finding from the Intern agent."""
     id: Optional[int] = None
-    session_id: int
+    session_id: str  # 7-char hex ID
     content: str
     finding_type: FindingType
     source_url: Optional[str] = None
@@ -40,7 +40,7 @@ class Finding(BaseModel):
 class ResearchTopic(BaseModel):
     """A research topic or subtopic to investigate."""
     id: Optional[int] = None
-    session_id: int
+    session_id: str  # 7-char hex ID
     topic: str
     parent_topic_id: Optional[int] = None
     depth: int = 0
@@ -53,8 +53,9 @@ class ResearchTopic(BaseModel):
 
 class ResearchSession(BaseModel):
     """A research session with time limits and goals."""
-    id: Optional[int] = None
+    id: Optional[str] = None  # 7-char hex ID
     goal: str
+    slug: Optional[str] = None  # AI-generated short name for output folder
     time_limit_minutes: int = 60
     started_at: datetime = Field(default_factory=datetime.now)
     ended_at: Optional[datetime] = None
@@ -67,7 +68,7 @@ class ResearchSession(BaseModel):
 class AgentMessage(BaseModel):
     """Message passed between agents in the hierarchy."""
     id: Optional[int] = None
-    session_id: int
+    session_id: str  # 7-char hex ID
     from_agent: AgentRole
     to_agent: AgentRole
     message_type: str  # task, report, critique, question, directive

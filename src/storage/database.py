@@ -1,6 +1,8 @@
 """SQLite database for persisting research state and findings."""
 
 import aiosqlite
+import secrets
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -13,6 +15,49 @@ from ..models.findings import (
     AgentMessage,
     AgentRole,
 )
+
+
+def _generate_session_id() -> str:
+    """Generate a unique 7-character hexadecimal session ID."""
+    return secrets.token_hex(4)[:7]  # 7 hex chars
+
+
+def _generate_slug(goal: str) -> str:
+    """Generate a URL-friendly slug from the research goal.
+
+    Examples:
+        "What are the latest AI safety research?" -> "ai-safety-research"
+        "History of quantum computing" -> "quantum-computing-history"
+    """
+    # Remove common question words and punctuation
+    text = goal.lower()
+    text = re.sub(r'\?+$', '', text)
+
+    # Remove stop words
+    stop_words = {
+        'the', 'a', 'an', 'of', 'in', 'on', 'at', 'to', 'for', 'and', 'or', 'but',
+        'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
+        'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might',
+        'what', 'how', 'why', 'when', 'where', 'who', 'which', 'can',
+        'latest', 'current', 'recent', 'new', 'best', 'top',
+    }
+    words = text.split()
+    words = [w for w in words if w not in stop_words]
+
+    # Take first 4-5 meaningful words
+    words = words[:5]
+
+    # Clean and join
+    slug = '-'.join(words)
+    slug = re.sub(r'[^a-z0-9-]', '', slug)
+    slug = re.sub(r'-+', '-', slug)
+    slug = slug.strip('-')
+
+    # Limit length
+    if len(slug) > 50:
+        slug = slug[:50].rsplit('-', 1)[0]
+
+    return slug or 'research'
 
 
 class ResearchDatabase:
@@ -38,8 +83,9 @@ class ResearchDatabase:
         """Create database tables if they don't exist."""
         await self._connection.executescript("""
             CREATE TABLE IF NOT EXISTS sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id TEXT PRIMARY KEY,
                 goal TEXT NOT NULL,
+                slug TEXT,
                 time_limit_minutes INTEGER DEFAULT 60,
                 started_at TEXT NOT NULL,
                 ended_at TEXT,
@@ -51,7 +97,7 @@ class ResearchDatabase:
 
             CREATE TABLE IF NOT EXISTS topics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id INTEGER NOT NULL,
+                session_id TEXT NOT NULL,
                 topic TEXT NOT NULL,
                 parent_topic_id INTEGER,
                 depth INTEGER DEFAULT 0,
@@ -66,7 +112,7 @@ class ResearchDatabase:
 
             CREATE TABLE IF NOT EXISTS findings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id INTEGER NOT NULL,
+                session_id TEXT NOT NULL,
                 topic_id INTEGER,
                 content TEXT NOT NULL,
                 finding_type TEXT NOT NULL,
@@ -82,7 +128,7 @@ class ResearchDatabase:
 
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id INTEGER NOT NULL,
+                session_id TEXT NOT NULL,
                 from_agent TEXT NOT NULL,
                 to_agent TEXT NOT NULL,
                 message_type TEXT NOT NULL,
@@ -100,25 +146,29 @@ class ResearchDatabase:
 
     # Session methods
     async def create_session(self, goal: str, time_limit_minutes: int = 60) -> ResearchSession:
-        """Create a new research session."""
+        """Create a new research session with unique hex ID."""
+        session_id = _generate_session_id()
+        slug = _generate_slug(goal)
         now = datetime.now().isoformat()
-        cursor = await self._connection.execute(
+
+        await self._connection.execute(
             """
-            INSERT INTO sessions (goal, time_limit_minutes, started_at, status)
-            VALUES (?, ?, ?, 'active')
+            INSERT INTO sessions (id, goal, slug, time_limit_minutes, started_at, status)
+            VALUES (?, ?, ?, ?, ?, 'active')
             """,
-            (goal, time_limit_minutes, now),
+            (session_id, goal, slug, time_limit_minutes, now),
         )
         await self._connection.commit()
         return ResearchSession(
-            id=cursor.lastrowid,
+            id=session_id,
             goal=goal,
+            slug=slug,
             time_limit_minutes=time_limit_minutes,
             started_at=datetime.fromisoformat(now),
             status="active",
         )
 
-    async def get_session(self, session_id: int) -> Optional[ResearchSession]:
+    async def get_session(self, session_id: str) -> Optional[ResearchSession]:
         """Get a session by ID."""
         cursor = await self._connection.execute(
             "SELECT * FROM sessions WHERE id = ?", (session_id,)
@@ -129,6 +179,7 @@ class ResearchDatabase:
         return ResearchSession(
             id=row["id"],
             goal=row["goal"],
+            slug=row["slug"],
             time_limit_minutes=row["time_limit_minutes"],
             started_at=datetime.fromisoformat(row["started_at"]),
             ended_at=datetime.fromisoformat(row["ended_at"]) if row["ended_at"] else None,
@@ -164,7 +215,7 @@ class ResearchDatabase:
     # Topic methods
     async def create_topic(
         self,
-        session_id: int,
+        session_id: str,
         topic: str,
         parent_topic_id: Optional[int] = None,
         depth: int = 0,
@@ -188,7 +239,7 @@ class ResearchDatabase:
             priority=priority,
         )
 
-    async def get_pending_topics(self, session_id: int, limit: int = 10) -> list[ResearchTopic]:
+    async def get_pending_topics(self, session_id: str, limit: int = 10) -> list[ResearchTopic]:
         """Get pending topics ordered by priority."""
         cursor = await self._connection.execute(
             """
@@ -254,7 +305,7 @@ class ResearchDatabase:
         finding.id = cursor.lastrowid
         return finding
 
-    async def get_session_findings(self, session_id: int) -> list[Finding]:
+    async def get_session_findings(self, session_id: str) -> list[Finding]:
         """Get all findings for a session."""
         cursor = await self._connection.execute(
             "SELECT * FROM findings WHERE session_id = ? ORDER BY created_at",
@@ -303,7 +354,7 @@ class ResearchDatabase:
         return message
 
     async def get_session_messages(
-        self, session_id: int, agent_filter: Optional[AgentRole] = None
+        self, session_id: str, agent_filter: Optional[AgentRole] = None
     ) -> list[AgentMessage]:
         """Get messages for a session, optionally filtered by agent."""
         import json
@@ -338,7 +389,7 @@ class ResearchDatabase:
         ]
 
     # Stats methods
-    async def get_session_stats(self, session_id: int) -> dict:
+    async def get_session_stats(self, session_id: str) -> dict:
         """Get statistics for a session."""
         cursor = await self._connection.execute(
             """

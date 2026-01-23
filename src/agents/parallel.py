@@ -63,7 +63,7 @@ class ParallelInternPool:
     async def research_parallel(
         self,
         directives: list[ManagerDirective],
-        session_id: int,
+        session_id: str,
     ) -> ParallelResearchResult:
         """Execute multiple research directives in parallel.
 
@@ -129,7 +129,7 @@ class ParallelInternPool:
         self,
         intern: InternAgent,
         directive: ManagerDirective,
-        session_id: int,
+        session_id: str,
         intern_id: int,
     ) -> InternReport:
         """Execute a directive with error handling.
@@ -154,7 +154,7 @@ class ParallelInternPool:
     async def decompose_and_research(
         self,
         goal: str,
-        session_id: int,
+        session_id: str,
         llm_callback,
         max_aspects: int = 3,
     ) -> ParallelResearchResult:

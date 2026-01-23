@@ -57,7 +57,7 @@ class ManagerAgent(BaseAgent):
         super().__init__(AgentRole.MANAGER, db, config, console)
         self.intern = intern
         self.research_goal: str = ""
-        self.session_id: int = 0
+        self.session_id: str = ""
         self.topics_queue: list[ResearchTopic] = []
         self.completed_topics: list[ResearchTopic] = []
         self.all_findings: list[Finding] = []
@@ -830,7 +830,7 @@ Be thorough and insightful."""
     async def run_research(
         self,
         goal: str,
-        session_id: int,
+        session_id: str,
         time_limit_minutes: int = 60,
         use_parallel_init: bool = True,
     ) -> ManagerReport:
@@ -838,7 +838,7 @@ Be thorough and insightful."""
 
         Args:
             goal: The main research goal
-            session_id: Session ID for persistence
+            session_id: Session ID for persistence (7-char hex)
             time_limit_minutes: Time budget for research
             use_parallel_init: If True, start with parallel decomposition phase
         """

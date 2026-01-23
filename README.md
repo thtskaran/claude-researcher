@@ -96,9 +96,6 @@ researcher "Comprehensive overview of quantum computing" --time 120
 
 # Custom database (isolate projects)
 researcher "ML in healthcare" --db ml_research.db
-
-# Export as JSON instead of markdown
-researcher "Topic" --time 30 --export json
 ```
 
 ### Options
@@ -107,7 +104,6 @@ researcher "Topic" --time 30 --export json
 |--------|-------------|---------|
 | `--time`, `-t` | Time limit in minutes | 60 |
 | `--db`, `-d` | SQLite database path | research.db |
-| `--export`, `-e` | Export format (json/markdown) | markdown |
 
 ---
 
@@ -124,12 +120,19 @@ You'll see real-time progress:
 
 ### Generated Files
 
+Each research session creates a dedicated folder:
+
 ```
 output/
-├── research_1.md           # Narrative report
-├── research_2.md
-└── knowledge_graph.html    # Interactive visualization
+└── ai-safety-research_a1b2c3d/     # {slug}_{session-id}/
+    ├── report.md                    # Narrative research report
+    ├── findings.json                # Structured findings data
+    └── knowledge_graph.html         # Interactive visualization
 ```
+
+**Naming convention:**
+- `slug` - AI-generated from your research question (e.g., "ai-safety-research")
+- `session-id` - Unique 7-character hex ID (e.g., "a1b2c3d")
 
 ### Session Statistics
 
@@ -256,7 +259,7 @@ All research persists to SQLite:
 
 | Table | Contents |
 |-------|----------|
-| `sessions` | Research sessions with goals |
+| `sessions` | Research sessions (7-char hex ID, goal, slug) |
 | `findings` | Extracted findings with sources |
 | `topics` | Research topics with depth/status |
 | `kg_entities` | Knowledge graph entities |
@@ -267,6 +270,8 @@ Files created:
 - `research.db` - Main database
 - `research_kg.db` - Knowledge graph
 - `research_memory.db` - External memory store
+
+Session IDs are unique 7-character hexadecimal strings (e.g., `a1b2c3d`).
 
 ---
 

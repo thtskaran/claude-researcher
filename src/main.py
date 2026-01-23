@@ -38,21 +38,21 @@ def main(
         "--db", "-d",
         help="Path to SQLite database file",
     ),
-    export_format: Optional[str] = typer.Option(
-        None,
-        "--export", "-e",
-        help="Export results to file (json or markdown)",
-    ),
 ):
     """Deep hierarchical research agent powered by Claude.
 
     Run autonomous research sessions that search the web, analyze findings,
     and dive deeper into promising threads until the time limit is reached.
 
+    Output is automatically saved to: output/{topic-slug}_{session-id}/
+      - report.md         Narrative research report
+      - findings.json     Structured findings data
+      - knowledge_graph.html  Interactive visualization
+
     Examples:
         researcher "What are the latest advances in fusion energy?"
         researcher "History of the Internet" --time 120
-        researcher "Climate change solutions" -t 30 --export markdown
+        researcher "Climate change solutions" -t 30
     """
     global _harness
 
@@ -73,12 +73,6 @@ def main(
             _harness = harness
             try:
                 report = await harness.research(goal, time_limit)
-
-                # Export if requested
-                if export_format:
-                    filename = await harness.director.export_findings(export_format)
-                    console.print(f"\n[green]Exported to: {filename}[/green]")
-
                 return report
 
             except asyncio.CancelledError:

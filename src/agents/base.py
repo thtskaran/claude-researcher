@@ -257,7 +257,7 @@ class BaseAgent(ABC):
         to_agent: AgentRole,
         message_type: str,
         content: str,
-        session_id: int,
+        session_id: str,
         metadata: Optional[dict] = None,
     ) -> AgentMessage:
         """Send a message to another agent."""
