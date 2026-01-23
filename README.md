@@ -46,9 +46,15 @@ Each agent implements a **ReAct (Reason + Act) loop**:
 - **Deep Diving**: Automatically follows promising threads to configurable depth
 - **Real Web Search**: Uses Claude's WebSearch tool for current information
 - **Finding Extraction**: Categorizes findings as facts, insights, connections, sources, questions, or contradictions
-- **Manager Critique**: Each research batch is critically evaluated for quality and gaps
+- **Manager Critique**: Each research batch is critically evaluated for quality and gaps (powered by Opus with extended thinking)
 - **Verbose Output**: See exactly what's being searched, found, and analyzed
-- **Markdown Reports**: Auto-generates comprehensive research reports
+- **Deep Narrative Reports**: Generates Gemini/Perplexity-style research reports with:
+  - Executive summary
+  - Table of contents
+  - Narrative synthesis sections organized by theme
+  - Analysis and key insights
+  - Conclusions and recommendations
+  - APA-style references at the end
 - **SQLite Persistence**: All findings stored for later analysis
 
 ## Installation
@@ -130,12 +136,20 @@ The system shows detailed progress including:
 
 ### Markdown Report
 
-A comprehensive `research_{session_id}.md` file is auto-generated containing:
-- Executive summary
-- Findings grouped by type (facts, insights, sources, etc.)
-- Top findings ranked by confidence
-- All source URLs
-- Session statistics
+A comprehensive `research_{session_id}.md` file is auto-generated in the style of Gemini Deep Research and Perplexity:
+
+**Report Structure:**
+1. **Title and Metadata** - Research question, date, session info
+2. **Table of Contents** - Linked navigation to all sections
+3. **Executive Summary** - 3-4 paragraph overview of key findings
+4. **Introduction** - Background context and research scope
+5. **Main Narrative Sections** - 4-6 thematic sections with synthesized prose (not bullet points)
+6. **Analysis and Key Insights** - Cross-cutting patterns and connections
+7. **Conclusions and Recommendations** - Direct answers and next steps
+8. **References** - All sources in APA format at the end
+9. **Appendix** - Research methodology and statistics
+
+The report is generated using Opus with extended thinking for deep narrative synthesis.
 
 ### Database
 
@@ -176,10 +190,12 @@ claude-researcher/
 │   ├── agents/
 │   │   ├── base.py       # Base agent with ReAct loop
 │   │   ├── intern.py     # Web search agent
-│   │   ├── manager.py    # Research coordinator
+│   │   ├── manager.py    # Research coordinator (Opus + extended thinking)
 │   │   └── director.py   # User interface agent
 │   ├── models/
 │   │   └── findings.py   # Data models (Finding, Session, etc.)
+│   ├── reports/
+│   │   └── writer.py     # Deep narrative report generator
 │   ├── storage/
 │   │   └── database.py   # SQLite persistence layer
 │   ├── tools/

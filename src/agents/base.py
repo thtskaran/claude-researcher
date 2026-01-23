@@ -46,6 +46,7 @@ class AgentConfig:
     max_turns: int = 10
     max_iterations: int = 100
     allowed_tools: list[str] = field(default_factory=lambda: ["WebSearch", "WebFetch"])
+    max_thinking_tokens: int = 10000  # Extended thinking for deep reasoning
 
 
 @dataclass
@@ -210,12 +211,14 @@ class BaseAgent(ABC):
         self,
         prompt: str,
         tools: Optional[list[str]] = None,
+        use_thinking: bool = False,
     ) -> str:
         """Call Claude via the Agent SDK.
 
         Args:
             prompt: The prompt to send
             tools: Optional list of tools to enable (default: none for pure reasoning)
+            use_thinking: Enable extended thinking for deep reasoning (Opus recommended)
 
         Returns:
             The text response from Claude
@@ -231,6 +234,7 @@ class BaseAgent(ABC):
             allowed_tools=tools or [],
             system_prompt=self.system_prompt,
             env=env,
+            max_thinking_tokens=self.config.max_thinking_tokens if use_thinking else None,
         )
 
         response_text = ""

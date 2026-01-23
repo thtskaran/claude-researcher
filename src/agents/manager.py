@@ -28,6 +28,8 @@ class ManagerAgent(BaseAgent):
     - Identify gaps and request additional research
     - Synthesize findings into coherent reports
     - Track research progress and depth
+
+    Uses Opus model with extended thinking for deep reasoning.
     """
 
     def __init__(
@@ -37,6 +39,10 @@ class ManagerAgent(BaseAgent):
         config: Optional[AgentConfig] = None,
         console: Optional[Console] = None,
     ):
+        # Force Opus model for manager's deep reasoning
+        if config is None:
+            config = AgentConfig()
+        config.model = "opus"  # Use Opus for heavy reasoning
         super().__init__(AgentRole.MANAGER, db, config, console)
         self.intern = intern
         self.research_goal: str = ""
@@ -124,7 +130,7 @@ What should I do next? Consider:
 
 Think step by step about the best next action."""
 
-        return await self.call_claude(prompt)
+        return await self.call_claude(prompt, use_thinking=True)
 
     async def act(self, thought: str, context: dict[str, Any]) -> dict[str, Any]:
         """Execute management actions based on thinking."""
@@ -463,7 +469,7 @@ Create:
 
 Be thorough and insightful."""
 
-        response = await self.call_claude(prompt)
+        response = await self.call_claude(prompt, use_thinking=True)
 
         return ManagerReport(
             summary=response,
