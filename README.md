@@ -10,9 +10,6 @@ pip install -e .
 
 # Run research (requires Claude Code CLI authenticated)
 researcher "What are the latest AI safety research directions?" --time 30
-
-# Benchmark your research quality
-researcher benchmark
 ```
 
 Reports saved to `output/{topic}_{session-id}/`

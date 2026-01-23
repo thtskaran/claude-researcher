@@ -14,6 +14,13 @@ from .interaction import InteractionConfig, InputListener
 
 console = Console()
 
+# Create Typer app with subcommands
+app = typer.Typer(
+    name="researcher",
+    help="Deep hierarchical research agent powered by Claude.",
+    no_args_is_help=True,
+)
+
 # Global harness for signal handling
 _harness: Optional[ResearchHarness] = None
 
@@ -25,7 +32,8 @@ def _handle_interrupt(signum, frame):
         _harness.stop()
 
 
-def main(
+@app.command("research")
+def research(
     goal: str = typer.Argument(..., help="The research goal or question to investigate"),
     time_limit: int = typer.Option(
         60,
@@ -57,10 +65,7 @@ def main(
         max=300,
     ),
 ):
-    """Deep hierarchical research agent powered by Claude.
-
-    Run autonomous research sessions that search the web, analyze findings,
-    and dive deeper into promising threads until the time limit is reached.
+    """Run a deep research session on a topic.
 
     Output is automatically saved to: output/{topic-slug}_{session-id}/
       - report.md         Narrative research report
@@ -73,10 +78,10 @@ def main(
         messages to inject guidance. Use --autonomous to disable all interaction.
 
     Examples:
-        researcher "What are the latest advances in fusion energy?"
-        researcher "History of the Internet" --time 120
-        researcher "Climate change solutions" -t 30 --no-clarify
-        researcher "AI developments" --autonomous
+        researcher research "What are the latest advances in fusion energy?"
+        researcher research "History of the Internet" --time 120
+        researcher research "Climate change solutions" -t 30 --no-clarify
+        researcher research "AI developments" --autonomous
     """
     global _harness
 
@@ -143,10 +148,55 @@ def main(
         sys.exit(0)
 
 
-def app():
+@app.callback(invoke_without_command=True)
+def main(
+    ctx: typer.Context,
+    goal: Optional[str] = typer.Argument(None, help="Research goal (shortcut for 'research' command)"),
+    time_limit: int = typer.Option(
+        60,
+        "--time", "-t",
+        help="Time limit in minutes",
+    ),
+    autonomous: bool = typer.Option(
+        False,
+        "--autonomous", "-a",
+        help="Run fully autonomous",
+    ),
+):
+    """Deep hierarchical research agent powered by Claude.
+
+    Run a research session:
+        researcher "What are the latest advances in AI?"
+        researcher research "History of the Internet" --time 120
+    """
+    # Don't intercept if a subcommand is being invoked
+    if ctx.invoked_subcommand is not None:
+        return
+
+    # Handle "research" typed as goal - show help (need a topic)
+    if goal and goal.lower() == "research":
+        console.print("[yellow]Usage: researcher research \"Your research topic\"[/yellow]")
+        return
+
+    # If goal provided, run research
+    if goal:
+        research(
+            goal=goal,
+            time_limit=time_limit,
+            autonomous=autonomous,
+            db_path="research.db",
+            no_clarify=False,
+            timeout=60,
+        )
+    else:
+        # Show help if no command and no goal
+        console.print(ctx.get_help())
+
+
+def cli():
     """Entry point."""
-    typer.run(main)
+    app()
 
 
 if __name__ == "__main__":
-    app()
+    cli()
