@@ -96,6 +96,12 @@ researcher "Comprehensive overview of quantum computing" --time 120
 
 # Custom database (isolate projects)
 researcher "ML in healthcare" --db ml_research.db
+
+# Skip clarification questions
+researcher "AI safety" --no-clarify
+
+# Fully autonomous mode (no interaction)
+researcher "AI safety" --autonomous
 ```
 
 ### Options
@@ -104,6 +110,101 @@ researcher "ML in healthcare" --db ml_research.db
 |--------|-------------|---------|
 | `--time`, `-t` | Time limit in minutes | 60 |
 | `--db`, `-d` | SQLite database path | research.db |
+| `--no-clarify` | Skip pre-research clarification questions | False |
+| `--autonomous`, `-a` | Run fully autonomous (no user interaction) | False |
+| `--timeout` | Timeout in seconds for mid-research questions | 60 |
+
+---
+
+## Interactive Features
+
+The researcher supports three interactive features to help focus and guide research:
+
+### 1. Pre-Research Clarification
+
+Before research begins, the system asks 2-4 questions to refine the scope:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Before we begin, a few quick questions to focus the research:  │
+│ Press Enter to skip any question, or type 's' to skip all.     │
+└─────────────────────────────────────────────────────────────────┘
+
+What time period are you most interested in?
+Options: Recent (2024-2025) / Historical / All time
+> Recent (2024-2025)
+
+What's your primary use case?
+Options: Academic research / Business application / General learning
+> Business application
+```
+
+The system then refines your goal:
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Original: Machine learning in customer support                  │
+│                                                                 │
+│ Refined: Recent (2024-2025) machine learning applications in   │
+│ customer support for business implementation, focusing on       │
+│ practical deployment and ROI.                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Skip with:** `--no-clarify` flag or type `s` during questions.
+
+### 2. Mid-Research Guidance Injection
+
+While research is running, you can inject guidance to steer the direction:
+
+1. **Type your message** (text won't be visible due to the spinner)
+2. **Press Enter**
+3. **The spinner pauses** and shows what you typed:
+   ```
+   ━━━ User Guidance ━━━
+   You typed: focus more on chatbots and automated responses
+   Press Enter to send, or type more to replace: _
+   ```
+4. **Press Enter** to confirm or type a replacement
+5. **Spinner resumes** and your guidance is used in the next iteration
+
+**Example guidance messages:**
+- "Focus on practical implementations, not theory"
+- "Look into company X specifically"
+- "Skip historical background, go deeper on current research"
+- "The AI findings seem outdated, search for 2024 sources"
+
+The Manager agent will incorporate your guidance in its next thinking cycle:
+```
+[USER GUIDANCE] Received 1 message(s)
+  → focus more on chatbots and automated responses
+```
+
+### 3. Mid-Research Questions (Async)
+
+The Manager may occasionally ask you questions during research:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Question                                                        │
+├─────────────────────────────────────────────────────────────────┤
+│ Should I investigate pricing models in more depth?              │
+│ We found conflicting information about enterprise costs.        │
+│                                                                 │
+│ Options: Yes, investigate / No, continue / Focus on SMB only    │
+│ (60s timeout - research will continue if no response)           │
+└─────────────────────────────────────────────────────────────────┘
+> Yes, investigate
+```
+
+If you don't respond within the timeout, research continues autonomously.
+
+### Interaction Modes
+
+| Mode | Clarification | Mid-Research Input | Questions |
+|------|---------------|-------------------|-----------|
+| **Default** | Yes | Yes | Yes |
+| `--no-clarify` | No | Yes | Yes |
+| `--autonomous` | No | No | No |
 
 ---
 
@@ -151,9 +252,16 @@ At the end of research, you'll see:
 ## Architecture
 
 ```
+                         ┌──────────────────────┐
+                         │        USER          │
+                         │  • Clarification     │
+                         │  • Mid-research input│
+                         └──────────┬───────────┘
+                                    │
 ┌─────────────────────────────────────────────────────────────┐
 │                     DIRECTOR (Sonnet)                       │
 │  Session management, progress display, report export        │
+│  + UserInteraction handler, InputListener                   │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -162,6 +270,7 @@ At the end of research, you'll see:
 │  • Decomposes goal into parallel research threads           │
 │  • Critiques findings, identifies gaps                      │
 │  • Steers research using knowledge graph insights           │
+│  • Incorporates user guidance from message queue            │
 │  • Synthesizes final report                                 │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -300,8 +409,13 @@ claude-researcher/
 │   │   ├── base.py       # ReAct loop, model routing
 │   │   ├── intern.py     # Web search, query expansion
 │   │   ├── manager.py    # Strategy, critique, KG integration
-│   │   ├── director.py   # User interface
+│   │   ├── director.py   # User interface, session management
 │   │   └── parallel.py   # Parallel intern pool
+│   ├── interaction/      # User interaction features
+│   │   ├── models.py     # ClarifiedGoal, UserMessage, etc.
+│   │   ├── config.py     # InteractionConfig
+│   │   ├── handler.py    # UserInteraction class
+│   │   └── listener.py   # Background input listener
 │   ├── knowledge/
 │   │   ├── graph.py      # Incremental KG construction
 │   │   ├── store.py      # NetworkX + SQLite hybrid

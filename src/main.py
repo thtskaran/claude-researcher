@@ -102,9 +102,9 @@ def main(
     if autonomous:
         console.print("[dim]Running in autonomous mode (no user interaction)[/dim]")
     elif no_clarify:
-        console.print("[dim]Skipping clarification questions[/dim]")
+        console.print("[dim]Skipping clarification questions. Type + Enter during research to inject guidance.[/dim]")
     else:
-        console.print("[dim]Interactive mode: clarification questions enabled, type during research to inject guidance[/dim]")
+        console.print("[dim]Interactive mode enabled. Type + Enter during research to inject guidance.[/dim]")
 
     async def run():
         global _harness
@@ -115,7 +115,12 @@ def main(
 
             # Start input listener if not autonomous
             if not interaction_config.autonomous_mode:
-                listener = InputListener(harness.director.interaction, console=console)
+                listener = InputListener(
+                    harness.director.interaction,
+                    console=console,
+                    on_interact_start=harness.director.pause_progress,
+                    on_interact_end=harness.director.resume_progress,
+                )
                 await listener.start()
 
             try:

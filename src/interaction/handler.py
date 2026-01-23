@@ -55,6 +55,24 @@ class UserInteraction:
         # Track questions asked during session
         self._questions_asked: int = 0
 
+        # Callbacks for pausing/resuming progress display
+        self._on_pause: Optional[Callable[[], None]] = None
+        self._on_resume: Optional[Callable[[], None]] = None
+
+    def set_progress_callbacks(
+        self,
+        on_pause: Optional[Callable[[], None]] = None,
+        on_resume: Optional[Callable[[], None]] = None,
+    ) -> None:
+        """Set callbacks for pausing/resuming the progress display.
+
+        Args:
+            on_pause: Called when interaction needs to pause the spinner
+            on_resume: Called when interaction is done and spinner can resume
+        """
+        self._on_pause = on_pause
+        self._on_resume = on_resume
+
     async def clarify_research_goal(self, goal: str) -> ClarifiedGoal:
         """Ask clarification questions before starting research.
 
@@ -241,6 +259,10 @@ Keep it concise but complete. Do not add any preamble or explanation - just outp
 
         self._questions_asked += 1
 
+        # Pause the progress spinner if callback is set
+        if self._on_pause:
+            self._on_pause()
+
         # Create pending question
         self._pending_question = PendingQuestion(
             text=question,
@@ -266,18 +288,27 @@ Keep it concise but complete. Do not add any preamble or explanation - just outp
             border_style="yellow",
         ))
 
-        # Wait for response with timeout
         try:
-            await asyncio.wait_for(
-                self._response_event.wait(),
+            # Get input directly with visible typing (since spinner is paused)
+            loop = asyncio.get_event_loop()
+            response = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: Prompt.ask("[yellow]>[/yellow]", default="")
+                ),
                 timeout=self.config.question_timeout,
             )
-            response = self._response_value
+            response = response.strip() if response else None
         except asyncio.TimeoutError:
             self.console.print("[dim]No response - continuing research...[/dim]")
             response = None
 
         self._pending_question = None
+
+        # Resume the progress spinner
+        if self._on_resume:
+            self._on_resume()
+
         return response
 
     def respond(self, response: str) -> bool:
@@ -314,7 +345,7 @@ Keep it concise but complete. Do not add any preamble or explanation - just outp
 
         message = UserMessage(content=text)
         self._message_queue.put_nowait(message)
-        self.console.print(f"[dim]Queued: {text[:50]}{'...' if len(text) > 50 else ''}[/dim]")
+        self.console.print(f"[bold green]Guidance queued[/bold green] [dim](will be used in next research iteration)[/dim]")
 
     def get_pending_messages(self) -> list[UserMessage]:
         """Get all pending messages from the queue (non-blocking).

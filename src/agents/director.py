@@ -54,6 +54,23 @@ class DirectorAgent(BaseAgent):
         )
         self.current_session: Optional[ResearchSession] = None
         self._progress_task = None
+        self._progress: Optional[Progress] = None  # For pause/resume support
+
+        # Wire up progress callbacks to interaction handler
+        self.interaction.set_progress_callbacks(
+            on_pause=self.pause_progress,
+            on_resume=self.resume_progress,
+        )
+
+    def pause_progress(self) -> None:
+        """Pause the progress spinner (for interact mode)."""
+        if self._progress:
+            self._progress.stop()
+
+    def resume_progress(self) -> None:
+        """Resume the progress spinner (after interact mode)."""
+        if self._progress:
+            self._progress.start()
 
     async def _interaction_llm_callback(self, prompt: str) -> str:
         """LLM callback for interaction module (uses fast model)."""
@@ -196,13 +213,15 @@ When presenting results:
         self, goal: str, time_limit_minutes: int
     ) -> ManagerReport:
         """Run research with progress display."""
-        with Progress(
+        self._progress = Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             TimeElapsedColumn(),
             console=self.console,
             transient=False,
-        ) as progress:
+        )
+
+        with self._progress as progress:
             task = progress.add_task(
                 f"[cyan]Researching: {goal[:50]}...",
                 total=None,
@@ -214,7 +233,7 @@ When presenting results:
                 findings = len(self.manager.all_findings)
                 progress.update(
                     task,
-                    description=f"[cyan]Iteration {iteration} | Findings: {findings}",
+                    description=f"[cyan]Iteration {iteration} | Findings: {findings}[/cyan]",
                 )
 
             self.manager.add_callback(update_progress)
@@ -227,6 +246,7 @@ When presenting results:
             )
 
             progress.update(task, description="[green]Research complete!")
+            self._progress = None
 
             return report
 

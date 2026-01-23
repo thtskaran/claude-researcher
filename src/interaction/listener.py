@@ -4,9 +4,10 @@ import asyncio
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
+from typing import Callable, Optional
 
 from rich.console import Console
+from rich.prompt import Prompt
 
 from .handler import UserInteraction
 
@@ -14,30 +15,35 @@ from .handler import UserInteraction
 class InputListener:
     """Background listener for user input during research.
 
-    Runs in a background thread to capture user input without blocking
-    the main research loop. Routes input to either:
-    - respond() if there's a pending question
-    - inject_message() to queue guidance for the next iteration
+    Type a message and press Enter to inject guidance. The spinner will
+    pause, show your input, and let you confirm or add more detail.
     """
 
     def __init__(
         self,
         interaction: UserInteraction,
         console: Optional[Console] = None,
+        on_interact_start: Optional[Callable[[], None]] = None,
+        on_interact_end: Optional[Callable[[], None]] = None,
     ):
         """Initialize the input listener.
 
         Args:
             interaction: UserInteraction handler to route input to
             console: Rich console for output
+            on_interact_start: Callback when entering interact mode (pause spinner)
+            on_interact_end: Callback when exiting interact mode (resume spinner)
         """
         self.interaction = interaction
         self.console = console or Console()
+        self.on_interact_start = on_interact_start
+        self.on_interact_end = on_interact_end
 
         self._running = False
-        self._executor: Optional[ThreadPoolExecutor] = None
-        self._listen_task: Optional[asyncio.Task] = None
+        self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._in_interact_mode = False
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
 
     async def start(self) -> None:
         """Start the background input listener."""
@@ -46,94 +52,106 @@ class InputListener:
 
         self._running = True
         self._stop_event.clear()
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="input_listener")
+        self._loop = asyncio.get_event_loop()
 
-        # Start the listener loop as an async task
-        self._listen_task = asyncio.create_task(self._listen_loop())
+        # Start the listener in a daemon thread
+        self._thread = threading.Thread(target=self._listen_thread, daemon=True)
+        self._thread.start()
 
     def stop(self) -> None:
         """Stop the background input listener."""
         self._running = False
         self._stop_event.set()
+        self._thread = None
 
-        if self._listen_task:
-            self._listen_task.cancel()
-            self._listen_task = None
-
-        if self._executor:
-            self._executor.shutdown(wait=False)
-            self._executor = None
-
-    async def _listen_loop(self) -> None:
-        """Main listening loop - runs in async context but reads in thread."""
-        loop = asyncio.get_event_loop()
-
-        while self._running:
+    def _listen_thread(self) -> None:
+        """Background thread that reads stdin lines."""
+        while self._running and not self._stop_event.is_set():
             try:
-                # Read input in a thread to avoid blocking
-                line = await asyncio.wait_for(
-                    loop.run_in_executor(self._executor, self._read_line),
-                    timeout=0.5,
-                )
+                # Use select to check if input is available (non-blocking check)
+                if sys.platform != 'win32':
+                    import select
+                    readable, _, _ = select.select([sys.stdin], [], [], 0.5)
+                    if not readable:
+                        continue
+                else:
+                    import msvcrt
+                    import time
+                    # On Windows, poll for input
+                    if not msvcrt.kbhit():
+                        time.sleep(0.1)
+                        continue
 
-                if line is None:
-                    # Thread signaled to stop
+                # Read the line (this blocks until Enter)
+                if self._stop_event.is_set():
                     break
+
+                line = sys.stdin.readline()
+                if not line:
+                    continue
 
                 line = line.strip()
                 if not line:
                     continue
 
-                # Route the input
-                self._route_input(line)
+                # Schedule the interact mode on the main event loop
+                if self._loop and self._running:
+                    asyncio.run_coroutine_threadsafe(
+                        self._handle_input(line),
+                        self._loop
+                    )
 
-            except asyncio.TimeoutError:
-                # No input, check if we should stop
-                if self._stop_event.is_set():
-                    break
-                continue
-            except asyncio.CancelledError:
-                break
             except Exception:
-                # Ignore errors from input reading
-                continue
+                if not self._stop_event.is_set():
+                    continue
+                break
 
-    def _read_line(self) -> Optional[str]:
-        """Read a line from stdin (runs in thread).
+    async def _handle_input(self, initial_text: str) -> None:
+        """Handle user input - pause spinner and process."""
+        if self._in_interact_mode:
+            return
 
-        Returns:
-            The line read, or None if should stop
-        """
-        if self._stop_event.is_set():
-            return None
+        self._in_interact_mode = True
+
+        # Pause the spinner
+        if self.on_interact_start:
+            self.on_interact_start()
+
+        # Show what was typed
+        self.console.print()
+        self.console.print("[bold cyan]━━━ User Guidance ━━━[/bold cyan]")
+        self.console.print(f"[bold]You typed:[/bold] {initial_text}")
 
         try:
-            # Use select on Unix to check if input is available
-            if sys.platform != 'win32':
-                import select
-                # Wait up to 0.1s for input
-                readable, _, _ = select.select([sys.stdin], [], [], 0.1)
-                if not readable:
-                    return ""
-                return sys.stdin.readline()
+            # Ask for confirmation or more input
+            loop = asyncio.get_event_loop()
+            more = await loop.run_in_executor(
+                None,
+                lambda: Prompt.ask(
+                    "[dim]Press Enter to send, or type more to replace[/dim]",
+                    default=""
+                )
+            )
+
+            # Use the new text if provided, otherwise use original
+            final_text = more.strip() if more.strip() else initial_text
+
+            # Route the input
+            if self.interaction.has_pending_question():
+                self.console.print("[green]Answering pending question...[/green]")
+                self.interaction.respond(final_text)
             else:
-                # On Windows, use msvcrt for non-blocking check
-                import msvcrt
-                if msvcrt.kbhit():
-                    return sys.stdin.readline()
-                return ""
-        except Exception:
-            return ""
+                self.interaction.inject_message(final_text)
 
-    def _route_input(self, text: str) -> None:
-        """Route user input to the appropriate handler.
+        except Exception as e:
+            self.console.print(f"[red]Error: {e}[/red]")
 
-        Args:
-            text: The user's input text
-        """
-        # If there's a pending question, respond to it
-        if self.interaction.has_pending_question():
-            self.interaction.respond(text)
-        else:
-            # Otherwise, queue as guidance message
-            self.interaction.inject_message(text)
+        finally:
+            self.console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
+            self.console.print()
+
+            # Resume the spinner
+            if self.on_interact_end:
+                self.on_interact_end()
+
+            self._in_interact_mode = False
