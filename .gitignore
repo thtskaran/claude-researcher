@@ -3,3 +3,5 @@
 *.pyc
 /output
 /docs
+todo.md
+/research_retrieval
