@@ -66,8 +66,8 @@ LLM_ONLY_TYPES = {
 @dataclass
 class FastNERConfig:
     """Configuration for fast NER."""
-    # spaCy model
-    model_name: str = "en_core_web_sm"
+    # spaCy model - use large model for better accuracy (still ~50x faster than LLM)
+    model_name: str = "en_core_web_lg"
     auto_download_model: bool = False  # Opt-in for auto-download (security)
 
     # Extraction settings
