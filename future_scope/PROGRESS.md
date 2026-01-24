@@ -105,18 +105,18 @@ A concise done/not-done checklist for each future scope document.
 | BM25 index | `src/retrieval/bm25.py` |
 | Reranking | `src/retrieval/reranker.py` |
 | Vector store (ChromaDB) | `src/retrieval/vectorstore.py` |
+| **MinHash LSH deduplication** | `src/retrieval/deduplication.py` |
+| **spaCy fast NER** with LLM fallback | `src/knowledge/fast_ner.py` |
 
 ### Remaining 🔴
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| **spaCy fast NER** with LLM fallback | High | Currently LLM-only for KG extraction |
-| **MinHash LSH deduplication** | High | No duplicate finding detection |
 | **LambdaMART ranking** (XGBoost) | Medium | No learning-to-rank |
 | **BERTopic clustering** | Medium | No automatic topic discovery |
 | **Text classification** (distilled models) | Low | Finding type via LLM only |
 | **Novelty detection** (Isolation Forest) | Low | Not implemented |
 
-**Status: ~40% Complete**
+**Status: ~60% Complete**
 
 ---
 
@@ -188,7 +188,7 @@ A concise done/not-done checklist for each future scope document.
 | improvements-research.md | ~70% | Query expansion, diverse sources, model routing |
 | user-interaction-design.md | ~95% | Windows support, Web UI |
 | data-sources.md | ~10% | All external APIs missing |
-| classical-ml-integration.md | ~40% | spaCy NER, deduplication, topic modeling |
+| classical-ml-integration.md | ~60% | LambdaMART ranking, topic modeling |
 | power-user-features-research.md | ~25% | Checkpoints, memory persistence, integrations, exports |
 
 ---
@@ -196,8 +196,8 @@ A concise done/not-done checklist for each future scope document.
 ## Priority
 
 ### Quick Wins (Low effort, high value)
-1. **MinHash LSH deduplication** - Prevents redundant findings
-2. **spaCy fast NER** - 100x faster KG construction
+1. ~~**MinHash LSH deduplication**~~ ✅ `src/retrieval/deduplication.py`
+2. ~~**spaCy fast NER**~~ ✅ `src/knowledge/fast_ner.py`
 3. **Source Decision Audit Trail** - Expose existing credibility reasoning
 4. **Explainable Agent Reasoning** - Log agent decisions to DB
 

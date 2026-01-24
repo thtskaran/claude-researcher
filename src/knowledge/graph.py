@@ -16,6 +16,7 @@ except ImportError:
 from .models import Entity, Relation, KGFinding, Contradiction, ENTITY_TYPES
 from .store import HybridKnowledgeGraphStore
 from .credibility import CredibilityScorer
+from .fast_ner import FastNER, get_fast_ner
 
 
 class IncrementalKnowledgeGraph:
@@ -47,6 +48,7 @@ class IncrementalKnowledgeGraph:
         llm_callback: Callable[[str], Any],
         store: Optional[HybridKnowledgeGraphStore] = None,
         similarity_threshold: float = 0.7,
+        use_fast_ner: bool = True,
     ):
         """Initialize the incremental knowledge graph.
 
@@ -54,11 +56,16 @@ class IncrementalKnowledgeGraph:
             llm_callback: Async function to call LLM for extraction
             store: Storage backend (creates new if not provided)
             similarity_threshold: Threshold for entity matching (0.7 = 70% similar)
+            use_fast_ner: Use spaCy for fast NER (with LLM fallback for domain types)
         """
         self.llm_callback = llm_callback
         self.store = store or HybridKnowledgeGraphStore()
         self.similarity_threshold = similarity_threshold
         self.credibility_scorer = CredibilityScorer()
+
+        # Fast NER using spaCy (falls back to LLM for domain types)
+        self.use_fast_ner = use_fast_ner
+        self.fast_ner = get_fast_ner() if use_fast_ner else None
 
         # In-memory indexes for fast entity resolution
         self.entity_embeddings: dict[str, Any] = {}
@@ -135,10 +142,61 @@ class IncrementalKnowledgeGraph:
             return result
 
     async def _fast_extract(self, finding: KGFinding) -> dict:
-        """Fast single-pass extraction of entities and relations.
+        """Fast extraction using spaCy NER + LLM for relations.
 
-        Uses one LLM call instead of multiple, trading some accuracy for speed.
+        Uses spaCy for ~100x faster entity extraction, with LLM only for:
+        - Domain-specific entity types (CONCEPT, CLAIM, METHOD, etc.)
+        - Relation extraction between entities
         """
+        result = {
+            'entities': [],
+            'relations': [],
+            'contradictions_found': 0,
+            'finding_id': finding.id,
+        }
+
+        # Step 1: Fast entity extraction with spaCy + LLM for domain types
+        if self.use_fast_ner and self.fast_ner and self.fast_ner.enabled:
+            # Use spaCy for standard entities + LLM for domain-specific types
+            entities = await self.fast_ner.extract_with_llm(
+                finding.content,
+                self.llm_callback,
+                source_id=finding.id,
+                extract_domain_types=True,  # Also use LLM for CONCEPT, CLAIM, etc.
+            )
+
+            # Resolve and add entities
+            for entity in entities[:5]:
+                resolved = await self._resolve_entity(entity)
+                result['entities'].append(resolved)
+
+        else:
+            # Fallback to LLM-only extraction
+            return await self._llm_only_extract(finding)
+
+        # Step 2: Extract relations using LLM (needs semantic understanding)
+        if len(result['entities']) >= 2:
+            relations = await self._extract_relations_fast(
+                finding.content,
+                result['entities'],
+                finding.id,
+            )
+
+            for relation in relations:
+                # Check for contradictions
+                contradiction = self._check_contradiction(relation)
+                if contradiction:
+                    self.contradictions.append(contradiction)
+                    self.store.add_contradiction(contradiction)
+                    result['contradictions_found'] += 1
+
+                self.store.add_relation(relation)
+                result['relations'].append(relation)
+
+        return result
+
+    async def _llm_only_extract(self, finding: KGFinding) -> dict:
+        """Fallback LLM-only extraction when spaCy is unavailable."""
         result = {
             'entities': [],
             'relations': [],
@@ -219,6 +277,68 @@ Keep it concise: max 5 entities, max 3 relations. Focus on the most important fa
             pass
 
         return result
+
+    async def _extract_relations_fast(
+        self,
+        text: str,
+        entities: list[Entity],
+        source_id: str,
+    ) -> list[Relation]:
+        """Fast relation extraction for pre-extracted entities.
+
+        Uses a compact prompt focused only on relations.
+        """
+        if len(entities) < 2:
+            return []
+
+        entity_names = ", ".join([e.name for e in entities[:5]])
+
+        prompt = f"""Given these entities: {entity_names}
+
+Extract relationships from this text:
+{text[:500]}
+
+Return JSON array (max 3 relations):
+[{{"subject": "Entity1", "predicate": "verb phrase", "object": "Entity2"}}]"""
+
+        try:
+            response = await self.llm_callback(prompt)
+
+            match = re.search(r'\[.*?\]', response, re.DOTALL)
+            if not match:
+                return []
+
+            data = json.loads(match.group())
+
+            # Map entity names to IDs
+            name_to_id = {e.name.lower(): e.id for e in entities}
+            for e in entities:
+                for alias in e.aliases:
+                    name_to_id[alias.lower()] = e.id
+
+            relations = []
+            for r in data[:3]:
+                if not isinstance(r, dict):
+                    continue
+
+                subject_id = name_to_id.get(r.get('subject', '').lower())
+                object_id = name_to_id.get(r.get('object', '').lower())
+
+                if subject_id and object_id and subject_id != object_id:
+                    relation = Relation(
+                        id=self._generate_id(),
+                        subject_id=subject_id,
+                        predicate=self._normalize_predicate(r.get('predicate', 'related_to')),
+                        object_id=object_id,
+                        source_id=source_id,
+                        confidence=0.8,
+                    )
+                    relations.append(relation)
+
+            return relations
+
+        except Exception:
+            return []
 
     async def add_findings_batch(self, findings: list[KGFinding], batch_size: int = 5) -> dict:
         """Process multiple findings in batches for efficiency.
@@ -575,6 +695,9 @@ Return as JSON array:
         stats = self.store.get_stats()
         stats['contradictions'] = len(self.contradictions)
         stats['indexed_names'] = len(self.entity_by_name)
+        stats['fast_ner_enabled'] = self.use_fast_ner and self.fast_ner is not None
+        if self.fast_ner:
+            stats['fast_ner'] = self.fast_ner.get_stats()
         return stats
 
     async def get_kg_support_score(
@@ -628,8 +751,14 @@ Return as JSON array:
     async def _quick_entity_extract(self, content: str) -> list[str]:
         """Quick entity extraction without LLM call.
 
-        Uses simple NLP heuristics to extract potential entity names.
+        Uses spaCy if available, otherwise simple NLP heuristics.
         """
+        # Use fast NER if available (much more accurate)
+        if self.use_fast_ner and self.fast_ner and self.fast_ner.enabled:
+            extracted = self.fast_ner.extract(content)
+            return [e.name for e in extracted[:10]]
+
+        # Fallback to regex heuristics
         import re
 
         entities = []

@@ -22,6 +22,7 @@ from ..models.findings import (
 )
 from ..tools.web_search import WebSearchTool, SearchResult
 from ..storage.database import ResearchDatabase
+from ..retrieval.deduplication import FindingDeduplicator, get_deduplicator
 from rich.console import Console
 
 if TYPE_CHECKING:
@@ -53,6 +54,7 @@ class InternAgent(BaseAgent):
         self.searches_performed: int = 0
         self.suggested_followups: list[str] = []
         self.verification_pipeline = verification_pipeline
+        self.deduplicator = get_deduplicator()
 
     @property
     def system_prompt(self) -> str:
@@ -365,9 +367,22 @@ Format your response as JSON:
                 data = json.loads(response[start:end])
 
                 for f in data.get("findings", []):
+                    content = f.get("content", "")
+
+                    # Check for duplicates before processing
+                    if self.deduplicator.enabled:
+                        dedup_result = self.deduplicator.check(content)
+                        if dedup_result.is_duplicate:
+                            self._log(
+                                f"[DEDUP] Skipping duplicate ({dedup_result.match_type}, "
+                                f"sim={dedup_result.similarity:.0%})",
+                                style="dim"
+                            )
+                            continue
+
                     finding = Finding(
                         session_id=session_id,
-                        content=f.get("content", ""),
+                        content=content,
                         finding_type=FindingType(f.get("type", "fact").lower()),
                         source_url=f.get("url"),
                         confidence=f.get("confidence", 0.7),
@@ -392,6 +407,11 @@ Format your response as JSON:
                     await self.db.save_finding(finding)
                     findings.append(finding)
                     self.findings.append(finding)
+
+                    # Add to deduplication index after saving
+                    if self.deduplicator.enabled:
+                        finding_id = str(finding.id) if finding.id else f"{session_id}_{len(self.findings)}"
+                        self.deduplicator.add(finding_id, content)
 
                 for followup in data.get("followups", []):
                     # Filter out meta-questions/clarifying questions that aren't real topics
@@ -418,9 +438,17 @@ Format your response as JSON:
         if not findings and results:
             for r in results[:5]:
                 if r.snippet:
+                    content = r.snippet[:500]
+
+                    # Check for duplicates
+                    if self.deduplicator.enabled:
+                        dedup_result = self.deduplicator.check(content)
+                        if dedup_result.is_duplicate:
+                            continue
+
                     finding = Finding(
                         session_id=session_id,
-                        content=r.snippet[:500],
+                        content=content,
                         finding_type=FindingType.FACT,
                         source_url=r.url,
                         confidence=0.6,
@@ -444,6 +472,11 @@ Format your response as JSON:
                     await self.db.save_finding(finding)
                     findings.append(finding)
                     self.findings.append(finding)
+
+                    # Add to deduplication index
+                    if self.deduplicator.enabled:
+                        finding_id = str(finding.id) if finding.id else f"{session_id}_{len(self.findings)}"
+                        self.deduplicator.add(finding_id, content)
 
         return findings
 

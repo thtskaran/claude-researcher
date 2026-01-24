@@ -17,6 +17,9 @@ dependencies = [
     # Hybrid retrieval dependencies
     "sentence-transformers>=3.0.0",
     "chromadb>=1.0.0",
+    # Deduplication and fast NER
+    "datasketch>=1.6.0",
+    "spacy>=3.7.0",
 ]
 
 # Uses Claude Agent SDK - automatically uses Claude Code's credentials

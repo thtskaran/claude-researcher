@@ -37,6 +37,13 @@ from .memory_integration import (
     SemanticSearchResult,
     create_semantic_memory,
 )
+from .deduplication import (
+    FindingDeduplicator,
+    DeduplicationConfig,
+    DeduplicationResult,
+    get_deduplicator,
+    reset_deduplicator,
+)
 
 __all__ = [
     # Core components
@@ -65,4 +72,10 @@ __all__ = [
     "SemanticMemoryStore",
     "SemanticSearchResult",
     "create_semantic_memory",
+    # Deduplication
+    "FindingDeduplicator",
+    "DeduplicationConfig",
+    "DeduplicationResult",
+    "get_deduplicator",
+    "reset_deduplicator",
 ]

@@ -6,6 +6,7 @@ from .models import Entity, Relation, KGFinding, Contradiction, KnowledgeGap
 from .query import ManagerQueryInterface
 from .credibility import CredibilityScorer
 from .visualize import KnowledgeGraphVisualizer
+from .fast_ner import FastNER, FastNERConfig, ExtractedEntity, get_fast_ner
 
 __all__ = [
     "IncrementalKnowledgeGraph",
@@ -18,4 +19,9 @@ __all__ = [
     "ManagerQueryInterface",
     "CredibilityScorer",
     "KnowledgeGraphVisualizer",
+    # Fast NER
+    "FastNER",
+    "FastNERConfig",
+    "ExtractedEntity",
+    "get_fast_ner",
 ]
