@@ -3,10 +3,12 @@
 import os
 import subprocess
 import re
+import json
 from datetime import datetime
 from typing import Optional
 from pathlib import Path
 from dataclasses import dataclass
+from enum import Enum
 
 try:
     import anthropic
@@ -16,6 +18,30 @@ except ImportError:
     HAS_ANTHROPIC = False
 
 from ..models.findings import Finding, ResearchSession
+
+
+class SectionType(str, Enum):
+    """Types of sections that can appear in a dynamic report."""
+    TLDR = "tldr"                    # 2-3 sentence summary
+    FLASH_NUMBERS = "flash_numbers"  # Key metrics callouts
+    STATS_TABLE = "stats_table"      # Tabular comparisons
+    COMPARISON = "comparison"        # Side-by-side analysis
+    TIMELINE = "timeline"            # Chronological view
+    NARRATIVE = "narrative"          # Standard prose section
+    ANALYSIS = "analysis"            # Deep synthesis
+    GAPS = "gaps"                    # Open questions
+    CONCLUSIONS = "conclusions"
+    REFERENCES = "references"
+
+
+@dataclass
+class PlannedSection:
+    """A planned section in the dynamic report structure."""
+    section_type: SectionType
+    title: str
+    description: str
+    priority: int = 5
+    content: str = ""
 
 
 def _get_api_key() -> Optional[str]:
@@ -119,6 +145,7 @@ class DeepReportWriter:
         topics_explored: list[str],
         topics_remaining: list[str],
         kg_exports: dict = None,
+        dynamic: bool = True,
     ) -> str:
         """Generate a comprehensive deep research report.
 
@@ -128,11 +155,22 @@ class DeepReportWriter:
             topics_explored: Topics that were researched
             topics_remaining: Topics that could be researched with more time
             kg_exports: Optional knowledge graph exports (stats, visualization, gaps)
+            dynamic: If True, use AI-driven dynamic section planning
 
         Returns:
             Complete markdown report
         """
-        # Organize findings
+        # Use dynamic report generation by default
+        if dynamic:
+            return await self.generate_dynamic_report(
+                session=session,
+                findings=findings,
+                topics_explored=topics_explored,
+                topics_remaining=topics_remaining,
+                kg_exports=kg_exports,
+            )
+
+        # Fallback to legacy fixed structure
         findings_by_type = self._organize_findings(findings)
         sources = self._extract_sources(findings)
 
@@ -449,6 +487,575 @@ Output ONLY the conclusions text, no headers."""
             "You are an expert research analyst writing conclusions."
         )
 
+    async def _plan_report_structure(
+        self, goal: str, findings: list[Finding], topics_explored: list[str]
+    ) -> list[PlannedSection]:
+        """Have AI analyze findings and plan what sections the report needs."""
+        # Prepare findings summary
+        top_findings = sorted(findings, key=lambda f: f.confidence, reverse=True)[:50]
+        findings_summary = "\n".join([
+            f"- [{f.finding_type.value}] {f.content[:200]}"
+            for f in top_findings
+        ])
+        findings_summary = self._truncate_findings_text(findings_summary, 12000)
+
+        # Count finding types for context
+        type_counts = {}
+        for f in findings:
+            t = f.finding_type.value
+            type_counts[t] = type_counts.get(t, 0) + 1
+
+        prompt = f"""Analyze these research findings and plan the optimal report structure.
+
+RESEARCH QUESTION: {goal}
+
+FINDING COUNTS BY TYPE: {json.dumps(type_counts)}
+
+TOPICS EXPLORED: {', '.join(topics_explored[:10]) if topics_explored else 'Various'}
+
+SAMPLE FINDINGS:
+{findings_summary}
+
+Your task: Decide what sections this report needs based on the content. Choose from these section types:
+
+- tldr: A 2-3 sentence bottom-line answer (always include this first)
+- flash_numbers: Key metrics/statistics callouts if quantitative data exists
+- stats_table: Tabular comparison if comparing multiple items
+- comparison: Side-by-side analysis if comparing approaches/systems
+- timeline: Chronological progression if temporal data exists
+- narrative: Standard prose section for a specific theme
+- analysis: Deep synthesis of patterns and insights
+- gaps: Open questions and unknowns
+- conclusions: Final takeaways and recommendations (always include near end)
+
+Return a JSON array of sections in the order they should appear. Example format:
+[
+  {{"type": "tldr", "title": "TL;DR", "description": "Bottom-line answer to the research question", "priority": 10}},
+  {{"type": "flash_numbers", "title": "Key Numbers", "description": "Critical metrics from the research", "priority": 9}},
+  {{"type": "narrative", "title": "Current Landscape", "description": "Overview of the current state", "priority": 8}},
+  {{"type": "comparison", "title": "Framework Comparison", "description": "Side-by-side analysis of major frameworks", "priority": 7}},
+  {{"type": "narrative", "title": "Technical Deep Dive", "description": "Detailed technical analysis", "priority": 6}},
+  {{"type": "analysis", "title": "Patterns & Insights", "description": "Cross-cutting analysis", "priority": 5}},
+  {{"type": "gaps", "title": "Open Questions", "description": "Knowledge gaps and uncertainties", "priority": 4}},
+  {{"type": "conclusions", "title": "Conclusions", "description": "Final recommendations", "priority": 3}}
+]
+
+Guidelines:
+- ALWAYS start with tldr
+- Include flash_numbers ONLY if significant quantitative data exists
+- Include stats_table or comparison ONLY if comparing multiple distinct items
+- Include timeline ONLY if clear temporal progression exists
+- Use 3-5 narrative sections with SPECIFIC titles (not generic like "Overview")
+- ALWAYS end with conclusions
+- Total sections should be 6-10
+
+Return ONLY the JSON array, no explanation."""
+
+        response = await self._call_claude(
+            prompt,
+            "You are an expert research analyst planning report structure."
+        )
+
+        # Parse the response
+        planned_sections = []
+        try:
+            # Find JSON array in response
+            match = re.search(r'\[.*\]', response, re.DOTALL)
+            if match:
+                sections_data = json.loads(match.group())
+                for s in sections_data:
+                    try:
+                        section_type = SectionType(s.get('type', 'narrative'))
+                    except ValueError:
+                        section_type = SectionType.NARRATIVE
+                    planned_sections.append(PlannedSection(
+                        section_type=section_type,
+                        title=s.get('title', 'Section'),
+                        description=s.get('description', ''),
+                        priority=s.get('priority', 5)
+                    ))
+        except (json.JSONDecodeError, KeyError):
+            # Fallback to basic structure
+            planned_sections = [
+                PlannedSection(SectionType.TLDR, "TL;DR", "Bottom-line answer"),
+                PlannedSection(SectionType.NARRATIVE, "Background", "Context and background"),
+                PlannedSection(SectionType.NARRATIVE, "Key Findings", "Main discoveries"),
+                PlannedSection(SectionType.ANALYSIS, "Analysis", "Synthesis and insights"),
+                PlannedSection(SectionType.CONCLUSIONS, "Conclusions", "Recommendations"),
+            ]
+
+        return planned_sections
+
+    async def _generate_dynamic_section(
+        self, section: PlannedSection, goal: str, findings: list[Finding]
+    ) -> str:
+        """Generate content for a planned section based on its type."""
+        generators = {
+            SectionType.TLDR: self._gen_tldr,
+            SectionType.FLASH_NUMBERS: self._gen_flash_numbers,
+            SectionType.STATS_TABLE: self._gen_stats_table,
+            SectionType.COMPARISON: self._gen_comparison,
+            SectionType.TIMELINE: self._gen_timeline,
+            SectionType.GAPS: self._gen_gaps,
+            SectionType.NARRATIVE: self._gen_narrative,
+            SectionType.ANALYSIS: self._gen_analysis_section,
+            SectionType.CONCLUSIONS: self._gen_conclusions_section,
+        }
+
+        generator = generators.get(section.section_type, self._gen_narrative)
+        return await generator(section, goal, findings)
+
+    async def _gen_tldr(
+        self, _section: PlannedSection, goal: str, findings: list[Finding]
+    ) -> str:
+        """Generate a 2-3 sentence TL;DR summary."""
+        top_findings = sorted(findings, key=lambda f: f.confidence, reverse=True)[:15]
+        findings_text = "\n".join([f"- {f.content[:200]}" for f in top_findings])
+
+        prompt = f"""Write a TL;DR (Too Long; Didn't Read) summary for this research.
+
+RESEARCH QUESTION: {goal}
+
+KEY FINDINGS:
+{findings_text}
+
+Write 2-3 sentences that directly answer the research question with the most important takeaways.
+Be specific and definitive. This is the bottom-line answer.
+
+Format as a blockquote (start each line with >).
+Output ONLY the blockquote, nothing else."""
+
+        return await self._call_claude(prompt, "You are an expert at distilling research into concise summaries.")
+
+    async def _gen_flash_numbers(
+        self, _section: PlannedSection, goal: str, findings: list[Finding]
+    ) -> str:
+        """Generate key metrics callouts."""
+        # Find findings with numbers
+        numeric_findings = [
+            f for f in findings
+            if any(c.isdigit() for c in f.content)
+        ][:20]
+
+        if not numeric_findings:
+            return ""
+
+        findings_text = "\n".join([f"- {f.content[:300]}" for f in numeric_findings])
+
+        prompt = f"""Extract the most impactful numbers/statistics from these research findings.
+
+RESEARCH QUESTION: {goal}
+
+FINDINGS WITH DATA:
+{findings_text}
+
+Format each key metric as:
+**[NUMBER/STAT]** - [Brief description of what it means]
+
+Example:
+**94.4%** - LLM agents vulnerable to prompt injection attacks
+**10-15 min** - Time to generate working CVE exploits with AI
+**$4.2B** - Market size for AI security tools by 2025
+
+Select 3-6 of the most compelling, relevant statistics.
+Output ONLY the formatted metrics, one per line. No introductory text."""
+
+        return await self._call_claude(prompt, "You are an expert at highlighting key statistics.")
+
+    async def _gen_stats_table(
+        self, section: PlannedSection, goal: str, findings: list[Finding]
+    ) -> str:
+        """Generate a markdown comparison table."""
+        top_findings = sorted(findings, key=lambda f: f.confidence, reverse=True)[:30]
+        findings_text = "\n".join([f"- {f.content[:200]}" for f in top_findings])
+
+        prompt = f"""Create a comparison table from these research findings.
+
+RESEARCH QUESTION: {goal}
+SECTION DESCRIPTION: {section.description}
+
+FINDINGS:
+{findings_text}
+
+Create a markdown table comparing the key items/options/approaches found in the research.
+Choose appropriate column headers based on what's being compared.
+
+Example format:
+| Item | Characteristic 1 | Characteristic 2 | Notes |
+|------|-----------------|-----------------|-------|
+| A    | Value           | Value           | Note  |
+| B    | Value           | Value           | Note  |
+
+Output ONLY the markdown table. No introductory text."""
+
+        return await self._call_claude(prompt, "You are an expert at creating comparison tables.")
+
+    async def _gen_comparison(
+        self, section: PlannedSection, goal: str, findings: list[Finding]
+    ) -> str:
+        """Generate side-by-side comparison analysis."""
+        top_findings = sorted(findings, key=lambda f: f.confidence, reverse=True)[:30]
+        findings_text = "\n".join([f"- {f.content[:200]}" for f in top_findings])
+
+        prompt = f"""Write a side-by-side comparison analysis.
+
+RESEARCH QUESTION: {goal}
+SECTION TITLE: {section.title}
+SECTION DESCRIPTION: {section.description}
+
+FINDINGS:
+{findings_text}
+
+Write 3-4 paragraphs that:
+1. Identify the key items/approaches being compared
+2. Analyze strengths and weaknesses of each
+3. Highlight key differentiators
+4. Provide guidance on when to use each
+
+Be specific with facts. Use subheadings if helpful.
+Output ONLY the comparison content."""
+
+        return await self._call_claude(prompt, "You are an expert at comparative analysis.")
+
+    async def _gen_timeline(
+        self, section: PlannedSection, goal: str, findings: list[Finding]
+    ) -> str:
+        """Generate chronological timeline view."""
+        # Find findings with dates/years
+        temporal_keywords = ['2020', '2021', '2022', '2023', '2024', '2025', '2026',
+                            'january', 'february', 'march', 'april', 'may', 'june',
+                            'july', 'august', 'september', 'october', 'november', 'december',
+                            'released', 'launched', 'announced', 'introduced']
+
+        temporal_findings = [
+            f for f in findings
+            if any(kw in f.content.lower() for kw in temporal_keywords)
+        ][:25]
+
+        if not temporal_findings:
+            temporal_findings = findings[:20]
+
+        findings_text = "\n".join([f"- {f.content[:250]}" for f in temporal_findings])
+
+        prompt = f"""Create a chronological timeline from these research findings.
+
+RESEARCH QUESTION: {goal}
+SECTION TITLE: {section.title}
+
+FINDINGS:
+{findings_text}
+
+Format as a timeline with clear dates/periods:
+
+**[Date/Period]**: [Event/Development]
+- Key details
+
+**[Date/Period]**: [Event/Development]
+- Key details
+
+If exact dates aren't available, use approximate periods (Early 2024, Q3 2023, etc.).
+Order from earliest to most recent.
+Output ONLY the timeline content."""
+
+        return await self._call_claude(prompt, "You are an expert at creating timelines.")
+
+    async def _gen_gaps(
+        self, _section: PlannedSection, goal: str, findings: list[Finding]
+    ) -> str:
+        """Generate open questions and knowledge gaps section."""
+        # Get questions and contradictions
+        questions = [f for f in findings if f.finding_type.value == "question"][:10]
+        contradictions = [f for f in findings if f.finding_type.value == "contradiction"][:5]
+
+        context = ""
+        if questions:
+            context += "OPEN QUESTIONS FOUND:\n" + "\n".join([f"- {q.content}" for q in questions])
+        if contradictions:
+            context += "\n\nCONTRADICTIONS FOUND:\n" + "\n".join([f"- {c.content}" for c in contradictions])
+
+        if not context:
+            # Generate from general findings
+            top_findings = sorted(findings, key=lambda f: f.confidence, reverse=True)[:20]
+            context = "FINDINGS:\n" + "\n".join([f"- {f.content[:200]}" for f in top_findings])
+
+        prompt = f"""Identify knowledge gaps and open questions from this research.
+
+RESEARCH QUESTION: {goal}
+
+{context}
+
+Write 2-3 paragraphs covering:
+1. What important questions remain unanswered
+2. Areas where more research is needed
+3. Any contradictions or debates that aren't resolved
+4. Limitations of current knowledge
+
+Be specific about what we don't know yet.
+Output ONLY the gaps content."""
+
+        return await self._call_claude(prompt, "You are an expert at identifying research gaps.")
+
+    async def _gen_narrative(
+        self, section: PlannedSection, goal: str, findings: list[Finding]
+    ) -> str:
+        """Generate standard narrative prose section."""
+        top_findings = sorted(findings, key=lambda f: f.confidence, reverse=True)[:30]
+        findings_text = "\n".join([
+            f"- [{f.finding_type.value}] {f.content[:250]}"
+            for f in top_findings
+        ])
+        findings_text = self._truncate_findings_text(findings_text, 12000)
+
+        prompt = f"""Write a section of a deep research report.
+
+RESEARCH QUESTION: {goal}
+SECTION TITLE: {section.title}
+SECTION DESCRIPTION: {section.description}
+
+AVAILABLE FINDINGS:
+{findings_text}
+
+Write 4-6 paragraphs that:
+1. Open with the key point for this theme
+2. Develop with supporting details and evidence
+3. Explain significance and implications
+4. Connect to the broader research question
+
+Guidelines:
+- Write flowing prose, not bullet points
+- Be specific with facts, dates, organizations
+- Do NOT include inline citations
+- Use phrases like "Research shows...", "According to recent studies..."
+
+Output ONLY the section content, no headers."""
+
+        return await self._call_claude(
+            prompt,
+            "You are an expert research analyst writing detailed narrative sections."
+        )
+
+    async def _gen_analysis_section(
+        self, section: PlannedSection, goal: str, findings: list[Finding]
+    ) -> str:
+        """Generate analysis and insights section."""
+        # Get insights and connections
+        insights = [f for f in findings if f.finding_type.value == "insight"][:10]
+        connections = [f for f in findings if f.finding_type.value == "connection"][:5]
+
+        analysis_data = []
+        if insights:
+            analysis_data.append("INSIGHTS:\n" + "\n".join([f"- {i.content}" for i in insights]))
+        if connections:
+            analysis_data.append("CONNECTIONS:\n" + "\n".join([f"- {c.content}" for c in connections]))
+
+        if not analysis_data:
+            top_findings = sorted(findings, key=lambda f: f.confidence, reverse=True)[:20]
+            analysis_data.append("FINDINGS:\n" + "\n".join([f"- {f.content[:200]}" for f in top_findings]))
+
+        prompt = f"""Write an analysis section synthesizing research findings.
+
+RESEARCH QUESTION: {goal}
+SECTION TITLE: {section.title}
+SECTION DESCRIPTION: {section.description}
+
+{chr(10).join(analysis_data)}
+
+Write 3-4 paragraphs that:
+1. Synthesize the most important insights
+2. Identify patterns, trends, and connections
+3. Address contradictions or debates
+4. Draw conclusions the reader might not see
+
+Be analytical and insightful.
+Output ONLY the analysis content."""
+
+        return await self._call_claude(
+            prompt,
+            "You are an expert research analyst providing deep synthesis."
+        )
+
+    async def _gen_conclusions_section(
+        self, _section: PlannedSection, goal: str, findings: list[Finding]
+    ) -> str:
+        """Generate conclusions section."""
+        top_findings = sorted(findings, key=lambda f: f.confidence, reverse=True)[:15]
+        findings_text = "\n".join([f"- {f.content[:200]}" for f in top_findings])
+
+        prompt = f"""Write the conclusions section of a research report.
+
+RESEARCH QUESTION: {goal}
+
+KEY FINDINGS:
+{findings_text}
+
+Write 2-3 paragraphs that:
+1. Directly answer the research question
+2. Summarize the most important takeaways
+3. Provide actionable recommendations
+4. Suggest areas for further investigation
+
+Be definitive where evidence supports it, hedged where uncertain.
+Output ONLY the conclusions content."""
+
+        return await self._call_claude(
+            prompt,
+            "You are an expert research analyst writing conclusions."
+        )
+
+    async def generate_dynamic_report(
+        self,
+        session: ResearchSession,
+        findings: list[Finding],
+        topics_explored: list[str],
+        topics_remaining: list[str],  # noqa: ARG002 - kept for API compatibility
+        kg_exports: dict = None,
+    ) -> str:
+        """Generate a comprehensive report with AI-driven dynamic structure.
+
+        Args:
+            session: The research session
+            findings: All findings from the research
+            topics_explored: Topics that were researched
+            topics_remaining: Topics that could be researched with more time (unused in dynamic mode)
+            kg_exports: Optional knowledge graph exports
+
+        Returns:
+            Complete markdown report
+        """
+        del topics_remaining  # Unused in dynamic mode, but kept for API compatibility
+        sources = self._extract_sources(findings)
+
+        # Phase 1: Plan the report structure
+        print("[REPORT] Planning report structure...")
+        planned_sections = await self._plan_report_structure(
+            session.goal, findings, topics_explored
+        )
+        print(f"[REPORT] Planned {len(planned_sections)} sections: {[s.title for s in planned_sections]}")
+
+        # Phase 2: Generate each section
+        for i, section in enumerate(planned_sections):
+            print(f"[REPORT] Generating section {i+1}/{len(planned_sections)}: {section.title}...")
+            section.content = await self._generate_dynamic_section(section, session.goal, findings)
+
+        # Compile the report
+        return self._compile_dynamic_report(
+            session=session,
+            planned_sections=planned_sections,
+            sources=sources,
+            findings=findings,
+            topics_explored=topics_explored,
+            kg_exports=kg_exports,
+        )
+
+    def _compile_dynamic_report(
+        self,
+        session: ResearchSession,
+        planned_sections: list[PlannedSection],
+        sources: list[dict],
+        findings: list[Finding],
+        topics_explored: list[str],
+        kg_exports: dict = None,
+    ) -> str:
+        """Compile dynamically planned sections into final report."""
+        # Build table of contents
+        toc_items = []
+        for i, section in enumerate(planned_sections, 1):
+            toc_items.append(f"{i}. {section.title}")
+        toc_items.append(f"{len(planned_sections) + 1}. References")
+
+        toc = "\n".join([
+            f"- [{item}](#{item.lower().replace(' ', '-').replace('.', '')})"
+            for item in toc_items
+        ])
+
+        # Build main content with type-specific formatting
+        main_content = ""
+        for i, section in enumerate(planned_sections, 1):
+            main_content += f"\n## {i}. {section.title}\n\n"
+
+            # Type-specific formatting
+            if section.section_type == SectionType.TLDR:
+                # Ensure blockquote formatting
+                content = section.content.strip()
+                if not content.startswith('>'):
+                    content = '> ' + content.replace('\n', '\n> ')
+                main_content += f"{content}\n"
+            elif section.section_type == SectionType.FLASH_NUMBERS:
+                main_content += f"{section.content}\n"
+            elif section.section_type in (SectionType.STATS_TABLE, SectionType.COMPARISON):
+                main_content += f"{section.content}\n"
+            else:
+                main_content += f"{section.content}\n"
+
+            main_content += "\n---\n"
+
+        # Build references
+        references = []
+        for i, source in enumerate(sources, 1):
+            title = source.get('title', source['domain'])
+            references.append(
+                f"[{i}] {title}. *{source['domain']}*. {source['url']}"
+            )
+        references_text = "\n\n".join(references)
+        retrieval_date = datetime.now().strftime("%B %d, %Y")
+
+        # Stats
+        topics_count = len(topics_explored) if topics_explored else len(sources)
+        stats = f"""**Research Statistics:**
+- Total Findings: {len(findings)}
+- Sources Analyzed: {len(sources)}
+- Topics Explored: {topics_count}
+- Research Duration: {session.started_at.strftime('%Y-%m-%d %H:%M')} to {session.ended_at.strftime('%Y-%m-%d %H:%M') if session.ended_at else 'In Progress'}"""
+
+        # Compile full report
+        report = f"""# {session.goal}
+
+*Deep Research Report*
+
+---
+
+**Generated:** {datetime.now().strftime('%B %d, %Y at %H:%M')}
+**Session ID:** {session.id}
+
+---
+
+## Table of Contents
+
+{toc}
+
+---
+{main_content}
+## {len(planned_sections) + 1}. References
+
+*All sources accessed on {retrieval_date}.*
+
+{references_text}
+
+---
+
+## Appendix: Research Methodology
+
+This report was generated using a hierarchical multi-agent research system:
+
+1. **Research Planning**: An AI manager agent analyzed the research question and developed a systematic research strategy.
+2. **Information Gathering**: AI intern agents conducted {len(sources)} web searches, analyzing sources for relevance and credibility.
+3. **Finding Extraction**: {len(findings)} discrete findings were extracted and categorized by type.
+4. **Report Structure Planning**: AI analyzed findings to determine optimal report sections (TL;DR, statistics, comparisons, narratives, etc.).
+5. **Narrative Synthesis**: Each section was generated according to its type with specialized formatting.
+
+{stats}
+
+**Topics Researched:**
+{chr(10).join(['- ' + t for t in topics_explored[:15]]) if topics_explored else '- ' + session.goal}
+
+{self._format_kg_section(kg_exports) if kg_exports else ''}
+
+---
+
+*Report generated by Claude Deep Researcher*
+"""
+        return report
+
     def _compile_report(
         self,
         session: ResearchSession,
@@ -621,15 +1228,7 @@ This report was generated using a hierarchical multi-agent research system:
                 sections.append(f"- {c.get('description', c.get('recommendation', 'Unknown'))}")
             sections.append("")
 
-        # Mermaid diagram (if available and not too large)
-        mermaid = kg_exports.get('mermaid_diagram', '')
-        if mermaid and 'No data yet' not in mermaid and len(mermaid) < 5000:
-            sections.append("**Knowledge Graph Visualization:**")
-            sections.append("")
-            sections.append(mermaid)
-            sections.append("")
-
-        # Link to HTML visualization
+        # Link to HTML visualization (Mermaid diagram removed - HTML visualization is preferred)
         html_viz = kg_exports.get('html_visualization')
         if html_viz:
             sections.append(f"*Interactive visualization available at: {html_viz}*")

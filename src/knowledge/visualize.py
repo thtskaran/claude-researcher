@@ -1,5 +1,6 @@
 """Knowledge graph visualization using Pyvis and Mermaid."""
 
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -48,7 +49,11 @@ class KnowledgeGraphVisualizer:
         width: str = "100%",
         show_physics_controls: bool = True
     ) -> Optional[str]:
-        """Create interactive Pyvis visualization.
+        """Create interactive Pyvis visualization with fast stabilization.
+
+        Uses Barnes-Hut physics (same as before) but with stabilization settings
+        that compute the layout quickly on load and then disable physics for
+        smooth interaction.
 
         Args:
             output_path: Path to save HTML file
@@ -75,12 +80,14 @@ class KnowledgeGraphVisualizer:
             font_color="#333333"
         )
 
-        # Configure physics
+        # Configure physics - same Barnes-Hut as before
         net.barnes_hut(
             gravity=-80000,
             central_gravity=0.3,
             spring_length=200,
-            spring_strength=0.001
+            spring_strength=0.001,
+            damping=0.09,
+            overlap=0.1
         )
 
         if show_physics_controls:
@@ -126,7 +133,62 @@ class KnowledgeGraphVisualizer:
         # Save to file
         output_path = str(output_path)
         net.save_graph(output_path)
+
+        # Post-process HTML to add stabilization and auto-disable physics
+        num_nodes = len(self.store.graph)
+        self._add_stabilization_handler(output_path, num_nodes)
+
         return output_path
+
+    def _add_stabilization_handler(self, html_path: str, num_nodes: int) -> None:
+        """Add JavaScript to configure stabilization and disable physics after completion."""
+        try:
+            with open(html_path, 'r') as f:
+                html_content = f.read()
+
+            # Adjust iterations based on graph size
+            if num_nodes < 100:
+                iterations = 200
+            elif num_nodes < 500:
+                iterations = 150
+            elif num_nodes < 1000:
+                iterations = 100
+            else:
+                iterations = 50
+
+            # JavaScript to configure stabilization and disable physics after
+            stabilization_script = f"""
+    <script type="text/javascript">
+        // Configure stabilization for faster loading
+        network.setOptions({{
+            physics: {{
+                stabilization: {{
+                    enabled: true,
+                    iterations: {iterations},
+                    updateInterval: 25,
+                    fit: true
+                }}
+            }}
+        }});
+
+        // Disable physics after stabilization completes for smooth interaction
+        network.once('stabilizationIterationsDone', function() {{
+            network.setOptions({{ physics: {{ enabled: false }} }});
+            console.log('Physics disabled after stabilization');
+        }});
+
+        // Start stabilization
+        network.stabilize({iterations});
+    </script>
+</body>"""
+
+            # Insert before closing body tag
+            html_content = html_content.replace('</body>', stabilization_script)
+
+            with open(html_path, 'w') as f:
+                f.write(html_content)
+        except Exception:
+            pass  # If post-processing fails, the graph still works with physics
 
     def create_mermaid_diagram(self, max_nodes: int = 30) -> str:
         """Generate Mermaid diagram syntax for embedding in reports.
@@ -261,3 +323,110 @@ class KnowledgeGraphVisualizer:
         if safe and not safe[0].isalpha():
             safe = 'n_' + safe
         return safe[:20]  # Limit length
+
+    def create_static_svg(
+        self,
+        output_path: str = "knowledge_graph.svg",
+        max_nodes: int = 100,
+        figsize: tuple[int, int] = (16, 12)
+    ) -> Optional[str]:
+        """Create a static SVG visualization using matplotlib.
+
+        Useful for embedding in documents where JavaScript isn't available.
+
+        Args:
+            output_path: Path to save SVG file
+            max_nodes: Maximum nodes to display (uses PageRank to select most important)
+            figsize: Figure size in inches (width, height)
+
+        Returns:
+            Path to the generated file, or None if matplotlib not available
+        """
+        if not HAS_NETWORKX or self.store.graph is None or len(self.store.graph) == 0:
+            return None
+
+        try:
+            import matplotlib
+            matplotlib.use('Agg')  # Non-interactive backend
+            import matplotlib.pyplot as plt
+        except ImportError:
+            return None
+
+        graph = self.store.graph
+
+        # If too many nodes, select most important by PageRank
+        if len(graph) > max_nodes:
+            try:
+                pagerank = nx.pagerank(graph)
+                top_nodes = sorted(
+                    pagerank.items(),
+                    key=lambda x: x[1],
+                    reverse=True
+                )[:max_nodes]
+                included_nodes = {n[0] for n in top_nodes}
+                graph = graph.subgraph(included_nodes).copy()
+            except Exception:
+                # Fallback: just take first N nodes
+                included_nodes = set(list(graph.nodes())[:max_nodes])
+                graph = graph.subgraph(included_nodes).copy()
+
+        # Compute layout using NetworkX
+        num_nodes = len(graph)
+        try:
+            if num_nodes < 100:
+                positions = nx.kamada_kawai_layout(graph)
+            else:
+                k = 2.0 / (num_nodes ** 0.5)
+                positions = nx.spring_layout(graph, k=k, iterations=100, seed=42)
+        except Exception:
+            positions = nx.circular_layout(graph)
+
+        # Create figure
+        fig, ax = plt.subplots(figsize=figsize)
+        ax.set_aspect('equal')
+        ax.axis('off')
+
+        # Get node colors
+        node_colors = []
+        for node_id in graph.nodes():
+            entity_type = graph.nodes[node_id].get('entity_type', 'DEFAULT')
+            color = self.ENTITY_COLORS.get(entity_type, self.ENTITY_COLORS['DEFAULT'])
+            node_colors.append(color)
+
+        # Get node sizes based on degree
+        node_sizes = []
+        for node_id in graph.nodes():
+            size = 100 + (graph.degree(node_id) * 50)
+            node_sizes.append(min(size, 1000))
+
+        # Draw the graph
+        nx.draw_networkx_edges(
+            graph, positions, ax=ax,
+            alpha=0.5, edge_color='#9ca3af',
+            arrows=True, arrowsize=15,
+            connectionstyle="arc3,rad=0.1"
+        )
+
+        nx.draw_networkx_nodes(
+            graph, positions, ax=ax,
+            node_color=node_colors,
+            node_size=node_sizes,
+            alpha=0.9
+        )
+
+        # Add labels
+        labels = {
+            node_id: graph.nodes[node_id].get('name', node_id)[:20]
+            for node_id in graph.nodes()
+        }
+        nx.draw_networkx_labels(
+            graph, positions, labels, ax=ax,
+            font_size=8, font_weight='bold'
+        )
+
+        # Save as SVG
+        plt.tight_layout()
+        plt.savefig(output_path, format='svg', bbox_inches='tight', dpi=150)
+        plt.close()
+
+        return output_path

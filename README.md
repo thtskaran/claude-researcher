@@ -358,6 +358,8 @@ Built in real-time as research progresses:
 
 The manager uses KG insights to decide what to research next.
 
+**Fast-Loading Visualization**: The HTML visualization uses Barnes-Hut physics with optimized stabilization settings. The graph stabilizes quickly on load (using fewer iterations for large graphs) and then physics is automatically disabled for smooth interaction. Nodes can still be dragged and zoomed.
+
 ### Hybrid Memory
 
 For long research sessions:
@@ -369,19 +371,52 @@ For long research sessions:
 
 ## Report Structure
 
-Generated reports include:
+Reports use **dynamic AI-driven section planning**. Instead of a fixed template, the AI analyzes findings and decides what sections are needed.
 
-| Section | Content |
-|---------|---------|
-| Executive Summary | 3-4 paragraph overview |
-| Introduction | Background and scope |
-| Thematic Sections | 4-6 AI-identified themes with narrative |
-| Analysis & Insights | Cross-cutting patterns |
-| Conclusions | Direct answers, recommendations |
-| References | All sources with URLs |
-| Appendix | Methodology, stats, KG analysis |
+### How It Works
 
-Reports use **Opus with extended thinking** for deep synthesis.
+1. **Structure Planning** - AI analyzes findings and outputs a JSON plan of sections
+2. **Section Generation** - Each section generated according to its type with specialized formatting
+
+### Available Section Types
+
+| Type | Format | When Used |
+|------|--------|-----------|
+| **TL;DR** | 2-3 sentence blockquote | Always first - bottom-line answer |
+| **Flash Numbers** | `**94.4%** - description` | When quantitative data exists |
+| **Stats Table** | Markdown comparison table | When comparing multiple items |
+| **Comparison** | Side-by-side analysis | When evaluating approaches/systems |
+| **Timeline** | Chronological progression | When temporal data exists |
+| **Narrative** | Standard prose (4-6 paragraphs) | Core thematic sections |
+| **Analysis** | Deep synthesis | Patterns and insights |
+| **Gaps** | Open questions | Uncertainties and unknowns |
+| **Conclusions** | Recommendations | Always near end |
+
+### Example Output
+
+```markdown
+## 1. TL;DR
+> AI-powered pentesting tools can generate working exploits in 10-15 minutes,
+> with 94.4% of LLM agents vulnerable to prompt injection attacks.
+
+## 2. Key Numbers
+**94.4%** - LLM agents vulnerable to prompt injection
+**10-15 min** - Time to generate working CVE exploits
+**150+** - Tools orchestrated by Hexstrike-AI
+
+## 3. Current Threat Landscape
+[narrative prose...]
+
+## 4. Framework Comparison
+| Framework | Focus | Release | Tools |
+|-----------|-------|---------|-------|
+| PentestGPT | ... | ... | ... |
+
+## 5. Analysis & Patterns
+[synthesis...]
+```
+
+Reports use **Sonnet** for section generation with specialized prompts per section type.
 
 ---
 
@@ -563,12 +598,12 @@ claude-researcher/
 │   │   ├── store.py      # NetworkX + SQLite hybrid
 │   │   ├── query.py      # Gap detection interface
 │   │   ├── credibility.py # Source scoring
-│   │   └── visualize.py  # Pyvis, Mermaid output
+│   │   └── visualize.py  # Pyvis (pre-computed layout), SVG export
 │   ├── memory/
 │   │   ├── hybrid.py     # Buffer + summary compression
 │   │   └── external.py   # SQLite external store
 │   ├── reports/
-│   │   └── writer.py     # Narrative report generator
+│   │   └── writer.py     # Dynamic section planning, specialized generators
 │   ├── models/
 │   │   └── findings.py   # Data models
 │   ├── storage/
