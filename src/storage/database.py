@@ -122,8 +122,35 @@ class ResearchDatabase:
                 created_at TEXT NOT NULL,
                 validated_by_manager INTEGER DEFAULT 0,
                 manager_notes TEXT,
+                verification_status TEXT,
+                verification_method TEXT,
+                kg_support_score REAL DEFAULT 0.0,
+                original_confidence REAL,
                 FOREIGN KEY (session_id) REFERENCES sessions(id),
                 FOREIGN KEY (topic_id) REFERENCES topics(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS verification_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                finding_id INTEGER NOT NULL,
+                original_confidence REAL,
+                verified_confidence REAL,
+                verification_status TEXT,
+                verification_method TEXT,
+                consistency_score REAL DEFAULT 0.0,
+                kg_support_score REAL DEFAULT 0.0,
+                kg_entity_matches INTEGER DEFAULT 0,
+                kg_supporting_relations INTEGER DEFAULT 0,
+                critic_iterations INTEGER DEFAULT 0,
+                corrections_made TEXT,
+                external_verification_used INTEGER DEFAULT 0,
+                contradictions TEXT,
+                verification_time_ms REAL,
+                created_at TEXT NOT NULL,
+                error TEXT,
+                FOREIGN KEY (session_id) REFERENCES sessions(id),
+                FOREIGN KEY (finding_id) REFERENCES findings(id)
             );
 
             CREATE TABLE IF NOT EXISTS messages (
@@ -141,6 +168,8 @@ class ResearchDatabase:
             CREATE INDEX IF NOT EXISTS idx_findings_session ON findings(session_id);
             CREATE INDEX IF NOT EXISTS idx_topics_session ON topics(session_id);
             CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
+            CREATE INDEX IF NOT EXISTS idx_verification_session ON verification_results(session_id);
+            CREATE INDEX IF NOT EXISTS idx_verification_finding ON verification_results(finding_id);
         """)
         await self._connection.commit()
 
@@ -285,8 +314,9 @@ class ResearchDatabase:
             """
             INSERT INTO findings (
                 session_id, topic_id, content, finding_type, source_url,
-                confidence, search_query, created_at, validated_by_manager, manager_notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                confidence, search_query, created_at, validated_by_manager, manager_notes,
+                verification_status, verification_method, kg_support_score, original_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 finding.session_id,
@@ -299,11 +329,145 @@ class ResearchDatabase:
                 finding.created_at.isoformat(),
                 1 if finding.validated_by_manager else 0,
                 finding.manager_notes,
+                finding.verification_status,
+                finding.verification_method,
+                finding.kg_support_score,
+                finding.original_confidence,
             ),
         )
         await self._connection.commit()
         finding.id = cursor.lastrowid
         return finding
+
+    async def update_finding_verification(
+        self,
+        finding_id: int,
+        verification_status: str,
+        verification_method: str,
+        kg_support_score: float = 0.0,
+        original_confidence: Optional[float] = None,
+        new_confidence: Optional[float] = None,
+    ) -> None:
+        """Update a finding's verification status."""
+        if new_confidence is not None:
+            await self._connection.execute(
+                """
+                UPDATE findings SET
+                    verification_status = ?,
+                    verification_method = ?,
+                    kg_support_score = ?,
+                    original_confidence = ?,
+                    confidence = ?
+                WHERE id = ?
+                """,
+                (verification_status, verification_method, kg_support_score,
+                 original_confidence, new_confidence, finding_id),
+            )
+        else:
+            await self._connection.execute(
+                """
+                UPDATE findings SET
+                    verification_status = ?,
+                    verification_method = ?,
+                    kg_support_score = ?,
+                    original_confidence = ?
+                WHERE id = ?
+                """,
+                (verification_status, verification_method, kg_support_score,
+                 original_confidence, finding_id),
+            )
+        await self._connection.commit()
+
+    async def save_verification_result(
+        self,
+        session_id: str,
+        finding_id: int,
+        result_dict: dict,
+    ) -> int:
+        """Save a verification result."""
+        import json
+
+        cursor = await self._connection.execute(
+            """
+            INSERT INTO verification_results (
+                session_id, finding_id, original_confidence, verified_confidence,
+                verification_status, verification_method, consistency_score,
+                kg_support_score, kg_entity_matches, kg_supporting_relations,
+                critic_iterations, corrections_made, external_verification_used,
+                contradictions, verification_time_ms, created_at, error
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                finding_id,
+                result_dict.get("original_confidence"),
+                result_dict.get("verified_confidence"),
+                result_dict.get("verification_status"),
+                result_dict.get("verification_method"),
+                result_dict.get("consistency_score", 0.0),
+                result_dict.get("kg_support_score", 0.0),
+                result_dict.get("kg_entity_matches", 0),
+                result_dict.get("kg_supporting_relations", 0),
+                result_dict.get("critic_iterations", 0),
+                json.dumps(result_dict.get("corrections_made", [])),
+                1 if result_dict.get("external_verification_used") else 0,
+                json.dumps(result_dict.get("contradictions", [])),
+                result_dict.get("verification_time_ms", 0.0),
+                datetime.now().isoformat(),
+                result_dict.get("error"),
+            ),
+        )
+        await self._connection.commit()
+        return cursor.lastrowid
+
+    async def get_verification_stats(self, session_id: str) -> dict:
+        """Get verification statistics for a session."""
+        cursor = await self._connection.execute(
+            """
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN verification_status = 'verified' THEN 1 ELSE 0 END) as verified,
+                SUM(CASE WHEN verification_status = 'flagged' THEN 1 ELSE 0 END) as flagged,
+                SUM(CASE WHEN verification_status = 'rejected' THEN 1 ELSE 0 END) as rejected,
+                SUM(CASE WHEN verification_status = 'skipped' THEN 1 ELSE 0 END) as skipped,
+                AVG(original_confidence) as avg_original,
+                AVG(verified_confidence) as avg_calibrated,
+                AVG(verification_time_ms) as avg_time_ms
+            FROM verification_results WHERE session_id = ?
+            """,
+            (session_id,),
+        )
+        row = await cursor.fetchone()
+
+        if not row or row["total"] == 0:
+            return {
+                "total": 0,
+                "verified": 0,
+                "flagged": 0,
+                "rejected": 0,
+                "skipped": 0,
+                "verification_rate": 0.0,
+                "avg_original_confidence": 0.0,
+                "avg_calibrated_confidence": 0.0,
+                "avg_time_ms": 0.0,
+            }
+
+        total = row["total"]
+        verified = row["verified"] or 0
+        effective_total = total - (row["skipped"] or 0)
+        verification_rate = verified / effective_total * 100 if effective_total > 0 else 0.0
+
+        return {
+            "total": total,
+            "verified": verified,
+            "flagged": row["flagged"] or 0,
+            "rejected": row["rejected"] or 0,
+            "skipped": row["skipped"] or 0,
+            "verification_rate": verification_rate,
+            "avg_original_confidence": row["avg_original"] or 0.0,
+            "avg_calibrated_confidence": row["avg_calibrated"] or 0.0,
+            "avg_time_ms": row["avg_time_ms"] or 0.0,
+        }
 
     async def get_session_findings(self, session_id: str) -> list[Finding]:
         """Get all findings for a session."""
@@ -324,6 +488,10 @@ class ResearchDatabase:
                 created_at=datetime.fromisoformat(row["created_at"]),
                 validated_by_manager=bool(row["validated_by_manager"]),
                 manager_notes=row["manager_notes"],
+                verification_status=row["verification_status"] if "verification_status" in row.keys() else None,
+                verification_method=row["verification_method"] if "verification_method" in row.keys() else None,
+                kg_support_score=row["kg_support_score"] if "kg_support_score" in row.keys() else 0.0,
+                original_confidence=row["original_confidence"] if "original_confidence" in row.keys() else None,
             )
             for row in rows
         ]

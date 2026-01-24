@@ -2,7 +2,7 @@
 
 
 import json
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 from datetime import datetime
 
 from .base import BaseAgent, AgentConfig
@@ -11,6 +11,8 @@ from .base import BaseAgent, AgentConfig
 def _get_current_year() -> int:
     """Get the current year for search queries."""
     return datetime.now().year
+
+
 from ..models.findings import (
     AgentRole,
     Finding,
@@ -21,6 +23,9 @@ from ..models.findings import (
 from ..tools.web_search import WebSearchTool, SearchResult
 from ..storage.database import ResearchDatabase
 from rich.console import Console
+
+if TYPE_CHECKING:
+    from ..verification import VerificationPipeline
 
 
 class InternAgent(BaseAgent):
@@ -39,6 +44,7 @@ class InternAgent(BaseAgent):
         db: ResearchDatabase,
         config: Optional[AgentConfig] = None,
         console: Optional[Console] = None,
+        verification_pipeline: Optional["VerificationPipeline"] = None,
     ):
         super().__init__(AgentRole.INTERN, db, config, console)
         self.search_tool = WebSearchTool(max_results=10)
@@ -46,6 +52,7 @@ class InternAgent(BaseAgent):
         self.findings: list[Finding] = []
         self.searches_performed: int = 0
         self.suggested_followups: list[str] = []
+        self.verification_pipeline = verification_pipeline
 
     @property
     def system_prompt(self) -> str:
@@ -366,6 +373,22 @@ Format your response as JSON:
                         confidence=f.get("confidence", 0.7),
                         search_query=query,
                     )
+
+                    # Run streaming verification if pipeline is available
+                    if self.verification_pipeline:
+                        try:
+                            result = await self.verification_pipeline.verify_intern_finding(
+                                finding, session_id
+                            )
+                            # Update finding with verification results
+                            finding.original_confidence = finding.confidence
+                            finding.confidence = result.verified_confidence
+                            finding.verification_status = result.verification_status.value
+                            finding.verification_method = result.verification_method.value
+                            finding.kg_support_score = result.kg_support_score
+                        except Exception as e:
+                            self._log(f"[VERIFY] Error: {e}", style="dim")
+
                     await self.db.save_finding(finding)
                     findings.append(finding)
                     self.findings.append(finding)
@@ -389,6 +412,21 @@ Format your response as JSON:
                         confidence=0.6,
                         search_query=query,
                     )
+
+                    # Run streaming verification if pipeline is available
+                    if self.verification_pipeline:
+                        try:
+                            result = await self.verification_pipeline.verify_intern_finding(
+                                finding, session_id
+                            )
+                            finding.original_confidence = finding.confidence
+                            finding.confidence = result.verified_confidence
+                            finding.verification_status = result.verification_status.value
+                            finding.verification_method = result.verification_method.value
+                            finding.kg_support_score = result.kg_support_score
+                        except Exception:
+                            pass
+
                     await self.db.save_finding(finding)
                     findings.append(finding)
                     self.findings.append(finding)

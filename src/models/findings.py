@@ -36,6 +36,12 @@ class Finding(BaseModel):
     validated_by_manager: bool = False
     manager_notes: Optional[str] = None
 
+    # Verification fields
+    verification_status: Optional[str] = None  # verified/flagged/rejected/skipped
+    verification_method: Optional[str] = None  # cove/critic/kg_match/streaming/batch
+    kg_support_score: float = 0.0  # KG corroboration score (0-1)
+    original_confidence: Optional[float] = None  # Confidence before verification calibration
+
 
 class ResearchTopic(BaseModel):
     """A research topic or subtopic to investigate."""

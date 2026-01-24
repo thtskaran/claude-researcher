@@ -1,7 +1,7 @@
 """Parallel research execution with multiple interns."""
 
 import asyncio
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -10,6 +10,9 @@ from .intern import InternAgent
 from ..models.findings import ManagerDirective, InternReport, Finding
 from ..storage.database import ResearchDatabase
 from rich.console import Console
+
+if TYPE_CHECKING:
+    from ..verification import VerificationPipeline
 
 
 @dataclass
@@ -40,6 +43,7 @@ class ParallelInternPool:
         pool_size: int = 3,
         config: Optional[AgentConfig] = None,
         console: Optional[Console] = None,
+        verification_pipeline: Optional["VerificationPipeline"] = None,
     ):
         """Initialize the intern pool.
 
@@ -48,16 +52,18 @@ class ParallelInternPool:
             pool_size: Number of interns to run in parallel (default: 3)
             config: Agent configuration
             console: Rich console for output
+            verification_pipeline: Optional verification pipeline for hallucination reduction
         """
         self.db = db
         self.pool_size = pool_size
         self.config = config or AgentConfig()
         self.console = console or Console()
+        self.verification_pipeline = verification_pipeline
 
         # Create intern instances
         self.interns: list[InternAgent] = []
         for i in range(pool_size):
-            intern = InternAgent(db, config, console)
+            intern = InternAgent(db, config, console, verification_pipeline)
             self.interns.append(intern)
 
     async def research_parallel(
@@ -252,3 +258,13 @@ Return ONLY a JSON array of {max_aspects} aspects:
         """Reset all interns in the pool."""
         for intern in self.interns:
             intern.reset()
+
+    def set_verification_pipeline(self, pipeline: "VerificationPipeline") -> None:
+        """Set the verification pipeline for all interns.
+
+        Args:
+            pipeline: The verification pipeline to use
+        """
+        self.verification_pipeline = pipeline
+        for intern in self.interns:
+            intern.verification_pipeline = pipeline

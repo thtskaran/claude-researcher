@@ -576,3 +576,139 @@ Return as JSON array:
         stats['contradictions'] = len(self.contradictions)
         stats['indexed_names'] = len(self.entity_by_name)
         return stats
+
+    async def get_kg_support_score(
+        self,
+        content: str,
+        source_url: Optional[str] = None,
+    ) -> float:
+        """Calculate KG support score for a finding.
+
+        Returns 0-1 score based on:
+        - Entity matches in the KG
+        - Supporting relations in the KG
+
+        Args:
+            content: The finding content to check
+            source_url: Optional source URL for context
+
+        Returns:
+            Support score between 0 and 1
+        """
+        # Extract entities from the content (quick extraction)
+        entities = await self._quick_entity_extract(content)
+        if not entities:
+            return 0.0
+
+        entity_match_count = 0
+        supporting_relations = 0
+
+        for entity_name in entities:
+            # Check if entity exists in KG
+            entity_key = entity_name.lower().strip()
+            if entity_key in self.entity_by_name:
+                entity_match_count += 1
+                entity_id = self.entity_by_name[entity_key]
+
+                # Check for supporting relations
+                relations = self.store.get_entity_relations(entity_id)
+                if relations:
+                    supporting_relations += len(relations.get('outgoing', []))
+                    supporting_relations += len(relations.get('incoming', []))
+
+        if not entities:
+            return 0.0
+
+        # Calculate score: 60% entity matches + 40% relation support
+        entity_score = min(entity_match_count / len(entities), 1.0)
+        relation_score = min(supporting_relations / (len(entities) * 2), 1.0)
+
+        return (entity_score * 0.6) + (relation_score * 0.4)
+
+    async def _quick_entity_extract(self, content: str) -> list[str]:
+        """Quick entity extraction without LLM call.
+
+        Uses simple NLP heuristics to extract potential entity names.
+        """
+        import re
+
+        entities = []
+
+        # Extract capitalized phrases (likely proper nouns)
+        cap_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b'
+        matches = re.findall(cap_pattern, content)
+        entities.extend(matches)
+
+        # Extract quoted terms
+        quoted_pattern = r'"([^"]+)"|\'([^\']+)\''
+        for match in re.findall(quoted_pattern, content):
+            for group in match:
+                if group:
+                    entities.append(group)
+
+        # Extract terms with numbers (likely specific things)
+        num_pattern = r'\b([A-Za-z]+[-\s]?\d+(?:\.\d+)?)\b'
+        entities.extend(re.findall(num_pattern, content))
+
+        # Deduplicate and limit
+        seen = set()
+        unique_entities = []
+        for e in entities:
+            e_lower = e.lower()
+            if e_lower not in seen and len(e) > 2:
+                seen.add(e_lower)
+                unique_entities.append(e)
+
+        return unique_entities[:10]  # Limit to 10 entities
+
+    async def check_contradictions_detailed(
+        self,
+        content: str,
+    ) -> dict:
+        """Check for contradictions with detailed results.
+
+        Args:
+            content: The finding content to check
+
+        Returns:
+            Dict with has_contradictions bool and list of contradiction details
+        """
+        entities = await self._quick_entity_extract(content)
+        contradictions = []
+
+        for entity_name in entities:
+            entity_key = entity_name.lower().strip()
+            if entity_key not in self.entity_by_name:
+                continue
+
+            entity_id = self.entity_by_name[entity_key]
+            relations = self.store.get_entity_relations(entity_id)
+
+            if not relations:
+                continue
+
+            # Check for contradictory predicates in the content
+            content_lower = content.lower()
+            for relation in relations.get('outgoing', []):
+                predicate = relation.get('predicate', '')
+
+                # Check if content contradicts existing relation
+                for contra_pair in self.CONTRADICTORY_PREDICATES:
+                    # Check if content has opposite predicate
+                    if contra_pair[0] in predicate and contra_pair[1] in content_lower:
+                        contradictions.append({
+                            "conflicting_id": relation.get('relation_id', 'unknown'),
+                            "description": f"Content suggests '{contra_pair[1]}' but KG has '{contra_pair[0]}' for {entity_name}",
+                            "severity": "medium",
+                        })
+                    elif contra_pair[1] in predicate and contra_pair[0] in content_lower:
+                        contradictions.append({
+                            "conflicting_id": relation.get('relation_id', 'unknown'),
+                            "description": f"Content suggests '{contra_pair[0]}' but KG has '{contra_pair[1]}' for {entity_name}",
+                            "severity": "medium",
+                        })
+
+        return {
+            "has_contradictions": len(contradictions) > 0,
+            "contradictions": contradictions,
+        }

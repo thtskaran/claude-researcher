@@ -2,7 +2,7 @@
 
 import json
 from typing import Any, Optional, TYPE_CHECKING
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from .base import BaseAgent, AgentConfig
 from .intern import InternAgent
@@ -24,7 +24,12 @@ from ..knowledge import (
     CredibilityScorer,
 )
 from ..memory import HybridMemory, ExternalMemoryStore
-from ..retrieval import FindingsRetriever, get_findings_retriever
+from ..retrieval import get_findings_retriever
+from ..verification import (
+    VerificationPipeline,
+    VerificationConfig,
+    BatchVerificationResult,
+)
 from rich.console import Console
 
 if TYPE_CHECKING:
@@ -110,6 +115,21 @@ class ManagerAgent(BaseAgent):
             use_reranker=True,  # Quality is priority
         )
 
+        # Verification pipeline for hallucination reduction
+        self.verification_config = VerificationConfig()
+        self.verification_pipeline = VerificationPipeline(
+            llm_callback=self._verification_llm_callback,
+            knowledge_graph=self.knowledge_graph,
+            config=self.verification_config,
+        )
+        # Pass pipeline to intern and intern pool
+        self.intern.verification_pipeline = self.verification_pipeline
+        if self.intern_pool:
+            self.intern_pool.set_verification_pipeline(self.verification_pipeline)
+
+        # Track batch verification results for reports
+        self.last_batch_verification: Optional[BatchVerificationResult] = None
+
     async def _kg_llm_callback(self, prompt: str) -> str:
         """LLM callback for knowledge graph extraction (uses faster model)."""
         # Use a simpler model for KG extraction to save costs
@@ -124,6 +144,15 @@ class ManagerAgent(BaseAgent):
         """LLM callback for memory summarization (uses faster model)."""
         original_model = self.config.model
         self.config.model = "haiku"  # Fast model for summarization
+        try:
+            return await self.call_claude(prompt)
+        finally:
+            self.config.model = original_model
+
+    async def _verification_llm_callback(self, prompt: str, model: str = "sonnet") -> str:
+        """LLM callback for verification (model specified by verification pipeline)."""
+        original_model = self.config.model
+        self.config.model = model
         try:
             return await self.call_claude(prompt)
         finally:
@@ -686,16 +715,69 @@ Return ONLY the JSON."""
         return None
 
     async def _critique_report(self, report: InternReport) -> str:
-        """Critique an Intern's report."""
+        """Critique an Intern's report with batch verification."""
+        # Run batch verification on findings if not already verified
+        unverified = [f for f in report.findings if not f.verification_status]
+        if unverified and self.verification_config.enable_batch_verification:
+            self._log(f"[VERIFY] Running batch verification on {len(unverified)} findings...", style="dim")
+            batch_result = await self.verification_pipeline.verify_batch(
+                unverified, self.session_id
+            )
+            self.last_batch_verification = batch_result
+
+            # Update findings with verification results
+            for result in batch_result.results:
+                for f in report.findings:
+                    if str(f.id or hash(f.content)) == result.finding_id:
+                        f.original_confidence = f.confidence
+                        f.confidence = result.verified_confidence
+                        f.verification_status = result.verification_status.value
+                        f.verification_method = result.verification_method.value
+                        f.kg_support_score = result.kg_support_score
+
+                        # Update in database
+                        if f.id:
+                            await self.db.update_finding_verification(
+                                finding_id=f.id,
+                                verification_status=f.verification_status,
+                                verification_method=f.verification_method,
+                                kg_support_score=f.kg_support_score,
+                                original_confidence=f.original_confidence,
+                                new_confidence=f.confidence,
+                            )
+                        break
+
+            # Log verification summary
+            self._log(
+                f"[VERIFY] Results: {batch_result.verified_count} verified, "
+                f"{batch_result.flagged_count} flagged, {batch_result.rejected_count} rejected",
+                style="dim"
+            )
+
+        # Separate findings by verification status
+        verified = [f for f in report.findings if f.verification_status == "verified"]
+        flagged = [f for f in report.findings if f.verification_status == "flagged"]
+        rejected = [f for f in report.findings if f.verification_status == "rejected"]
+
         findings_text = "\n".join([
-            f"- [{f.finding_type.value}] {f.content} (confidence: {f.confidence})"
+            f"- [{f.finding_type.value}] {f.content} (confidence: {f.confidence:.0%}, status: {f.verification_status or 'pending'})"
             for f in report.findings[:10]
         ])
+
+        verification_summary = ""
+        if verified or flagged or rejected:
+            verification_summary = f"""
+Verification Summary:
+- Verified (high confidence): {len(verified)}
+- Flagged (needs review): {len(flagged)}
+- Rejected (low confidence): {len(rejected)}
+"""
 
         prompt = f"""Critique this research report:
 
 Topic: {report.topic}
 Searches: {report.searches_performed}
+{verification_summary}
 Findings:
 {findings_text}
 
@@ -703,11 +785,12 @@ Suggested follow-ups: {report.suggested_followups}
 
 Evaluate:
 1. Quality of findings (depth, accuracy, relevance)
-2. Coverage (what's missing?)
-3. Credibility of sources
-4. Suggestions for improvement
+2. Verification status - pay special attention to flagged and rejected findings
+3. Coverage (what's missing?)
+4. Credibility of sources
+5. Suggestions for improvement
 
-Be constructive but rigorous."""
+Be constructive but rigorous. Flag any rejected findings that should be re-researched."""
 
         return await self.call_claude(prompt)
 
@@ -739,38 +822,80 @@ Be constructive but rigorous."""
             self.topics_queue.append(topic)
 
     async def _synthesize_report(self) -> ManagerReport:
-        """Synthesize all findings into a final report."""
+        """Synthesize all findings into a final report with verification awareness."""
         time_elapsed = self._get_elapsed_minutes()
         time_remaining = self.time_limit_minutes - time_elapsed
 
-        # Get top findings
-        key_findings = sorted(
-            self.all_findings,
-            key=lambda f: f.confidence,
-            reverse=True
-        )[:20]
+        # Run batch verification on any unverified findings
+        unverified = [f for f in self.all_findings if not f.verification_status]
+        if unverified and self.verification_config.enable_batch_verification:
+            self._log(f"[VERIFY] Final verification on {len(unverified)} findings...", style="dim")
+            batch_result = await self.verification_pipeline.verify_batch(
+                unverified, self.session_id
+            )
+            self.last_batch_verification = batch_result
+
+            # Update findings with verification results
+            for result in batch_result.results:
+                for f in self.all_findings:
+                    if str(f.id or hash(f.content)) == result.finding_id:
+                        f.original_confidence = f.confidence
+                        f.confidence = result.verified_confidence
+                        f.verification_status = result.verification_status.value
+                        f.verification_method = result.verification_method.value
+                        f.kg_support_score = result.kg_support_score
+                        break
+
+        # Separate findings by verification status
+        verified_findings = [f for f in self.all_findings if f.verification_status == "verified"]
+        flagged_findings = [f for f in self.all_findings if f.verification_status == "flagged"]
+        rejected_findings = [f for f in self.all_findings if f.verification_status == "rejected"]
+        other_findings = [f for f in self.all_findings if f.verification_status not in ["verified", "flagged", "rejected"]]
+
+        # Priority: verified > flagged > unverified > rejected
+        # Weight by calibrated confidence
+        priority_findings = (
+            sorted(verified_findings, key=lambda f: f.confidence, reverse=True) +
+            sorted(flagged_findings, key=lambda f: f.confidence, reverse=True) +
+            sorted(other_findings, key=lambda f: f.confidence, reverse=True)
+        )
+        key_findings = priority_findings[:20]
 
         findings_text = "\n".join([
-            f"- [{f.finding_type.value}] {f.content}"
+            f"- [{f.finding_type.value}] {f.content} (verified: {f.verification_status or 'pending'}, confidence: {f.confidence:.0%})"
             for f in key_findings
         ])
+
+        # Verification context for synthesis
+        verification_context = ""
+        if verified_findings or flagged_findings or rejected_findings:
+            verification_context = f"""
+Verification Summary:
+- High confidence (verified): {len(verified_findings)} findings
+- Medium confidence (flagged for review): {len(flagged_findings)} findings
+- Low confidence (rejected): {len(rejected_findings)} findings
+- Unverified: {len(other_findings)} findings
+
+Note: Prioritize verified findings in your synthesis. Flagged findings may need additional context.
+Rejected findings ({len(rejected_findings)}) have low confidence and should not be primary conclusions.
+"""
 
         prompt = f"""Synthesize this research into a final report.
 
 Research Goal: {self.research_goal}
-
-Key Findings:
+{verification_context}
+Key Findings (sorted by verification confidence):
 {findings_text}
 
 Topics Explored: {[t.topic for t in self.completed_topics]}
 Topics Remaining: {[t.topic for t in self.topics_queue[:5]]}
 
 Create:
-1. A comprehensive summary (2-3 paragraphs)
-2. Quality assessment of the research
+1. A comprehensive summary (2-3 paragraphs) - base conclusions on verified/high-confidence findings
+2. Quality assessment of the research (including note on verification rates)
 3. Recommended next steps if more time available
 
-Be thorough and insightful."""
+Be thorough and insightful. Note where findings have lower confidence."""
 
         response = await self.call_claude(prompt, use_thinking=True)
 

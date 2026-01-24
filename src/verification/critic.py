@@ -1,0 +1,338 @@
+"""CRITIC verification implementation.
+
+CRITIC is a tool-interactive verification method that:
+1. Generates initial response (the finding)
+2. Critiques the response using external tools
+3. Revises based on critique
+4. Iterates until confident or max iterations
+
+Reference: "CRITIC: Large Language Models Can Self-Correct with Tool-Interactive Critiquing"
+"""
+
+import asyncio
+import json
+import re
+import time
+from typing import Callable, Optional, Any
+
+from .models import (
+    VerificationResult,
+    VerificationStatus,
+    VerificationMethod,
+    VerificationConfig,
+    ContradictionDetail,
+)
+from .confidence import ConfidenceCalibrator
+
+
+class CRITICVerifier:
+    """CRITIC verification with tool-interactive critiquing.
+
+    Uses external verification (web search) to validate claims
+    and iteratively corrects findings until confident.
+    """
+
+    def __init__(
+        self,
+        llm_callback: Callable[[str, str], Any],  # (prompt, model) -> response
+        search_callback: Optional[Callable[[str], Any]] = None,  # query -> results
+        config: Optional[VerificationConfig] = None,
+    ):
+        """Initialize CRITIC verifier.
+
+        Args:
+            llm_callback: Async function to call LLM with (prompt, model)
+            search_callback: Optional async function to perform web search
+            config: Verification configuration
+        """
+        self.llm_callback = llm_callback
+        self.search_callback = search_callback
+        self.config = config or VerificationConfig()
+        self.calibrator = ConfidenceCalibrator(config)
+
+    async def verify(
+        self,
+        finding_content: str,
+        finding_id: str,
+        original_confidence: float,
+        source_url: Optional[str] = None,
+        cove_result: Optional[VerificationResult] = None,
+    ) -> VerificationResult:
+        """Run CRITIC verification with iterative critique and correction.
+
+        Args:
+            finding_content: The content of the finding to verify
+            finding_id: Unique identifier for the finding
+            original_confidence: Original confidence score (0-1)
+            source_url: Optional source URL for context
+            cove_result: Optional previous CoVe result to build on
+
+        Returns:
+            VerificationResult with corrections and calibrated confidence
+        """
+        start_time = time.time()
+
+        current_content = finding_content
+        corrections = []
+        iteration = 0
+        current_confidence = original_confidence
+        external_verification_used = False
+
+        # Get initial signals from CoVe if available
+        consistency_score = cove_result.consistency_score if cove_result else 0.0
+        kg_support = cove_result.kg_support_score if cove_result else 0.0
+        questions_asked = cove_result.questions_asked if cove_result else []
+
+        try:
+            while iteration < self.config.max_critic_iterations:
+                iteration += 1
+
+                # Step 1: Critique the current content
+                critique = await self._generate_critique(
+                    current_content, source_url
+                )
+
+                if not critique.get("needs_correction"):
+                    # Critique says it's fine, we're done
+                    break
+
+                # Step 2: Optionally verify with external search
+                if self.search_callback and critique.get("verify_externally"):
+                    search_results = await self._external_verify(
+                        critique.get("search_query", current_content[:100])
+                    )
+                    if search_results:
+                        external_verification_used = True
+                        critique["external_evidence"] = search_results
+
+                # Step 3: Generate correction
+                corrected = await self._generate_correction(
+                    current_content, critique
+                )
+
+                if corrected and corrected != current_content:
+                    corrections.append(
+                        f"Iteration {iteration}: {critique.get('issue', 'Correction made')}"
+                    )
+                    current_content = corrected
+                else:
+                    # No meaningful correction possible
+                    break
+
+                # Step 4: Update confidence based on correction
+                # Each correction slightly reduces confidence (original was wrong)
+                current_confidence *= 0.9
+
+            # Final calibration
+            calibration = self.calibrator.calibrate(
+                original_confidence=original_confidence,
+                cove_consistency_score=consistency_score,
+                kg_support_score=kg_support,
+                critic_corrections=len(corrections),
+            )
+
+            return VerificationResult(
+                finding_id=finding_id,
+                original_confidence=original_confidence,
+                verified_confidence=calibration.calibrated_confidence,
+                verification_status=calibration.status,
+                verification_method=VerificationMethod.CRITIC if not cove_result else VerificationMethod.COVE_CRITIC,
+                questions_asked=questions_asked,
+                consistency_score=consistency_score,
+                kg_support_score=kg_support,
+                critic_iterations=iteration,
+                corrections_made=corrections,
+                external_verification_used=external_verification_used,
+                verification_time_ms=(time.time() - start_time) * 1000,
+            )
+
+        except Exception as e:
+            return VerificationResult(
+                finding_id=finding_id,
+                original_confidence=original_confidence,
+                verified_confidence=original_confidence,
+                verification_status=VerificationStatus.SKIPPED,
+                verification_method=VerificationMethod.CRITIC,
+                critic_iterations=iteration,
+                corrections_made=corrections,
+                verification_time_ms=(time.time() - start_time) * 1000,
+                error=str(e),
+            )
+
+    async def _generate_critique(
+        self,
+        content: str,
+        source_url: Optional[str],
+    ) -> dict:
+        """Generate critique of the finding content."""
+        source_context = f"\nSource: {source_url}" if source_url else ""
+
+        prompt = f"""Critically analyze this research finding for potential issues.
+
+FINDING: {content}{source_context}
+
+Check for:
+1. Factual accuracy - Are the stated facts verifiable?
+2. Logical consistency - Are there contradictions?
+3. Temporal accuracy - Are dates/timeframes plausible?
+4. Quantitative claims - Are numbers reasonable?
+5. Source attribution - Is the claim properly attributed?
+
+Return as JSON:
+{{
+  "needs_correction": true/false,
+  "issue": "Brief description of the issue if any",
+  "issue_type": "factual/logical/temporal/quantitative/attribution",
+  "severity": "low/medium/high",
+  "verify_externally": true/false,
+  "search_query": "Query to verify if external check needed",
+  "suggestion": "How to correct if needed"
+}}
+
+Return ONLY the JSON."""
+
+        response = await self.llm_callback(prompt, self.config.batch_model)
+        return self._parse_json(response) or {"needs_correction": False}
+
+    async def _external_verify(self, query: str) -> Optional[str]:
+        """Perform external verification via web search."""
+        if not self.search_callback:
+            return None
+
+        try:
+            results = await self.search_callback(query)
+            if results:
+                # Format results for LLM consumption
+                if isinstance(results, list):
+                    return "\n".join([
+                        f"- {r.get('title', '')}: {r.get('snippet', '')[:200]}"
+                        for r in results[:5]
+                    ])
+                return str(results)[:1000]
+        except Exception:
+            pass
+
+        return None
+
+    async def _generate_correction(
+        self,
+        content: str,
+        critique: dict,
+    ) -> Optional[str]:
+        """Generate corrected version of the finding."""
+        issue = critique.get("issue", "Unknown issue")
+        suggestion = critique.get("suggestion", "")
+        external_evidence = critique.get("external_evidence", "")
+
+        external_context = ""
+        if external_evidence:
+            external_context = f"\n\nEXTERNAL EVIDENCE:\n{external_evidence}"
+
+        prompt = f"""Correct this research finding based on the identified issue.
+
+ORIGINAL FINDING: {content}
+
+ISSUE: {issue}
+SUGGESTION: {suggestion}{external_context}
+
+Rules:
+1. Only fix the identified issue
+2. Preserve accurate parts of the original
+3. If you cannot confidently correct it, return the original unchanged
+4. Keep the same format and length
+
+Return ONLY the corrected finding text, no explanation."""
+
+        response = await self.llm_callback(prompt, self.config.batch_model)
+
+        # Clean up response
+        corrected = response.strip()
+        if corrected.startswith('"') and corrected.endswith('"'):
+            corrected = corrected[1:-1]
+
+        return corrected if corrected else None
+
+    def _parse_json(self, response: str) -> Optional[dict]:
+        """Parse JSON object from LLM response."""
+        try:
+            match = re.search(r'\{.*?\}', response, re.DOTALL)
+            if match:
+                return json.loads(match.group())
+        except (json.JSONDecodeError, KeyError):
+            pass
+        return None
+
+
+class HighStakesDetector:
+    """Detect high-stakes findings that warrant CRITIC verification.
+
+    High-stakes findings include:
+    - Quantitative claims (numbers, statistics)
+    - Causal claims (X causes Y)
+    - Medical/health claims
+    - Financial/economic claims
+    - Safety-related claims
+    """
+
+    HIGH_STAKES_PATTERNS = [
+        # Quantitative
+        r'\d+%',
+        r'\$\d+',
+        r'\d+\s*(million|billion|trillion)',
+        r'increased by \d+',
+        r'decreased by \d+',
+
+        # Causal
+        r'causes',
+        r'leads to',
+        r'results in',
+        r'prevents',
+        r'because of',
+
+        # Medical
+        r'treat(s|ed|ment)',
+        r'cures?',
+        r'disease',
+        r'symptom',
+        r'diagnos',
+        r'mortality',
+
+        # Financial
+        r'invest(ment)?',
+        r'profit',
+        r'revenue',
+        r'stock',
+        r'market cap',
+
+        # Safety
+        r'danger(ous)?',
+        r'risk',
+        r'harm',
+        r'safe(ty)?',
+        r'warning',
+    ]
+
+    def __init__(self):
+        self._patterns = [re.compile(p, re.IGNORECASE) for p in self.HIGH_STAKES_PATTERNS]
+
+    def is_high_stakes(self, content: str) -> bool:
+        """Check if a finding is high-stakes and warrants CRITIC."""
+        return any(p.search(content) for p in self._patterns)
+
+    def get_stakes_type(self, content: str) -> list[str]:
+        """Get the types of high-stakes claims in the content."""
+        stakes_types = []
+        content_lower = content.lower()
+
+        if any(p in content_lower for p in ['%', 'million', 'billion', 'increased', 'decreased']):
+            stakes_types.append("quantitative")
+        if any(p in content_lower for p in ['causes', 'leads to', 'results in', 'prevents']):
+            stakes_types.append("causal")
+        if any(p in content_lower for p in ['treat', 'cure', 'disease', 'diagnos', 'mortality']):
+            stakes_types.append("medical")
+        if any(p in content_lower for p in ['invest', 'profit', 'revenue', 'stock']):
+            stakes_types.append("financial")
+        if any(p in content_lower for p in ['danger', 'risk', 'harm', 'safe', 'warning']):
+            stakes_types.append("safety")
+
+        return stakes_types
