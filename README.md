@@ -358,7 +358,7 @@ Built in real-time as research progresses:
 
 The manager uses KG insights to decide what to research next.
 
-**Fast-Loading Visualization**: The HTML visualization uses Barnes-Hut physics with optimized stabilization settings. The graph stabilizes quickly on load (using fewer iterations for large graphs) and then physics is automatically disabled for smooth interaction. Nodes can still be dragged and zoomed.
+**Tip**: If the knowledge graph HTML lags with large graphs (1000+ nodes), click the physics button at the bottom and disable physics to stop the simulation.
 
 ### Hybrid Memory
 
@@ -598,7 +598,7 @@ claude-researcher/
 │   │   ├── store.py      # NetworkX + SQLite hybrid
 │   │   ├── query.py      # Gap detection interface
 │   │   ├── credibility.py # Source scoring
-│   │   └── visualize.py  # Pyvis (pre-computed layout), SVG export
+│   │   └── visualize.py  # Pyvis, Mermaid output
 │   ├── memory/
 │   │   ├── hybrid.py     # Buffer + summary compression
 │   │   └── external.py   # SQLite external store
