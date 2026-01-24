@@ -605,11 +605,22 @@ Think step by step about the best next action."""
         if not self.all_findings:
             return False
 
-        # Time pressure - only synthesize early if we have SOME findings
+        # Calculate time usage percentage
+        time_used_percent = ((self.time_limit_minutes - time_remaining) / self.time_limit_minutes) * 100
+
+        # Only allow synthesis after using at least 90% of time budget
+        # Exception: if less than 5 minutes remain (handles edge cases with short budgets)
+        min_time_used_percent = 90
+
+        if time_remaining >= 5 and time_used_percent < min_time_used_percent:
+            # Not enough time used yet - keep researching regardless of signals
+            return False
+
+        # Time pressure - synthesize if under 5 minutes and we have findings
         if time_remaining < 5 and self.all_findings:
             return True
 
-        # Explicit signals - but only if we have meaningful findings
+        # Explicit signals - but only if we have meaningful findings AND used enough time
         if len(self.all_findings) < 3:
             return False  # Need at least some findings before synthesizing
 
