@@ -1,0 +1,232 @@
+# Progress Audit
+
+A concise done/not-done checklist for each future scope document.
+
+---
+
+## 1. improvements-research.md
+
+**Focus:** State-of-the-art multi-agent research systems, search strategies, credibility, knowledge synthesis, report quality, cost optimization, memory management.
+
+### Implemented ✅
+| Feature | Location |
+|---------|----------|
+| Director-Manager-Intern hierarchy | `src/agents/director.py`, `manager.py`, `intern.py` |
+| Parallel research execution | `src/agents/parallel.py` (asyncio.gather) |
+| Knowledge graph construction | `src/knowledge/graph.py` |
+| Contradiction detection | `src/knowledge/graph.py` (_check_contradiction) |
+| Credibility scoring | `src/knowledge/credibility.py` |
+| Hybrid memory (buffer + summary) | `src/memory/hybrid.py` |
+| External memory storage | `src/memory/external.py` |
+| Hybrid retrieval (BM25 + semantic) | `src/retrieval/hybrid.py`, `bm25.py` |
+| Reranking | `src/retrieval/reranker.py` |
+| Cost tracking | `src/costs/tracker.py` |
+| Deep report writer with Opus | `src/reports/writer.py` |
+
+### Remaining 🔴
+| Feature | Priority | Notes |
+|---------|----------|-------|
+| **Query expansion** (semantic, contextual) | Medium | Only basic queries, no LLM-generated variations |
+| **Self-RAG iterative refinement loop** | High | No gap identification → refined query loop |
+| **Diverse source layer** (Academic DBs, News APIs) | High | Only web search (`tools/web_search.py`) |
+| **Cross-validation triangulation** | Medium | Contradiction detection exists but no multi-source validation |
+| **Model routing (Haiku/Sonnet/Opus)** | Medium | Fixed model usage, no dynamic routing |
+| **Prompt caching** | Low | Not implemented |
+| **Dynamic toolset selection** | Low | N/A (no MCP tools) |
+| **MemGPT-style hierarchical memory** | Low | Hybrid exists, but no 3-tier archival system |
+| **Co-STORM mind map pattern** | Medium | KG exists but not hierarchical mind map |
+
+**Status: ~70% Complete**
+
+---
+
+## 2. user-interaction-design.md
+
+**Focus:** Pre-research clarification, async mid-research questions, user message queue.
+
+### Implemented ✅
+| Feature | Location |
+|---------|----------|
+| Pre-research clarification | `src/interaction/handler.py` (clarify_research_goal) |
+| Async mid-research questions | `src/interaction/handler.py` (ask_with_timeout) |
+| User message queue | `src/interaction/handler.py` (inject_message, get_pending_messages) |
+| InputListener for background input | `src/interaction/listener.py` |
+| InteractionConfig | `src/interaction/config.py` |
+| Director integration | `src/agents/director.py` (clarify_research_goal) |
+| Manager integration | `src/agents/manager.py` (_maybe_prompt_user) |
+
+### Remaining 🔴
+| Feature | Priority | Notes |
+|---------|----------|-------|
+| **Windows support** for input listener | Low | Uses `select.select()` - Unix only |
+| **Web UI** (WebSocket-based) | Future | CLI-only currently |
+| **Question quality tuning** | Low | Basic prompts, could be improved |
+
+**Status: ~95% Complete**
+
+---
+
+## 3. data-sources.md
+
+**Focus:** External APIs (arXiv, Semantic Scholar, GitHub, Hacker News, SEC EDGAR, etc.)
+
+### Implemented ✅
+| Feature | Location |
+|---------|----------|
+| Web search (basic) | `src/tools/web_search.py` |
+
+### Remaining 🔴
+| Feature | Priority | Notes |
+|---------|----------|-------|
+| **Semantic Scholar API** | High (Tier 1) | Citation graphs, paper discovery |
+| **GitHub API** | High (Tier 1) | Real adoption signals |
+| **Hacker News API** | High (Tier 1) | No rate limits, tech pulse |
+| **arXiv API** | Medium (Tier 2) | Academic papers |
+| **SEC EDGAR** | Medium (Tier 2) | Business/financial data |
+| **Wikidata SPARQL** | Medium (Tier 2) | Entity verification |
+| **Wayback Machine** | Low (Tier 3) | Source verification |
+| **npm/PyPI Stats** | Low (Tier 3) | Tech adoption metrics |
+| **Document processing** (PyMuPDF, Marker) | Medium | PDF/document parsing |
+| **Rate limit handling** | High | Exponential backoff, per-source limits |
+
+**Status: ~10% Complete**
+
+---
+
+## 4. classical-ml-integration.md
+
+**Focus:** Hybrid retrieval, LambdaMART ranking, fast NER, deduplication, topic modeling.
+
+### Implemented ✅
+| Feature | Location |
+|---------|----------|
+| Hybrid retrieval (BM25 + semantic) | `src/retrieval/hybrid.py` |
+| Embedding service | `src/retrieval/embeddings.py` |
+| BM25 index | `src/retrieval/bm25.py` |
+| Reranking | `src/retrieval/reranker.py` |
+| Vector store (ChromaDB) | `src/retrieval/vectorstore.py` |
+
+### Remaining 🔴
+| Feature | Priority | Notes |
+|---------|----------|-------|
+| **spaCy fast NER** with LLM fallback | High | Currently LLM-only for KG extraction |
+| **MinHash LSH deduplication** | High | No duplicate finding detection |
+| **LambdaMART ranking** (XGBoost) | Medium | No learning-to-rank |
+| **BERTopic clustering** | Medium | No automatic topic discovery |
+| **Text classification** (distilled models) | Low | Finding type via LLM only |
+| **Novelty detection** (Isolation Forest) | Low | Not implemented |
+
+**Status: ~40% Complete**
+
+---
+
+## 5. power-user-features-research.md
+
+**Focus:** Comprehensive feature wishlist - academic workflows, AI patterns, integrations, exports, collaboration.
+
+### Implemented ✅
+| Feature | Location |
+|---------|----------|
+| Interactive research plan (partial) | Clarification in director.py |
+| Contradiction detection | `src/knowledge/graph.py` |
+| Knowledge graph construction | `src/knowledge/graph.py` |
+| Credibility scoring | `src/knowledge/credibility.py` |
+| KG visualization | `src/knowledge/visualize.py` |
+| JSON/Markdown export | `src/agents/director.py` (export_findings) |
+| Confidence scoring | `src/verification/confidence.py` |
+| CoVe verification | `src/verification/cove.py` |
+| CRITIC verification | `src/verification/critic.py` |
+| Verification pipeline | `src/verification/pipeline.py` |
+
+### Remaining 🔴 (MUST-HAVE)
+| Feature | Category | Notes |
+|---------|----------|-------|
+| **Research Checkpoint System** | Power User | No pause/redirect mid-research |
+| **Source Decision Audit Trail** | Power User | Why sources selected not exposed |
+| **Persistent Cross-Session Memory** | Power User | Memory is session-only |
+| **Semantic Paper Network Builder** | Academic | No citation graph visualization |
+| **PRISMA-Compliant Review Assistant** | Academic | No systematic review support |
+| **Smart Citation Analyzer** | Academic | No supporting/contradicting citation context |
+| **Adversarial Verification Debates** | AI Patterns | Single-agent verification only |
+| **RAG Sufficiency Detector** | AI Patterns | No "enough context?" checking |
+| **Dynamic Retrieval Orchestration** | AI Patterns | Static retrieval pipeline |
+| **Bidirectional Obsidian Sync** | Integration | No PKM integrations |
+| **Zotero Library Integration** | Integration | No reference manager support |
+| **API-First Architecture** | Integration | CLI only, no REST API |
+| **Source Type Classifier** | Source | No primary/secondary classification |
+| **Multi-Dimensional Bias Analyzer** | Source | Basic credibility only |
+| **Source Chain Verification** | Source | No citation chain tracing |
+| **Academic Export (LaTeX/BibTeX)** | Output | Markdown only |
+| **Contradiction Resolution Agent** | Differentiator | Detection only, no resolution |
+| **Explainable Agent Reasoning** | Differentiator | Partial (KG visible, not agent decisions) |
+
+### Remaining 🔴 (SHOULD-HAVE)
+| Feature | Category | Notes |
+|---------|----------|-------|
+| Output Length/Depth Sliders | Power User | No customization |
+| Usage Dashboard | Power User | Cost tracking exists but no dashboard |
+| Hypothesis Tree Builder | Academic | Not implemented |
+| Multi-Agent Reflexion (MAR) | AI Patterns | Not implemented |
+| Notion Database Integration | Integration | Not implemented |
+| Research-to-Slides Pipeline | Output | Not implemented |
+| Structured Data Export (CSV/JSON) | Output | Basic JSON only |
+| Knowledge Graph Export (RDF/GraphML) | Output | HTML visualization only |
+| Team Research Workspaces | Collaboration | Single-user only |
+| Shared Knowledge Base | Collaboration | Not implemented |
+| Hypothesis Generation Engine | Differentiator | Not implemented |
+| Temporal Knowledge Tracking | Differentiator | Not implemented |
+| Research Audit Trail | Differentiator | Partial (database logs) |
+
+**Status: ~25% Complete**
+
+---
+
+## Overall Progress Summary
+
+| Document | % Complete | Key Gaps |
+|----------|------------|----------|
+| improvements-research.md | ~70% | Query expansion, diverse sources, model routing |
+| user-interaction-design.md | ~95% | Windows support, Web UI |
+| data-sources.md | ~10% | All external APIs missing |
+| classical-ml-integration.md | ~40% | spaCy NER, deduplication, topic modeling |
+| power-user-features-research.md | ~25% | Checkpoints, memory persistence, integrations, exports |
+
+---
+
+## Priority
+
+### Quick Wins (Low effort, high value)
+1. **MinHash LSH deduplication** - Prevents redundant findings
+2. **spaCy fast NER** - 100x faster KG construction
+3. **Source Decision Audit Trail** - Expose existing credibility reasoning
+4. **Explainable Agent Reasoning** - Log agent decisions to DB
+
+### High Impact (Medium effort)
+1. **Semantic Scholar API** - Citation graphs for source authority
+2. **GitHub/Hacker News APIs** - Real adoption signals
+3. **Research Checkpoint System** - Pause/redirect mid-research
+4. **Persistent Cross-Session Memory** - Project-level memory
+5. **Query expansion** - LLM-generated query variations
+
+### Strategic (High effort, transformative)
+1. **API-First Architecture** - Enable integrations
+2. **Obsidian/Zotero Integration** - Capture academic users
+3. **LaTeX/BibTeX Export** - Academic workflow support
+4. **Adversarial Verification Debates** - Higher accuracy
+
+---
+
+## Screens in future_scope/screens/
+
+HTML mockups for a potential web UI:
+- `agent_thinking_transparency_panel/code.html`
+- `cove_verification_pipeline/code.html`
+- `knowledge_graph_visualization/code.html`
+- `new_research_session_setup/code.html`
+- `real-time_research_activity_feed/code.html`
+- `research_findings_browser/code.html`
+- `research_report_preview/code.html`
+- `research_session_dashboard/code.html`
+- `research_sources_index/code.html`
+
+**Status:** Design mockups only - no implementation.
