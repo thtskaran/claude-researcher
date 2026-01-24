@@ -1,5 +1,6 @@
 """Verification metrics tracking."""
 
+import asyncio
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -85,65 +86,69 @@ class VerificationMetricsTracker:
     errors: int = 0
     error_types: dict = field(default_factory=lambda: defaultdict(int))
 
-    def record_result(self, result: VerificationResult) -> None:
+    # Lock for thread-safe updates
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    async def record_result(self, result: VerificationResult) -> None:
         """Record a verification result."""
-        # Status counts
-        if result.verification_status == VerificationStatus.VERIFIED:
-            self.verified_count += 1
-        elif result.verification_status == VerificationStatus.FLAGGED:
-            self.flagged_count += 1
-        elif result.verification_status == VerificationStatus.REJECTED:
-            self.rejected_count += 1
-        else:
-            self.skipped_count += 1
+        async with self._lock:
+            # Status counts
+            if result.verification_status == VerificationStatus.VERIFIED:
+                self.verified_count += 1
+            elif result.verification_status == VerificationStatus.FLAGGED:
+                self.flagged_count += 1
+            elif result.verification_status == VerificationStatus.REJECTED:
+                self.rejected_count += 1
+            else:
+                self.skipped_count += 1
 
-        # Method counts and latency
-        if result.verification_method == VerificationMethod.STREAMING:
-            self.streaming_count += 1
-            self.streaming_latency.add(result.verification_time_ms)
-        elif result.verification_method in (VerificationMethod.BATCH, VerificationMethod.COVE):
-            self.batch_count += 1
-            self.batch_latency.add(result.verification_time_ms)
-        elif result.verification_method in (VerificationMethod.CRITIC, VerificationMethod.COVE_CRITIC):
-            self.critic_count += 1
-            self.batch_latency.add(result.verification_time_ms)
+            # Method counts and latency
+            if result.verification_method == VerificationMethod.STREAMING:
+                self.streaming_count += 1
+                self.streaming_latency.add(result.verification_time_ms)
+            elif result.verification_method in (VerificationMethod.BATCH, VerificationMethod.COVE):
+                self.batch_count += 1
+                self.batch_latency.add(result.verification_time_ms)
+            elif result.verification_method in (VerificationMethod.CRITIC, VerificationMethod.COVE_CRITIC):
+                self.critic_count += 1
+                self.batch_latency.add(result.verification_time_ms)
 
-        # Confidence tracking
-        self.total_original_confidence += result.original_confidence
-        self.total_calibrated_confidence += result.verified_confidence
+            # Confidence tracking
+            self.total_original_confidence += result.original_confidence
+            self.total_calibrated_confidence += result.verified_confidence
 
-        if result.verified_confidence > result.original_confidence:
-            self.confidence_improvements += 1
-        elif result.verified_confidence < result.original_confidence:
-            self.confidence_reductions += 1
+            if result.verified_confidence > result.original_confidence:
+                self.confidence_improvements += 1
+            elif result.verified_confidence < result.original_confidence:
+                self.confidence_reductions += 1
 
-        # Contradiction tracking
-        for contradiction in result.contradictions:
-            self.contradictions_detected += 1
-            self.contradictions_by_severity[contradiction.severity] += 1
+            # Contradiction tracking
+            for contradiction in result.contradictions:
+                self.contradictions_detected += 1
+                self.contradictions_by_severity[contradiction.severity] += 1
 
-        # KG tracking
-        if result.kg_support_score > 0:
-            self.kg_matches += 1
-        if result.kg_support_score > 0.5:
-            self.kg_boosts += 1
+            # KG tracking
+            if result.kg_support_score > 0:
+                self.kg_matches += 1
+            if result.kg_support_score > 0.5:
+                self.kg_boosts += 1
 
-        # CRITIC tracking
-        self.critic_iterations_total += result.critic_iterations
-        self.corrections_made += len(result.corrections_made)
-        if result.external_verification_used:
-            self.external_verifications += 1
+            # CRITIC tracking
+            self.critic_iterations_total += result.critic_iterations
+            self.corrections_made += len(result.corrections_made)
+            if result.external_verification_used:
+                self.external_verifications += 1
 
-        # Error tracking
-        if result.error:
-            self.errors += 1
-            error_type = result.error.split(":")[0] if ":" in result.error else "Unknown"
-            self.error_types[error_type] += 1
+            # Error tracking
+            if result.error:
+                self.errors += 1
+                error_type = result.error.split(":")[0] if ":" in result.error else "Unknown"
+                self.error_types[error_type] += 1
 
-    def record_batch(self, batch_result: BatchVerificationResult) -> None:
+    async def record_batch(self, batch_result: BatchVerificationResult) -> None:
         """Record a batch verification result."""
         for result in batch_result.results:
-            self.record_result(result)
+            await self.record_result(result)
 
     @property
     def total_count(self) -> int:

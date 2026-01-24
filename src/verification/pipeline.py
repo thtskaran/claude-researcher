@@ -112,7 +112,7 @@ class VerificationPipeline:
             result.verification_status = calibration.status
 
         # Track metrics
-        self.metrics.record_result(result)
+        await self.metrics.record_result(result)
 
         return result
 
@@ -180,7 +180,7 @@ class VerificationPipeline:
         )
 
         # Track metrics
-        self.metrics.record_batch(batch_result)
+        await self.metrics.record_batch(batch_result)
 
         return batch_result
 
@@ -194,7 +194,26 @@ class VerificationPipeline:
             self._verify_single_batch(finding, session_id)
             for finding in findings
         ]
-        return await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Handle any exceptions - convert to skipped results
+        processed_results = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                # Create a fallback result for failed verification
+                finding = findings[i]
+                processed_results.append(VerificationResult(
+                    finding_id=str(finding.id or hash(finding.content)),
+                    original_confidence=finding.confidence,
+                    verified_confidence=finding.confidence,
+                    verification_status=VerificationStatus.SKIPPED,
+                    verification_method=VerificationMethod.BATCH,
+                    error=str(result),
+                ))
+            else:
+                processed_results.append(result)
+
+        return processed_results
 
     async def _verify_single_batch(
         self,

@@ -1,5 +1,6 @@
 """Hybrid memory management with buffer + summary pattern."""
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Callable, Any
@@ -75,7 +76,10 @@ class HybridMemory:
         self.summarization_count: int = 0
         self.current_buffer_tokens: int = 0
 
-    def add_message(
+        # Lock for thread-safe buffer/summary modifications
+        self._lock = asyncio.Lock()
+
+    async def add_message(
         self,
         role: str,
         content: str,
@@ -98,9 +102,10 @@ class HybridMemory:
             metadata=metadata or {},
         )
 
-        self.recent_buffer.append(message)
-        self.current_buffer_tokens += token_estimate
-        self.total_messages_processed += 1
+        async with self._lock:
+            self.recent_buffer.append(message)
+            self.current_buffer_tokens += token_estimate
+            self.total_messages_processed += 1
 
     async def maybe_compress(self) -> bool:
         """Check if compression is needed and perform it.
@@ -108,38 +113,36 @@ class HybridMemory:
         Returns:
             True if compression was performed
         """
-        threshold = int(self.max_recent_tokens * self.summary_threshold)
+        # First check if compression is needed (with lock)
+        async with self._lock:
+            threshold = int(self.max_recent_tokens * self.summary_threshold)
 
-        if self.current_buffer_tokens < threshold:
-            return False
+            if self.current_buffer_tokens < threshold:
+                return False
 
-        if not self.llm_callback:
-            # No LLM available, just truncate
-            self._truncate_buffer()
-            return True
+            if not self.llm_callback:
+                # No LLM available, just truncate
+                self._truncate_buffer()
+                return True
 
-        # Compress older messages into summary
-        await self._compress_to_summary()
-        return True
+            # Capture data for compression while holding lock
+            if len(self.recent_buffer) < 4:
+                return False  # Need at least some messages to compress
 
-    async def _compress_to_summary(self) -> None:
-        """Compress older buffer messages into summary."""
-        if len(self.recent_buffer) < 4:
-            return  # Need at least some messages to compress
+            # Split buffer: keep recent 25%, compress the rest
+            split_point = max(2, len(self.recent_buffer) // 4)
+            to_compress = list(self.recent_buffer[:-split_point])  # Copy
+            to_keep = list(self.recent_buffer[-split_point:])  # Copy
+            current_summary = self.summary
 
-        # Split buffer: keep recent 25%, compress the rest
-        split_point = max(2, len(self.recent_buffer) // 4)
-        to_compress = self.recent_buffer[:-split_point]
-        to_keep = self.recent_buffer[-split_point:]
-
-        # Format messages for summarization
+        # Format messages for summarization (outside lock)
         messages_text = self._format_messages(to_compress)
 
-        # Generate summary using LLM
+        # Generate summary using LLM (outside lock - this is the slow part)
         prompt = f"""Summarize this research conversation, preserving key findings and decisions.
 
 Previous summary:
-{self.summary if self.summary else 'None'}
+{current_summary if current_summary else 'None'}
 
 New messages to incorporate:
 {messages_text}
@@ -152,18 +155,29 @@ Create a concise summary (max 500 words) that captures:
 
 Output ONLY the summary, no preamble."""
 
+        new_summary = None
         try:
             new_summary = await self.llm_callback(prompt)
-            self.summary = new_summary
-            self.summary_updated_at = datetime.now()
-            self.summarization_count += 1
         except Exception:
-            # If summarization fails, just truncate
+            # If summarization fails, we'll still truncate the buffer
             pass
 
-        # Update buffer
-        self.recent_buffer = to_keep
-        self.current_buffer_tokens = sum(m.token_estimate for m in to_keep)
+        # Update state with lock
+        async with self._lock:
+            if new_summary:
+                self.summary = new_summary
+                self.summary_updated_at = datetime.now()
+                self.summarization_count += 1
+
+            # Update buffer - use the pre-computed to_keep
+            # Note: New messages may have been added during LLM call, so we only
+            # remove the messages we compressed (which are at the start of buffer)
+            compressed_count = len(to_compress)
+            if len(self.recent_buffer) >= compressed_count:
+                self.recent_buffer = self.recent_buffer[compressed_count:]
+                self.current_buffer_tokens = sum(m.token_estimate for m in self.recent_buffer)
+
+        return True
 
     def _truncate_buffer(self) -> None:
         """Truncate buffer without summarization."""

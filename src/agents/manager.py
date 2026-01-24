@@ -285,7 +285,7 @@ Think step by step about the best next action."""
         thought = await self.call_claude(prompt, use_thinking=True)
 
         # Track in memory
-        self.memory.add_message(
+        await self.memory.add_message(
             role="assistant",
             content=f"Reasoning: {thought[:500]}...",
             metadata={"type": "thought", "iteration": self.state.iteration}
@@ -374,7 +374,7 @@ Think step by step about the best next action."""
                 await self._run_parallel_topics(topics_to_run, max_parallel=self.pool_size)
 
                 # Track in memory
-                self.memory.add_message(
+                await self.memory.add_message(
                     role="system",
                     content=f"Completed parallel research on {len(topics_to_run)} topics",
                     metadata={"topics": [t.topic for t in topics_to_run]}
@@ -415,7 +415,7 @@ Think step by step about the best next action."""
             await self._process_findings_to_kg(intern_report.findings)
 
             # Track in memory
-            self.memory.add_message(
+            await self.memory.add_message(
                 role="system",
                 content=f"Completed research on: {topic.topic} - {len(intern_report.findings)} findings",
                 metadata={"topic": topic.topic, "findings": len(intern_report.findings)}
@@ -559,7 +559,7 @@ Think step by step about the best next action."""
             self._log(f"[USER RESPONSE] {response[:100]}{'...' if len(response) > 100 else ''}", style="bold green")
 
             # Add to memory for context
-            self.memory.add_message(
+            await self.memory.add_message(
                 role="user",
                 content=f"User guidance: {response}",
                 metadata={"type": "mid_research_response"}
@@ -947,7 +947,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
         self._log("=" * 70, style="bold cyan")
 
         # Record in memory
-        self.memory.add_message(
+        await self.memory.add_message(
             role="system",
             content=f"Starting parallel research on: {goal}",
             metadata={"phase": "parallel_init"}
@@ -1023,7 +1023,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
             )
 
         # Record completion in memory
-        self.memory.add_message(
+        await self.memory.add_message(
             role="system",
             content=f"Parallel research complete: {len(result.total_findings)} findings from {result.total_searches} searches in {result.execution_time_seconds:.1f}s",
             metadata={"phase": "parallel_complete", "findings_count": len(result.total_findings)}
@@ -1109,7 +1109,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
         self.start_time = datetime.now()
 
         # Initialize memory for this session
-        self.memory.add_message(
+        await self.memory.add_message(
             role="user",
             content=f"Research goal: {goal}",
             metadata={"session_id": session_id}

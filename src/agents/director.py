@@ -36,8 +36,10 @@ class DirectorAgent(BaseAgent):
         config: Optional[AgentConfig] = None,
         console: Optional[Console] = None,
         interaction_config: Optional[InteractionConfig] = None,
+        owns_db: bool = False,
     ):
         super().__init__(AgentRole.DIRECTOR, db, config, console)
+        self._owns_db = owns_db  # Only close db if we own it (not injected by caller)
         self.intern = InternAgent(db, config, console)
 
         # Set up interaction handler
@@ -225,6 +227,11 @@ When presenting results:
             self.current_session.ended_at = datetime.now()
             await self.db.update_session(self.current_session)
             raise
+
+        finally:
+            # Only close database if we own it (not injected by caller like ResearchHarness)
+            if self._owns_db and self.db:
+                await self.db.close()
 
     async def _run_with_progress(
         self, goal: str, time_limit_minutes: int
