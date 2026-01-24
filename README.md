@@ -553,15 +553,6 @@ Session IDs are unique 7-character hexadecimal strings (e.g., `a1b2c3d`).
 
 ## Troubleshooting
 
-### "Topics Explored: 0"
-Fixed in latest version. Update and reinstall: `pip install -e .`
-
-### Research hangs during KG processing
-KG now uses batch processing (5 findings per LLM call). Should be fast.
-
-### Report generation fails
-Now uses direct Anthropic API instead of subprocess. Ensure `anthropic` package installed.
-
 ### API errors
 Check Claude Code is authenticated: `claude --version`
 
