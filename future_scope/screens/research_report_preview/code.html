@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Research Report Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2b7cee",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#121212", // Deep charcoal as requested
+                        "surface-dark": "#18181b", // Slightly lighter for panels
+                        "surface-highlight": "#27272a", // For hover states/cards
+                        "text-main": "#f4f4f5",
+                        "text-muted": "#a1a1aa",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: {"DEFAULT": "0.375rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom scrollbar for webkit browsers */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #18181b; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #27272a; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3f3f46; 
+        }
+        .prose-content p {
+            margin-bottom: 1.5rem;
+            line-height: 1.75;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-text-main h-screen overflow-hidden flex flex-col">
+<!-- Top Navigation Bar -->
+<header class="flex-none h-14 border-b border-[#27272a] bg-surface-dark/95 backdrop-blur-sm px-6 flex items-center justify-between z-20">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-primary/20 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-xl">science</span>
+</div>
+<div>
+<h1 class="text-sm font-semibold tracking-wide text-white">Global Energy Market Analysis 2024</h1>
+<p class="text-xs text-text-muted">Research Preview • Last edited today 10:42 AM</p>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center bg-[#27272a] rounded-lg p-1 gap-1">
+<button class="px-3 py-1.5 rounded text-xs font-mono font-medium text-text-muted hover:text-white hover:bg-[#3f3f46] transition-colors">PDF</button>
+<button class="px-3 py-1.5 rounded text-xs font-mono font-medium text-white bg-[#3f3f46] shadow-sm">MD</button>
+<button class="px-3 py-1.5 rounded text-xs font-mono font-medium text-text-muted hover:text-white hover:bg-[#3f3f46] transition-colors">JSON</button>
+</div>
+<div class="h-6 w-px bg-[#3f3f46]"></div>
+<button class="flex items-center gap-2 text-sm font-medium text-text-muted hover:text-white transition-colors">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+</button>
+<div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-xs font-bold text-white shadow-lg ring-2 ring-background-dark">
+                JD
+            </div>
+</div>
+</header>
+<!-- Main Layout -->
+<div class="flex flex-1 overflow-hidden">
+<!-- Left Sidebar: Table of Contents -->
+<aside class="w-64 flex-none border-r border-[#27272a] bg-surface-dark flex flex-col overflow-y-auto hidden md:flex">
+<div class="p-5">
+<h2 class="text-xs font-bold text-text-muted uppercase tracking-wider mb-4">Table of Contents</h2>
+<nav class="space-y-1">
+<a class="group flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg bg-primary/10 text-primary border-l-2 border-primary" href="#">
+<span class="material-symbols-outlined text-[18px]">article</span>
+                        Executive Summary
+                    </a>
+<a class="group flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-text-muted hover:bg-[#27272a] hover:text-white transition-colors border-l-2 border-transparent" href="#">
+<span class="material-symbols-outlined text-[18px]">science</span>
+                        Methodology
+                    </a>
+<a class="group flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-text-muted hover:bg-[#27272a] hover:text-white transition-colors border-l-2 border-transparent" href="#">
+<span class="material-symbols-outlined text-[18px]">trending_up</span>
+                        Market Trends
+                    </a>
+<div class="pl-9 space-y-1">
+<a class="block px-3 py-1.5 text-xs text-text-muted hover:text-white hover:bg-[#27272a] rounded transition-colors" href="#">Fossil Fuel Decline</a>
+<a class="block px-3 py-1.5 text-xs text-text-muted hover:text-white hover:bg-[#27272a] rounded transition-colors" href="#">Grid Modernization</a>
+</div>
+<a class="group flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-text-muted hover:bg-[#27272a] hover:text-white transition-colors border-l-2 border-transparent" href="#">
+<span class="material-symbols-outlined text-[18px]">eco</span>
+                        Renewable Sector
+                    </a>
+<a class="group flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-text-muted hover:bg-[#27272a] hover:text-white transition-colors border-l-2 border-transparent" href="#">
+<span class="material-symbols-outlined text-[18px]">flag</span>
+                        Conclusion
+                    </a>
+</nav>
+</div>
+<div class="mt-auto p-5 border-t border-[#27272a]">
+<div class="flex items-center gap-3 p-3 rounded-lg bg-[#27272a]/50">
+<div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+<span class="text-xs text-text-muted">Auto-saved 2m ago</span>
+</div>
+</div>
+</aside>
+<!-- Center Pane: Report Content -->
+<main class="flex-1 overflow-y-auto bg-background-dark relative">
+<div class="max-w-[760px] mx-auto px-8 py-12 md:py-16">
+<!-- Page Heading -->
+<div class="mb-10 pb-6 border-b border-[#27272a]">
+<div class="flex items-center gap-2 mb-4 text-primary">
+<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-primary/20 border border-primary/30">Final Draft</span>
+<span class="text-xs text-text-muted">• October 15, 2024</span>
+</div>
+<h1 class="text-4xl md:text-5xl font-bold text-white tracking-tight leading-[1.1] mb-4">
+                        Global Energy Market Analysis 2024
+                    </h1>
+<p class="text-lg text-text-muted leading-relaxed">
+                        A comprehensive review of shifting paradigms in energy consumption, renewable adoption, and geopolitical influences on market stability.
+                    </p>
+</div>
+<!-- Content Body -->
+<div class="prose-content text-lg text-[#d4d4d8]">
+<h2 class="text-2xl font-bold text-white mt-12 mb-6 flex items-center gap-2 group cursor-pointer">
+                        Executive Summary
+                        <span class="opacity-0 group-hover:opacity-100 text-text-muted text-lg transition-opacity">#</span>
+</h2>
+<p>
+                        The global energy landscape is undergoing a tectonic shift, driven primarily by accelerated decarbonization policies and technological breakthroughs in storage efficiency. In 2023 alone, solar capacity additions surpassed coal for the first time in history <button aria-label="Citation 1" class="inline-flex items-center justify-center align-middle h-5 px-1.5 mx-0.5 text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 rounded cursor-pointer ring-1 ring-primary/30 transition-all">[1]</button>. This report synthesizes data from over 50 regional markets to predict trends for the coming decade.
+                    </p>
+<p>
+                        While fossil fuels remain dominant in industrial baseloads, the <strong class="text-white font-semibold">Levelized Cost of Energy (LCOE)</strong> for renewables has dropped by an average of 12% year-over-year. Analysts suggest that we are approaching a critical tipping point where subsidy-free renewables will outcompete traditional generation methods in 80% of global markets <button aria-label="Citation 2" class="inline-flex items-center justify-center align-middle h-5 px-1.5 mx-0.5 text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 rounded cursor-pointer ring-1 ring-primary/30 transition-all">[2]</button>.
+                    </p>
+<div class="my-8 pl-6 border-l-4 border-primary/50 italic text-text-muted">
+                        "The velocity of the transition is no longer dictated solely by policy, but by pure economic imperative. Capital markets are reallocating assets at a speed that regulators are struggling to match."
+                    </div>
+<h2 class="text-2xl font-bold text-white mt-12 mb-6 flex items-center gap-2 group cursor-pointer">
+                        Methodology
+                        <span class="opacity-0 group-hover:opacity-100 text-text-muted text-lg transition-opacity">#</span>
+</h2>
+<p>
+                        Our quantitative analysis leverages a proprietary mix of satellite imagery for infrastructure tracking and real-time grid output data. We have cross-referenced these datasets with declared government targets and corporate PPA (Power Purchase Agreement) filings.
+                    </p>
+<p>
+                        Specifically, we examined three core verticals:
+                    </p>
+<ul class="list-disc list-outside ml-6 space-y-2 mb-8 text-text-muted marker:text-primary">
+<li><span class="text-[#d4d4d8]">Grid Storage Integration</span> and its impact on peak-shaving.</li>
+<li><span class="text-[#d4d4d8]">Green Hydrogen</span> scalability versus current natural gas infrastructure.</li>
+<li><span class="text-[#d4d4d8]">Rare Earth Mineral Supply Chains</span> critical for battery production <button aria-label="Citation 3" class="inline-flex items-center justify-center align-middle h-5 px-1.5 mx-0.5 text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 rounded cursor-pointer ring-1 ring-primary/30 transition-all">[3]</button>.</li>
+</ul>
+<p>
+                        Data integrity was verified using the Standardized Energy Metrics Protocol (SEMP), ensuring that diverse regional reporting standards were normalized for accurate comparison.
+                    </p>
+</div>
+<!-- Spacer for bottom scroll -->
+<div class="h-32"></div>
+</div>
+</main>
+<!-- Right Sidebar: Contextual Panel -->
+<aside class="w-80 flex-none border-l border-[#27272a] bg-surface-dark hidden xl:flex flex-col">
+<div class="p-5 border-b border-[#27272a] flex justify-between items-center">
+<h3 class="text-sm font-bold text-white">Context &amp; Sources</h3>
+<span class="material-symbols-outlined text-text-muted text-lg cursor-pointer hover:text-white">close</span>
+</div>
+<div class="flex-1 overflow-y-auto p-5 space-y-6">
+<!-- Active Citation Card -->
+<div class="bg-[#27272a] rounded-xl p-4 ring-1 ring-primary/50 shadow-[0_0_15px_rgba(43,124,238,0.15)] transition-all">
+<div class="flex items-start justify-between mb-3">
+<span class="bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded-full">CITATION [1]</span>
+<span class="material-symbols-outlined text-primary text-lg">open_in_new</span>
+</div>
+<h4 class="text-white font-semibold text-sm leading-tight mb-2">Renewable Capacity Statistics 2024</h4>
+<p class="text-xs text-text-muted mb-4">International Renewable Energy Agency (IRENA) • March 2024</p>
+<div class="text-xs text-[#d4d4d8] leading-relaxed mb-4">
+                        "Solar energy capacity increased by 73% globally, marking the largest year-on-year growth ever recorded for a single energy source."
+                    </div>
+<button class="w-full h-8 bg-primary hover:bg-blue-600 text-white text-xs font-bold rounded flex items-center justify-center gap-2 transition-colors">
+                        View Source PDF
+                    </button>
+</div>
+<!-- Contextual Highlight (Simulated) -->
+<div class="bg-background-dark/50 rounded-xl p-4 border border-[#3f3f46]">
+<div class="flex items-center gap-2 mb-2 text-text-muted">
+<span class="material-symbols-outlined text-sm">lightbulb</span>
+<span class="text-[10px] font-bold uppercase tracking-wider">Smart Note</span>
+</div>
+<p class="text-xs text-[#d4d4d8] mb-2">
+<span class="text-primary font-medium">LCOE</span> (Levelized Cost of Energy) is a measure of the average net present cost of electricity generation for a generating plant over its lifetime.
+                    </p>
+<div class="w-full h-32 rounded-lg bg-cover bg-center mt-3 relative overflow-hidden" data-alt="Abstract gradient chart representing declining energy costs" style="background-image: linear-gradient(to bottom right, #2b7cee, #1e293b);">
+<div class="absolute inset-0 flex items-center justify-center">
+<span class="text-white/20 font-bold text-4xl select-none">$$$</span>
+</div>
+</div>
+</div>
+<!-- Related Sources List -->
+<div>
+<h4 class="text-xs font-bold text-text-muted uppercase tracking-wider mb-3">Related Sources</h4>
+<ul class="space-y-3">
+<li class="group cursor-pointer">
+<div class="flex gap-3 items-start">
+<span class="text-xs font-mono text-text-muted mt-0.5 group-hover:text-primary transition-colors">[2]</span>
+<div>
+<p class="text-xs text-[#d4d4d8] font-medium leading-snug group-hover:text-white transition-colors">Global Energy Outlook: The Tipping Point</p>
+<p class="text-[10px] text-text-muted mt-0.5">Bloomberg NEF • 2023</p>
+</div>
+</div>
+</li>
+<li class="group cursor-pointer">
+<div class="flex gap-3 items-start">
+<span class="text-xs font-mono text-text-muted mt-0.5 group-hover:text-primary transition-colors">[3]</span>
+<div>
+<p class="text-xs text-[#d4d4d8] font-medium leading-snug group-hover:text-white transition-colors">Critical Minerals Market Review</p>
+<p class="text-[10px] text-text-muted mt-0.5">IEA • 2023</p>
+</div>
+</div>
+</li>
+</ul>
+</div>
+</div>
+<!-- Quick Actions Footer -->
+<div class="p-4 border-t border-[#27272a] bg-[#18181b]">
+<button class="w-full flex items-center justify-center gap-2 text-xs font-medium text-text-muted hover:text-white py-2 rounded hover:bg-[#27272a] transition-colors">
+<span class="material-symbols-outlined text-sm">manage_search</span>
+                    Advanced Source Search
+                </button>
+</div>
+</aside>
+</div>
+</body></html>

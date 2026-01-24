@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Research Sources Index</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=Noto+Sans:wght@400;500;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Config -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2b7cee",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#101822",
+                        "surface-dark": "#1c2027",
+                        "border-dark": "#282f39",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom scrollbar for dark theme tables */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1c2027; 
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #3b4554; 
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #4b5563; 
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-white font-display overflow-x-hidden antialiased">
+<div class="relative flex min-h-screen flex-col">
+<!-- TopNavBar -->
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-border-dark bg-surface-dark px-6 py-3 lg:px-10">
+<div class="flex items-center gap-4 text-white">
+<div class="size-8 flex items-center justify-center rounded bg-primary/20 text-primary">
+<span class="material-symbols-outlined">science</span>
+</div>
+<h2 class="text-white text-lg font-bold leading-tight tracking-[-0.015em]">Research Dashboard</h2>
+</div>
+<div class="flex gap-3">
+<div class="hidden md:flex items-center rounded-lg bg-background-dark border border-border-dark px-3 py-1.5 w-64">
+<span class="material-symbols-outlined text-gray-400 text-[20px]">search</span>
+<input class="bg-transparent border-none text-sm text-white focus:ring-0 placeholder:text-gray-500 w-full ml-2" placeholder="Global search..." type="text"/>
+</div>
+<button class="flex size-10 items-center justify-center rounded-lg bg-border-dark text-white hover:bg-gray-700 transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="flex size-10 items-center justify-center rounded-lg bg-primary text-white hover:bg-blue-600 transition-colors">
+<span class="material-symbols-outlined">account_circle</span>
+</button>
+</div>
+</header>
+<main class="flex-1 flex flex-col items-center py-8 px-4 md:px-10">
+<div class="w-full max-w-[1200px] flex flex-col gap-8">
+<!-- Page Heading & Controls -->
+<div class="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+<div class="flex flex-col gap-2">
+<h1 class="text-white text-3xl md:text-4xl font-black leading-tight tracking-tight">Research Sources Index</h1>
+<p class="text-[#9da8b9] text-base font-normal">Tracking 1,240 active research endpoints and credibility metrics.</p>
+</div>
+<div class="flex items-center gap-3">
+<button class="flex items-center gap-2 rounded-lg bg-surface-dark border border-border-dark px-4 py-2 text-sm font-medium text-white hover:bg-[#252a33] transition-colors">
+<span class="material-symbols-outlined text-[20px]">file_download</span>
+<span>Export</span>
+</button>
+<button class="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white shadow-lg shadow-blue-900/20 hover:bg-blue-600 transition-colors">
+<span class="material-symbols-outlined text-[20px]">add</span>
+<span>Add Source</span>
+</button>
+</div>
+</div>
+<!-- Toolbar: Filters & Search -->
+<div class="flex flex-col gap-4 rounded-xl border border-border-dark bg-surface-dark p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+<!-- Search -->
+<div class="relative flex-1 max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">search</span>
+<input class="h-10 w-full rounded-lg bg-background-dark border border-border-dark pl-10 pr-4 text-sm text-white placeholder:text-gray-500 focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Filter sources by URL or domain..." type="text"/>
+</div>
+<!-- Filter Chips -->
+<div class="flex flex-wrap items-center gap-3">
+<div class="flex items-center gap-2 border-r border-border-dark pr-3 mr-1">
+<span class="text-xs font-semibold uppercase tracking-wider text-gray-500">Filter by</span>
+</div>
+<button class="group flex h-8 items-center gap-2 rounded-lg bg-primary/10 px-3 hover:bg-primary/20 transition-colors border border-primary/20">
+<span class="text-primary text-sm font-medium">All Sources</span>
+<span class="material-symbols-outlined text-primary text-[16px]">expand_more</span>
+</button>
+<button class="group flex h-8 items-center gap-2 rounded-lg bg-background-dark border border-border-dark px-3 hover:border-gray-500 transition-colors">
+<span class="text-gray-300 text-sm font-medium">Credibility</span>
+<span class="material-symbols-outlined text-gray-400 text-[16px]">expand_more</span>
+</button>
+<button class="group flex h-8 items-center gap-2 rounded-lg bg-background-dark border border-border-dark px-3 hover:border-gray-500 transition-colors">
+<span class="text-gray-300 text-sm font-medium">Sort: Recency</span>
+<span class="material-symbols-outlined text-gray-400 text-[16px]">sort</span>
+</button>
+</div>
+</div>
+<!-- Data Table -->
+<div class="overflow-hidden rounded-xl border border-border-dark bg-surface-dark shadow-xl">
+<div class="overflow-x-auto custom-scrollbar">
+<table class="w-full min-w-[1000px] border-collapse">
+<thead>
+<tr class="border-b border-border-dark bg-background-dark/50 text-left">
+<th class="whitespace-nowrap px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-400 w-[35%]">Source URL</th>
+<th class="whitespace-nowrap px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-400 w-[20%]">Credibility Score</th>
+<th class="whitespace-nowrap px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-400 w-[15%]">Status</th>
+<th class="whitespace-nowrap px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-400 w-[10%] text-right">Cited</th>
+<th class="whitespace-nowrap px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-400 w-[15%] text-right">Last Seen</th>
+<th class="whitespace-nowrap px-6 py-4 w-[5%]"></th>
+</tr>
+</thead>
+<tbody class="divide-y divide-border-dark">
+<!-- Row 1: High Credibility -->
+<tr class="group hover:bg-[#252a33] transition-colors cursor-pointer">
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<div class="flex size-8 shrink-0 items-center justify-center rounded bg-white p-1">
+<img alt="Nature logo" class="size-full object-contain" data-alt="Nature journal favicon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDAuGucoeRI8BFpeICbj9PFRNQJEHEWbq7w9GS6g3Mo4tc_WnpH4tDnXwyQvG-_3Ocvmrktkk2uQXYcr1HjPq1WAUFGUcH_6eI21eCiDeKuKKSaqnIHAEiFLUrxxsJv111xqGjvpLZ6SrSPREW-7GY_nmhAxHJgkh3-aiv46OPiQgXMyERV4pNMp8-jiEYSH_b4TOyv1rfVi3ffzExGp4w9UybcNU0BKvo7hHjpo9TWkj_G5jvNEV_ytlZZGyuwx_CvdstVfn7eofCu"/>
+</div>
+<div class="flex flex-col">
+<span class="text-sm font-medium text-white group-hover:text-primary transition-colors">nature.com</span>
+<span class="text-xs text-gray-500 truncate max-w-[240px]">/articles/s41586-023-066...</span>
+</div>
+</div>
+</td>
+<td class="px-6 py-4">
+<div class="flex flex-col gap-1.5">
+<div class="flex gap-1">
+<div class="h-1.5 w-8 rounded-full bg-primary"></div>
+<div class="h-1.5 w-8 rounded-full bg-primary"></div>
+<div class="h-1.5 w-8 rounded-full bg-primary"></div>
+<div class="h-1.5 w-8 rounded-full bg-primary"></div>
+<div class="h-1.5 w-8 rounded-full bg-primary/30"></div>
+</div>
+<span class="text-xs font-medium text-gray-400">Score: 92/100</span>
+</div>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400 border border-emerald-500/20">
+<span class="material-symbols-outlined text-[14px]">verified</span>
+                                        Verified
+                                    </span>
+</td>
+<td class="px-6 py-4 text-right">
+<span class="font-mono text-sm text-gray-300 bg-background-dark/50 px-2 py-1 rounded border border-border-dark">842</span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex flex-col items-end">
+<span class="text-sm text-gray-300">Oct 24</span>
+<span class="text-xs text-gray-500">14:30 PM</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="text-gray-500 hover:text-white">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 2: Expanded Row with Findings -->
+<tr class="bg-[#1e232b] border-l-2 border-l-primary">
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<div class="flex size-8 shrink-0 items-center justify-center rounded bg-white p-1">
+<img alt="Medium logo" class="size-full object-contain" data-alt="Medium blog favicon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB17IN74gtyBltAti-dSpOYC5LS82gt9t5tEiBmM2c3b-AnzORsZlBCz2DeEsQHKck4W5IDFZXdEY5qOC6i5DVtloNMkYUamNiLq6nsJ-KyTrstJjaQQr2Dt_hacoaPkS-Y5zcxw5lLuuqyGq82CQ-IKcfU0w5IzPH7GVJkTZWnQVXGcKaqWP4iiAx5G3OOIEqricfYqDVqcBukSo4Qau6Xmdkh2I6z9ZwzVaptavnnJDB2iqMsIIncVGkkifeuoA5omXP10DqcV8or"/>
+</div>
+<div class="flex flex-col">
+<span class="text-sm font-medium text-white">medium.com</span>
+<span class="text-xs text-gray-500 truncate max-w-[240px]">/@researcher_xy/quantum...</span>
+</div>
+</div>
+</td>
+<td class="px-6 py-4">
+<div class="flex flex-col gap-1.5">
+<div class="flex gap-1">
+<div class="h-1.5 w-8 rounded-full bg-yellow-500"></div>
+<div class="h-1.5 w-8 rounded-full bg-yellow-500"></div>
+<div class="h-1.5 w-8 rounded-full bg-yellow-500"></div>
+<div class="h-1.5 w-8 rounded-full bg-gray-700"></div>
+<div class="h-1.5 w-8 rounded-full bg-gray-700"></div>
+</div>
+<span class="text-xs font-medium text-gray-400">Score: 65/100</span>
+</div>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 px-2.5 py-1 text-xs font-medium text-yellow-500 border border-yellow-500/20">
+<span class="material-symbols-outlined text-[14px]">warning</span>
+                                        Review
+                                    </span>
+</td>
+<td class="px-6 py-4 text-right">
+<span class="font-mono text-sm text-gray-300 bg-background-dark/50 px-2 py-1 rounded border border-border-dark">45</span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex flex-col items-end">
+<span class="text-sm text-gray-300">Oct 23</span>
+<span class="text-xs text-gray-500">09:15 AM</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="text-primary hover:text-blue-400">
+<span class="material-symbols-outlined">expand_less</span>
+</button>
+</td>
+</tr>
+<!-- Expanded Content for Row 2 -->
+<tr class="bg-[#181c22]">
+<td class="px-6 py-4 pb-6" colspan="6">
+<div class="flex flex-col gap-4 pl-11">
+<p class="text-xs font-bold uppercase tracking-wider text-gray-500">Extracted Findings</p>
+<div class="grid gap-3">
+<div class="flex gap-3 items-start">
+<div class="mt-1 size-1.5 rounded-full bg-primary shrink-0"></div>
+<p class="text-sm text-gray-300 leading-relaxed">
+                                                    Author claims coherence times of 5ms were achieved at room temperature, contradicting established baselines of 0.5ms.
+                                                    <span class="ml-2 inline-block rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-bold text-primary">Key Finding</span>
+</p>
+</div>
+<div class="flex gap-3 items-start">
+<div class="mt-1 size-1.5 rounded-full bg-gray-600 shrink-0"></div>
+<p class="text-sm text-gray-400 leading-relaxed">
+                                                    Methodology references a pre-print paper from 2021 that has since been withdrawn.
+                                                    <span class="ml-2 inline-block rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-bold text-red-400">Flag</span>
+</p>
+</div>
+</div>
+</div>
+</td>
+</tr>
+<!-- Row 3: Low Credibility -->
+<tr class="group hover:bg-[#252a33] transition-colors cursor-pointer">
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<div class="flex size-8 shrink-0 items-center justify-center rounded bg-white p-1">
+<img alt="Generic blog favicon" class="size-full object-contain" data-alt="Blog generic favicon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA5rh-K4xWAlJ90sHa_Ha3t0OKqXiB6Q4aeYe0cJuQqaJL7YfqN6sR6MBLE4TS_v3S5fZfr1K50U_dRtLV0d8KJPyef4w6pvfkS7IOKPefgpG99Tpg8QLjO3SHTFuPrkNNyJpvlY_Sjb13RVeTWiYKv26fWMMWEkcrU05SwL8x0jMWy1JgII-6DkXO_aAM6yt9vgRHcWeYdquAfZMwulcQ2Gdb3H0qhcjJB57x85oRMYphkthSf_sQxIX3M81mZ5GEAsUuNXZOIv9ns"/>
+</div>
+<div class="flex flex-col">
+<span class="text-sm font-medium text-white group-hover:text-primary transition-colors">crypto-news.xyz</span>
+<span class="text-xs text-gray-500 truncate max-w-[240px]">/blog/market-crash-predict...</span>
+</div>
+</div>
+</td>
+<td class="px-6 py-4">
+<div class="flex flex-col gap-1.5">
+<div class="flex gap-1">
+<div class="h-1.5 w-8 rounded-full bg-red-500"></div>
+<div class="h-1.5 w-8 rounded-full bg-gray-700"></div>
+<div class="h-1.5 w-8 rounded-full bg-gray-700"></div>
+<div class="h-1.5 w-8 rounded-full bg-gray-700"></div>
+<div class="h-1.5 w-8 rounded-full bg-gray-700"></div>
+</div>
+<span class="text-xs font-medium text-gray-400">Score: 12/100</span>
+</div>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-500 border border-red-500/20">
+<span class="material-symbols-outlined text-[14px]">dangerous</span>
+                                        Unverified
+                                    </span>
+</td>
+<td class="px-6 py-4 text-right">
+<span class="font-mono text-sm text-gray-300 bg-background-dark/50 px-2 py-1 rounded border border-border-dark">4</span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex flex-col items-end">
+<span class="text-sm text-gray-300">Oct 22</span>
+<span class="text-xs text-gray-500">11:00 AM</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="text-gray-500 hover:text-white">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 4: High Credibility -->
+<tr class="group hover:bg-[#252a33] transition-colors cursor-pointer">
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<div class="flex size-8 shrink-0 items-center justify-center rounded bg-white p-1">
+<img alt="WHO logo" class="size-full object-contain" data-alt="WHO organization favicon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD_N-AfyatPyXYj4J9jeM3fTNOiXbyhQy67dG-kyLqaSiQcydB4RmsitxMMtYLWN9h2ZHSzu1SHtuB-wHxSMMkozV_K2QuPUuzaHOovTquJFp344alANjuZp2q8E5F_vv0mtawsISGdWSoVQP8bo1cU9p77pQd3Od7Ni7DKaGbxQzyIzCw9la0wuBu16V8We1iydZVlQGVi7sTAWo_FCL0wx0ugC5WtkjtWnYzCnJmP77hagMkPS5OFye6xb7s5Xf1Q2db8cZ4j-AaB"/>
+</div>
+<div class="flex flex-col">
+<span class="text-sm font-medium text-white group-hover:text-primary transition-colors">who.int</span>
+<span class="text-xs text-gray-500 truncate max-w-[240px]">/news-room/fact-sheets/detail...</span>
+</div>
+</div>
+</td>
+<td class="px-6 py-4">
+<div class="flex flex-col gap-1.5">
+<div class="flex gap-1">
+<div class="h-1.5 w-8 rounded-full bg-primary"></div>
+<div class="h-1.5 w-8 rounded-full bg-primary"></div>
+<div class="h-1.5 w-8 rounded-full bg-primary"></div>
+<div class="h-1.5 w-8 rounded-full bg-primary"></div>
+<div class="h-1.5 w-8 rounded-full bg-primary"></div>
+</div>
+<span class="text-xs font-medium text-gray-400">Score: 98/100</span>
+</div>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400 border border-emerald-500/20">
+<span class="material-symbols-outlined text-[14px]">verified</span>
+                                        Verified
+                                    </span>
+</td>
+<td class="px-6 py-4 text-right">
+<span class="font-mono text-sm text-gray-300 bg-background-dark/50 px-2 py-1 rounded border border-border-dark">1,205</span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex flex-col items-end">
+<span class="text-sm text-gray-300">Oct 21</span>
+<span class="text-xs text-gray-500">16:45 PM</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="text-gray-500 hover:text-white">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 5: Medium Credibility -->
+<tr class="group hover:bg-[#252a33] transition-colors cursor-pointer border-none">
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<div class="flex size-8 shrink-0 items-center justify-center rounded bg-white p-1">
+<img alt="Arxiv logo" class="size-full object-contain" data-alt="Arxiv favicon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDT6u7SlZzFLm1-v_BqIxmV-rcK9tCgGu8iyGdivPi8nJWQ0-W6fOJslgEkNDVyccID3ssH3G_1o9ZTJmnfO_M1RGOy_WIWUHGpy8s1JrpiSECOiAUl04ij5FBImduwv9NMuW8SsCKuLhoMEWqZEOyykw40wqUWZZNbnaXmsArb7sQgQUvBTi6qSHaw5WPXJo4b1kemVppFd5j01c6EFPcXToSGcvhIfvdsbT9RDy6o3tUy2vYLmLtQRietAMBC0WKqkZjeZpufMuti"/>
+</div>
+<div class="flex flex-col">
+<span class="text-sm font-medium text-white group-hover:text-primary transition-colors">arxiv.org</span>
+<span class="text-xs text-gray-500 truncate max-w-[240px]">/abs/2310.045...</span>
+</div>
+</div>
+</td>
+<td class="px-6 py-4">
+<div class="flex flex-col gap-1.5">
+<div class="flex gap-1">
+<div class="h-1.5 w-8 rounded-full bg-primary"></div>
+<div class="h-1.5 w-8 rounded-full bg-primary"></div>
+<div class="h-1.5 w-8 rounded-full bg-primary"></div>
+<div class="h-1.5 w-8 rounded-full bg-primary"></div>
+<div class="h-1.5 w-8 rounded-full bg-gray-700"></div>
+</div>
+<span class="text-xs font-medium text-gray-400">Score: 88/100</span>
+</div>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-400 border border-blue-500/20">
+<span class="material-symbols-outlined text-[14px]">history_edu</span>
+                                        Pre-print
+                                    </span>
+</td>
+<td class="px-6 py-4 text-right">
+<span class="font-mono text-sm text-gray-300 bg-background-dark/50 px-2 py-1 rounded border border-border-dark">156</span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex flex-col items-end">
+<span class="text-sm text-gray-300">Oct 20</span>
+<span class="text-xs text-gray-500">08:30 AM</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="text-gray-500 hover:text-white">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination -->
+<div class="flex items-center justify-between border-t border-border-dark bg-background-dark/30 px-6 py-3">
+<span class="text-sm text-gray-500">Showing 1 to 5 of 1,240 results</span>
+<div class="flex items-center gap-2">
+<button class="flex size-8 items-center justify-center rounded bg-surface-dark border border-border-dark text-gray-400 hover:text-white hover:bg-[#252a33]">
+<span class="material-symbols-outlined text-[16px]">chevron_left</span>
+</button>
+<button class="flex size-8 items-center justify-center rounded bg-primary text-white text-sm font-medium">1</button>
+<button class="flex size-8 items-center justify-center rounded bg-surface-dark border border-border-dark text-gray-400 hover:text-white hover:bg-[#252a33] text-sm">2</button>
+<button class="flex size-8 items-center justify-center rounded bg-surface-dark border border-border-dark text-gray-400 hover:text-white hover:bg-[#252a33] text-sm">3</button>
+<span class="text-gray-600">...</span>
+<button class="flex size-8 items-center justify-center rounded bg-surface-dark border border-border-dark text-gray-400 hover:text-white hover:bg-[#252a33]">
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

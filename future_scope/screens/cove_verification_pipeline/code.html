@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CoVe Verification Pipeline</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Config -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2b7cee",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#101822",
+                        "card-dark": "#161b22",
+                        "border-dark": "#282f39",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom scrollbar for dark mode technical feel */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #101822; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #282f39; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3b4554; 
+        }
+        
+        /* Flow animation for connecting lines */
+        @keyframes flowPulse {
+            0% { opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { opacity: 0.3; }
+        }
+        .animate-flow {
+            animation: flowPulse 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-white font-display overflow-hidden flex flex-col h-screen">
+<!-- TopNavBar -->
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-border-dark bg-background-dark px-6 py-3 shrink-0">
+<div class="flex items-center gap-4 text-white">
+<div class="size-8 text-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-[32px]">hub</span>
+</div>
+<h2 class="text-white text-lg font-bold leading-tight tracking-[-0.015em]">CoVe Pipeline</h2>
+</div>
+<div class="flex flex-1 justify-end gap-6">
+<label class="hidden md:flex flex-col min-w-40 !h-10 max-w-64">
+<div class="flex w-full flex-1 items-stretch rounded-lg h-full border border-border-dark overflow-hidden">
+<div class="text-[#9da8b9] flex border-none bg-card-dark items-center justify-center pl-4 rounded-l-lg border-r-0">
+<span class="material-symbols-outlined text-[20px]">search</span>
+</div>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-white focus:outline-0 focus:ring-0 border-none bg-card-dark focus:border-none h-full placeholder:text-[#9da8b9] px-4 rounded-l-none border-l-0 pl-2 text-sm font-normal leading-normal font-mono" placeholder="Search ID..." value=""/>
+</div>
+</label>
+<div class="flex gap-2">
+<button class="flex items-center justify-center overflow-hidden rounded-lg size-10 bg-card-dark hover:bg-border-dark transition-colors border border-border-dark text-white">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+</button>
+<button class="flex items-center justify-center overflow-hidden rounded-lg size-10 bg-card-dark hover:bg-border-dark transition-colors border border-border-dark text-white">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+</button>
+</div>
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10 border border-border-dark" data-alt="User profile avatar showing a generic abstract face" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDBRo8ZvySmrauUOTDbSjThP_XY5XP-fapK8Eu2QHc4o4AsBbHyNt7CTJ4C9VrB--Ms03609DpXQWrxD0Yk-MxREkKzcjrJhIitZPCtHAhAdufD9Ckad8bPZ7i-RF1uMrdUdB4hCh2cDZ3SEB2cbAxV51OlGE05zL_5DTAFxsynRJKtaF01MIeS99Qhpyt4TWh0HH9vjRpPnvvqnzf0ur7-0ZZNtgVWG5xKngiXcgVloeMWcBRvS1O-17zFUtHkdMnV5cNuWpC4-9D_");'></div>
+</div>
+</header>
+<!-- Main Layout -->
+<div class="flex flex-1 overflow-hidden">
+<!-- Left Sidebar: Pending Queue -->
+<aside class="w-80 border-r border-border-dark bg-card-dark/50 flex flex-col shrink-0 overflow-hidden">
+<div class="p-4 border-b border-border-dark">
+<h3 class="text-white text-base font-bold leading-tight tracking-[-0.015em] flex items-center gap-2">
+<span class="material-symbols-outlined text-yellow-500 text-sm">pending_actions</span>
+                    Pending Queue
+                    <span class="ml-auto text-xs font-mono bg-border-dark px-2 py-0.5 rounded text-[#9da8b9]">12</span>
+</h3>
+</div>
+<div class="flex-1 overflow-y-auto p-2 space-y-2">
+<!-- Queue Item 1 (Active) -->
+<div class="flex items-start gap-3 bg-primary/10 border border-primary/30 rounded-lg p-3 cursor-pointer group hover:border-primary/50 transition-all">
+<div class="mt-1">
+<div class="size-2 rounded-full bg-primary animate-pulse"></div>
+</div>
+<div class="flex flex-col flex-1 min-w-0">
+<div class="flex justify-between items-center mb-1">
+<span class="text-primary font-mono text-xs font-bold">#FND-01</span>
+<span class="text-xs text-[#9da8b9]">Now</span>
+</div>
+<p class="text-white text-sm font-medium leading-snug line-clamp-2">Superconductor Claim: Ambient Pressure</p>
+</div>
+</div>
+<!-- Queue Item 2 -->
+<div class="flex items-start gap-3 bg-transparent border border-border-dark hover:bg-border-dark/30 rounded-lg p-3 cursor-pointer transition-all">
+<div class="mt-1">
+<div class="size-2 rounded-full bg-yellow-500"></div>
+</div>
+<div class="flex flex-col flex-1 min-w-0">
+<div class="flex justify-between items-center mb-1">
+<span class="text-[#9da8b9] font-mono text-xs">#FND-02</span>
+<span class="text-xs text-[#5c667a]">2m ago</span>
+</div>
+<p class="text-[#d0d7de] text-sm font-medium leading-snug line-clamp-2">Q-Star Efficiency Metrics Anomaly</p>
+</div>
+</div>
+<!-- Queue Item 3 -->
+<div class="flex items-start gap-3 bg-transparent border border-border-dark hover:bg-border-dark/30 rounded-lg p-3 cursor-pointer transition-all">
+<div class="mt-1">
+<div class="size-2 rounded-full bg-yellow-500"></div>
+</div>
+<div class="flex flex-col flex-1 min-w-0">
+<div class="flex justify-between items-center mb-1">
+<span class="text-[#9da8b9] font-mono text-xs">#FND-03</span>
+<span class="text-xs text-[#5c667a]">15m ago</span>
+</div>
+<p class="text-[#d0d7de] text-sm font-medium leading-snug line-clamp-2">AlphaFold Variant 4 Structure</p>
+</div>
+</div>
+<!-- Queue Item 4 -->
+<div class="flex items-start gap-3 bg-transparent border border-border-dark hover:bg-border-dark/30 rounded-lg p-3 cursor-pointer transition-all">
+<div class="mt-1">
+<div class="size-2 rounded-full bg-yellow-500"></div>
+</div>
+<div class="flex flex-col flex-1 min-w-0">
+<div class="flex justify-between items-center mb-1">
+<span class="text-[#9da8b9] font-mono text-xs">#FND-04</span>
+<span class="text-xs text-[#5c667a]">42m ago</span>
+</div>
+<p class="text-[#d0d7de] text-sm font-medium leading-snug line-clamp-2">Graph Neural Network Latency</p>
+</div>
+</div>
+<!-- Queue Item 5 -->
+<div class="flex items-start gap-3 bg-transparent border border-border-dark hover:bg-border-dark/30 rounded-lg p-3 cursor-pointer transition-all">
+<div class="mt-1">
+<div class="size-2 rounded-full bg-yellow-500"></div>
+</div>
+<div class="flex flex-col flex-1 min-w-0">
+<div class="flex justify-between items-center mb-1">
+<span class="text-[#9da8b9] font-mono text-xs">#FND-05</span>
+<span class="text-xs text-[#5c667a]">1h ago</span>
+</div>
+<p class="text-[#d0d7de] text-sm font-medium leading-snug line-clamp-2">GPT-5 Context Window Expansion</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col min-w-0 overflow-y-auto bg-background-dark relative">
+<!-- Stats Dashboard -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-6 border-b border-border-dark">
+<div class="flex flex-col gap-1 rounded-lg p-4 border border-border-dark bg-card-dark">
+<div class="flex items-center justify-between">
+<p class="text-[#9da8b9] text-xs font-mono uppercase tracking-wider">Pipeline Health</p>
+<span class="material-symbols-outlined text-[#0bda5e] text-lg">ecg_heart</span>
+</div>
+<div class="flex items-end gap-2">
+<p class="text-white text-2xl font-bold font-mono">98%</p>
+<p class="text-[#0bda5e] text-xs font-medium mb-1">+2.4%</p>
+</div>
+</div>
+<div class="flex flex-col gap-1 rounded-lg p-4 border border-border-dark bg-card-dark">
+<div class="flex items-center justify-between">
+<p class="text-[#9da8b9] text-xs font-mono uppercase tracking-wider">Processing Speed</p>
+<span class="material-symbols-outlined text-primary text-lg">speed</span>
+</div>
+<div class="flex items-end gap-2">
+<p class="text-white text-2xl font-bold font-mono">1.2s<span class="text-sm font-normal text-[#9da8b9]">/claim</span></p>
+<p class="text-[#0bda5e] text-xs font-medium mb-1">+0.1s</p>
+</div>
+</div>
+<div class="flex flex-col gap-1 rounded-lg p-4 border border-border-dark bg-card-dark">
+<div class="flex items-center justify-between">
+<p class="text-[#9da8b9] text-xs font-mono uppercase tracking-wider">Total Verified</p>
+<span class="material-symbols-outlined text-[#9da8b9] text-lg">verified</span>
+</div>
+<div class="flex items-end gap-2">
+<p class="text-white text-2xl font-bold font-mono">12,450</p>
+<p class="text-[#0bda5e] text-xs font-medium mb-1">+15%</p>
+</div>
+</div>
+</div>
+<!-- Active Verification Header -->
+<div class="p-6 pb-2">
+<div class="flex flex-wrap justify-between items-center gap-4 bg-card-dark/30 rounded-xl p-6 border border-border-dark">
+<div class="flex flex-col gap-2">
+<div class="flex items-center gap-3">
+<span class="size-3 rounded-full bg-primary animate-pulse"></span>
+<h1 class="text-white text-2xl font-bold tracking-tight">Active Verification: #FND-01</h1>
+</div>
+<p class="text-[#9da8b9] text-sm font-mono flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">schedule</span>
+                            Started: 2023-10-27 14:30:00 UTC
+                        </p>
+</div>
+<div class="flex gap-3">
+<button class="flex cursor-pointer items-center justify-center rounded-lg h-9 px-4 bg-transparent border border-[#ef4444] text-[#ef4444] hover:bg-[#ef4444]/10 transition-colors text-sm font-mono font-medium">
+                            Abort
+                        </button>
+<button class="flex cursor-pointer items-center justify-center rounded-lg h-9 px-4 bg-primary text-white hover:bg-primary/90 transition-colors text-sm font-medium">
+<span class="material-symbols-outlined text-sm mr-2">pause</span>
+                            Pause Pipeline
+                        </button>
+</div>
+</div>
+</div>
+<!-- CoVe Flow Diagram -->
+<div class="flex-1 p-6 overflow-x-auto min-h-[400px] flex items-center justify-center">
+<div class="flex items-stretch gap-0 w-full max-w-6xl min-w-[800px]">
+<!-- Stage 1: Finding -->
+<div class="flex-1 flex flex-col group">
+<div class="text-[#9da8b9] text-xs font-mono uppercase mb-3 flex items-center gap-2">
+<span class="bg-primary/20 text-primary size-5 rounded flex items-center justify-center font-bold">1</span>
+                            Finding
+                        </div>
+<div class="flex-1 bg-card-dark border border-border-dark rounded-xl p-5 relative shadow-lg hover:border-primary/50 transition-all duration-300 flex flex-col gap-4">
+<!-- Status Indicator Line -->
+<div class="absolute left-0 top-4 bottom-4 w-1 bg-primary rounded-r-full"></div>
+<div class="pl-3">
+<h4 class="text-white font-medium mb-2">Initial Claim</h4>
+<p class="text-[#d0d7de] text-sm leading-relaxed bg-background-dark/50 p-3 rounded border border-border-dark/50 font-mono text-xs">
+                                    "Room temperature superconductivity achieved at ambient pressure using a modified lead-apatite structure."
+                                </p>
+</div>
+<div class="mt-auto pl-3 pt-2 border-t border-border-dark/50 flex justify-between items-center">
+<span class="text-xs text-[#9da8b9]">Source: Web Crawler</span>
+<span class="material-symbols-outlined text-primary text-lg">check_circle</span>
+</div>
+</div>
+</div>
+<!-- Connector 1 -->
+<div class="w-16 flex flex-col items-center justify-center relative shrink-0">
+<div class="h-0.5 w-full bg-border-dark overflow-hidden">
+<div class="h-full w-full bg-gradient-to-r from-transparent via-primary to-transparent animate-flow"></div>
+</div>
+<div class="absolute bg-background-dark p-1 rounded-full border border-border-dark text-[#9da8b9]">
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
+</div>
+</div>
+<!-- Stage 2: Verification Questions -->
+<div class="flex-1 flex flex-col group">
+<div class="text-[#9da8b9] text-xs font-mono uppercase mb-3 flex items-center gap-2">
+<span class="bg-yellow-500/20 text-yellow-500 size-5 rounded flex items-center justify-center font-bold">2</span>
+                            Verification Questions
+                        </div>
+<div class="flex-1 bg-card-dark border border-border-dark rounded-xl p-5 relative shadow-lg hover:border-yellow-500/50 transition-all duration-300 flex flex-col gap-4">
+<!-- Status Indicator Line -->
+<div class="absolute left-0 top-4 bottom-4 w-1 bg-yellow-500 rounded-r-full"></div>
+<div class="pl-3 flex flex-col gap-3">
+<div class="bg-background-dark/50 p-2 rounded border border-border-dark/50 flex gap-2 items-start">
+<span class="text-yellow-500 font-mono text-xs mt-0.5">Q1:</span>
+<p class="text-[#d0d7de] text-xs">What specific materials and synthesis methods were used?</p>
+</div>
+<div class="bg-background-dark/50 p-2 rounded border border-border-dark/50 flex gap-2 items-start">
+<span class="text-yellow-500 font-mono text-xs mt-0.5">Q2:</span>
+<p class="text-[#d0d7de] text-xs">Has this result been replicated by independent labs?</p>
+</div>
+<div class="bg-background-dark/50 p-2 rounded border border-border-dark/50 flex gap-2 items-start opacity-60">
+<span class="text-yellow-500 font-mono text-xs mt-0.5">Q3:</span>
+<p class="text-[#d0d7de] text-xs">Does the magnetic susceptibility data show the Meissner effect?</p>
+</div>
+</div>
+<button class="mt-auto mx-3 py-1.5 text-xs text-center text-[#9da8b9] hover:text-white border border-border-dark hover:bg-border-dark rounded transition-colors">
+                                View all 5 generated questions
+                            </button>
+</div>
+</div>
+<!-- Connector 2 -->
+<div class="w-16 flex flex-col items-center justify-center relative shrink-0">
+<div class="h-0.5 w-full bg-border-dark overflow-hidden">
+<div class="h-full w-full bg-gradient-to-r from-transparent via-yellow-500 to-transparent animate-flow" style="animation-delay: 0.5s;"></div>
+</div>
+<div class="absolute bg-background-dark p-1 rounded-full border border-border-dark text-[#9da8b9]">
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
+</div>
+</div>
+<!-- Stage 3: Evidence Search -->
+<div class="flex-1 flex flex-col group">
+<div class="text-[#9da8b9] text-xs font-mono uppercase mb-3 flex items-center gap-2">
+<span class="bg-yellow-500/20 text-yellow-500 size-5 rounded flex items-center justify-center font-bold">3</span>
+                            Evidence Search
+                        </div>
+<div class="flex-1 bg-card-dark border border-border-dark rounded-xl p-5 relative shadow-lg hover:border-yellow-500/50 transition-all duration-300 flex flex-col gap-4">
+<!-- Status Indicator Line -->
+<div class="absolute left-0 top-4 bottom-4 w-1 bg-yellow-500 rounded-r-full"></div>
+<div class="pl-3 flex flex-col gap-2">
+<div class="flex items-center justify-between text-xs text-[#9da8b9] mb-1">
+<span>Retrieving Context...</span>
+<span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+</div>
+<div class="bg-background-dark/30 p-2 rounded border border-border-dark/30">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-xs text-primary">description</span>
+<span class="text-primary text-xs font-bold">Nature Journal (2023)</span>
+</div>
+<p class="text-[#9da8b9] text-[10px] line-clamp-2 font-mono">...measurement of resistance vs temperature shows sharp drop at 104K, not ambient...</p>
+</div>
+<div class="bg-background-dark/30 p-2 rounded border border-border-dark/30">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-xs text-primary">description</span>
+<span class="text-primary text-xs font-bold">arXiv Pre-print</span>
+</div>
+<p class="text-[#9da8b9] text-[10px] line-clamp-2 font-mono">...replication attempts at Max Planck Institute failed to observe zero resistance...</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Connector 3 -->
+<div class="w-16 flex flex-col items-center justify-center relative shrink-0">
+<div class="h-0.5 w-full bg-border-dark overflow-hidden">
+<div class="h-full w-full bg-gradient-to-r from-transparent via-[#ef4444] to-transparent animate-flow" style="animation-delay: 1s;"></div>
+</div>
+<div class="absolute bg-background-dark p-1 rounded-full border border-border-dark text-[#9da8b9]">
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
+</div>
+</div>
+<!-- Stage 4: Confidence Score -->
+<div class="flex-1 flex flex-col group">
+<div class="text-[#9da8b9] text-xs font-mono uppercase mb-3 flex items-center gap-2">
+<span class="bg-red-500/20 text-[#ef4444] size-5 rounded flex items-center justify-center font-bold">4</span>
+                            Confidence
+                        </div>
+<div class="flex-1 bg-card-dark border border-border-dark rounded-xl p-5 relative shadow-lg hover:border-red-500/50 transition-all duration-300 flex flex-col items-center justify-center text-center">
+<!-- Status Indicator Line -->
+<div class="absolute left-0 top-4 bottom-4 w-1 bg-[#ef4444] rounded-r-full"></div>
+<div class="pl-2 w-full flex flex-col items-center">
+<div class="relative size-24 mb-4 flex items-center justify-center">
+<!-- Simple CSS Ring using border -->
+<div class="absolute inset-0 rounded-full border-4 border-[#282f39]"></div>
+<div class="absolute inset-0 rounded-full border-4 border-[#ef4444] border-t-transparent border-l-transparent rotate-45"></div>
+<div class="flex flex-col items-center">
+<span class="text-3xl font-bold text-white font-mono">12%</span>
+</div>
+</div>
+<h4 class="text-[#ef4444] font-bold text-sm uppercase tracking-wide border border-[#ef4444]/30 bg-[#ef4444]/10 px-3 py-1 rounded-full">Contradicted</h4>
+<p class="text-[#9da8b9] text-xs mt-4">
+                                    Evidence strongly suggests the claim is inaccurate based on multiple replication failures.
+                                </p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer / Data Stream -->
+<div class="border-t border-border-dark p-3 bg-card-dark flex justify-between items-center text-xs text-[#9da8b9] font-mono">
+<div class="flex items-center gap-4">
+<span class="flex items-center gap-1.5">
+<span class="size-2 rounded-full bg-[#0bda5e]"></span>
+                        System Online
+                     </span>
+<span>Server: us-east-1a</span>
+<span>Latency: 24ms</span>
+</div>
+<div class="flex items-center gap-2">
+<span>Logs</span>
+<span class="material-symbols-outlined text-sm">terminal</span>
+</div>
+</div>
+</main>
+</div>
+</body></html>

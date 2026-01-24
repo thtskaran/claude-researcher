@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Research Graph v1.0</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Roboto+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#2b7cee",
+              "background-light": "#f6f7f8",
+              "background-dark": "#101822",
+              "surface-dark": "#1c2027",
+            },
+            fontFamily: {
+              "display": ["Space Grotesk", "sans-serif"],
+              "mono": ["Roboto Mono", "monospace"],
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "1.5rem", "xl": "2rem", "2xl": "3rem", "full": "9999px"},
+            backdropBlur: {
+              'xs': '2px',
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        /* Custom graph styles for static visualization */
+        .node-glow-high {
+            box-shadow: 0 0 15px 2px rgba(43, 124, 238, 0.6);
+        }
+        .node-glow-low {
+            box-shadow: 0 0 15px 2px rgba(245, 158, 11, 0.4);
+        }
+        .node-pulse {
+            animation: pulse-glow 3s infinite ease-in-out;
+        }
+        @keyframes pulse-glow {
+            0% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.9; }
+        }
+        
+        /* Subtle grid background */
+        .bg-grid-pattern {
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        
+        /* Glass morphism utilities */
+        .glass-panel {
+            background: rgba(28, 32, 39, 0.65);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-[#0f1115] text-slate-200 font-display overflow-hidden w-full h-screen relative">
+<!-- Background Graph Visualization (Simulated) -->
+<div class="absolute inset-0 z-0 bg-grid-pattern overflow-hidden">
+<!-- SVG Container for Edges -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none opacity-40">
+<!-- Edge: Supports -->
+<line stroke="#2b7cee" stroke-width="1.5" x1="30%" x2="50%" y1="40%" y2="50%"></line>
+<!-- Edge: Related -->
+<line stroke="#64748b" stroke-dasharray="5,5" stroke-width="1" x1="50%" x2="70%" y1="50%" y2="30%"></line>
+<!-- Edge: Contradicts -->
+<line stroke="#ef4444" stroke-dasharray="2,4" stroke-width="1.5" x1="50%" x2="45%" y1="50%" y2="70%"></line>
+<!-- Edge: Supports -->
+<line stroke="#2b7cee" stroke-width="1" x1="30%" x2="20%" y1="40%" y2="60%"></line>
+<!-- Edge: Related -->
+<line stroke="#64748b" stroke-dasharray="5,5" stroke-width="1" x1="70%" x2="80%" y1="30%" y2="45%"></line>
+</svg>
+<!-- Node 1: Central Hub (Selected) -->
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-2 group cursor-pointer z-10">
+<div class="w-8 h-8 rounded-full bg-primary border-2 border-white/20 node-glow-high node-pulse flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-sm">hub</span>
+</div>
+<span class="font-mono text-[10px] text-primary bg-black/50 px-2 py-0.5 rounded backdrop-blur-xs">Entanglement</span>
+</div>
+<!-- Node 2: Source Node (Top Left) -->
+<div class="absolute top-[40%] left-[30%] flex flex-col items-center gap-2 cursor-pointer opacity-80 hover:opacity-100 transition-opacity">
+<div class="w-6 h-6 rounded-full bg-slate-700 border border-slate-500 flex items-center justify-center">
+<span class="material-symbols-outlined text-slate-300 text-xs">description</span>
+</div>
+<span class="font-mono text-[10px] text-slate-400">Nature 2023</span>
+</div>
+<!-- Node 3: Low Confidence (Bottom) -->
+<div class="absolute top-[70%] left-[45%] flex flex-col items-center gap-2 cursor-pointer opacity-80 hover:opacity-100 transition-opacity">
+<div class="w-5 h-5 rounded-full bg-amber-500/20 border border-amber-500/50 node-glow-low flex items-center justify-center">
+</div>
+<span class="font-mono text-[10px] text-amber-500/80">Unverified Claim</span>
+</div>
+<!-- Node 4: Related Concept (Top Right) -->
+<div class="absolute top-[30%] left-[70%] flex flex-col items-center gap-2 cursor-pointer opacity-60 hover:opacity-100 transition-opacity">
+<div class="w-4 h-4 rounded-full bg-slate-600 border border-slate-500"></div>
+<span class="font-mono text-[10px] text-slate-500">Superposition</span>
+</div>
+<!-- Node 5: Distant (Bottom Left) -->
+<div class="absolute top-[60%] left-[20%] flex flex-col items-center gap-2 cursor-pointer opacity-40 hover:opacity-100 transition-opacity">
+<div class="w-3 h-3 rounded-full bg-slate-800 border border-slate-700"></div>
+</div>
+</div>
+<!-- UI Overlay Layer -->
+<div class="relative z-20 flex flex-col h-full pointer-events-none">
+<!-- Header -->
+<header class="flex items-center justify-between px-8 py-6 pointer-events-auto">
+<div class="flex items-center gap-3">
+<div class="size-8 rounded-lg bg-surface-dark border border-white/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">account_tree</span>
+</div>
+<div>
+<h1 class="text-white text-lg font-bold leading-tight tracking-tight">Quantum Research Graph</h1>
+<div class="flex items-center gap-2 text-[#9da8b9] text-xs font-mono">
+<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+<span>LIVE DATASET v2.4</span>
+</div>
+</div>
+</div>
+<div class="flex gap-3">
+<div class="glass-panel h-10 px-4 rounded-full flex items-center gap-2 text-sm text-slate-300">
+<span class="material-symbols-outlined text-[18px]">search</span>
+<input class="bg-transparent border-none text-white text-sm focus:ring-0 placeholder:text-slate-500 w-48 font-mono" placeholder="Search nodes..." type="text"/>
+<span class="text-[10px] border border-slate-600 px-1.5 py-0.5 rounded text-slate-500">⌘K</span>
+</div>
+<button class="glass-panel size-10 rounded-full flex items-center justify-center text-slate-300 hover:text-white hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<div class="size-10 rounded-full bg-center bg-cover border border-white/10" data-alt="User profile avatar showing abstract geometric shapes" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuD5oIOiPSg3UyrQvEnKUjAAFrBucSV6q3lMBQMxNLBrx9p4USsdmN47nuXorSjfYaxiAFNz6At8N7VH-MijBm-cvCE6UJQwFLSHcgjPv6-mleXKiPXO9KzUgxm_FGDpB88MxikReqTT6zwfNLNj4gOtfzsxD_kzpKwYt9KWoN_TCnXfY2vvF46JgCKcgjEcmyNJvWH3-ChwZp1aLFDTFIXGyG-BfK0rcaysl-kji6kM9KJrlQWdqL24jTbzRnBo0TpF55cSfvk3np4Q");'></div>
+</div>
+</header>
+<!-- Main Content Area (Invisible Flex Wrapper) -->
+<div class="flex-1 flex pointer-events-none">
+<!-- Left Side (Empty for Graph View) -->
+<div class="flex-1"></div>
+<!-- Right Detail Panel (Floating) -->
+<aside class="w-[420px] p-6 pr-8 pointer-events-auto flex flex-col h-full justify-center">
+<div class="glass-panel rounded-2xl p-0 flex flex-col shadow-2xl shadow-black/50 overflow-hidden max-h-[85vh]">
+<!-- Panel Header Image -->
+<div class="h-32 bg-cover bg-center relative" data-alt="Abstract visualization of quantum particles entangling" style='background-image: linear-gradient(to bottom, rgba(0,0,0,0), rgba(28, 32, 39, 1)), url("https://lh3.googleusercontent.com/aida-public/AB6AXuCwqp2cYpOykyEHGsP_Us8hquRRh8QQxDcsNya6Q7Fd_CBZLaZtDGTIEVB3BolzPmisC_JXg2kxZGynfu2OfFQCKi38XcXBKyw4S792-khKeGSe8-PHg2YDYGhj0os9DhXylb1bbVBl5K98TNNrbWtQnYw_Ulr-tpDpkce7vTpPoAeOX8crpmkjn9k-pBC58MlOg6oiPMvLieawKK6OYK_p8z2YaEedlE88rNM1h8PZqfNZeTaiRYRRNpb9GIZDaICteze9g0JtYruV");'>
+<div class="absolute top-4 right-4">
+<button class="size-8 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/20 transition-colors">
+<span class="material-symbols-outlined text-sm">close</span>
+</button>
+</div>
+<div class="absolute bottom-4 left-6">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/20 border border-primary/30 backdrop-blur-sm">
+<span class="size-1.5 rounded-full bg-primary"></span>
+<span class="text-primary-300 text-[10px] font-mono font-medium tracking-wide uppercase">High Confidence (98%)</span>
+</span>
+</div>
+</div>
+<!-- Panel Content -->
+<div class="p-6 pt-2 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
+<!-- Title Section -->
+<div>
+<div class="flex items-center gap-2 mb-2 text-slate-400 text-xs font-mono uppercase tracking-wider">
+<span class="material-symbols-outlined text-sm">science</span>
+<span>Claim Node</span>
+</div>
+<h2 class="text-2xl font-bold text-white leading-tight">Photons exhibit entanglement over 50km distances</h2>
+</div>
+<!-- Description -->
+<div class="text-slate-300 text-sm leading-relaxed border-l-2 border-primary/30 pl-4 py-1">
+                            "Recent experiments demonstrate that quantum entanglement can be maintained across metropolitan fiber networks with minimal decoherence, suggesting viability for quantum internet infrastructure."
+                        </div>
+<!-- Metadata Grid -->
+<div class="grid grid-cols-2 gap-y-4 gap-x-2 py-4 border-t border-white/5">
+<div class="flex flex-col gap-1">
+<span class="text-[#9da8b9] text-[10px] font-mono uppercase">Verification</span>
+<div class="flex items-center gap-1.5 text-emerald-400 text-sm font-medium">
+<span class="material-symbols-outlined text-sm">verified</span>
+<span>Verified by 3</span>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<span class="text-[#9da8b9] text-[10px] font-mono uppercase">Date Added</span>
+<span class="text-white text-sm font-mono">2023-10-27</span>
+</div>
+<div class="flex flex-col gap-1 col-span-2">
+<span class="text-[#9da8b9] text-[10px] font-mono uppercase">Source</span>
+<a class="text-primary hover:text-primary-300 text-sm truncate flex items-center gap-1 transition-colors" href="#">
+<span class="material-symbols-outlined text-sm">link</span>
+                                    nature.com/articles/s41586-023-066...
+                                </a>
+</div>
+</div>
+<!-- Relationships List -->
+<div class="flex flex-col gap-3">
+<h3 class="text-white text-sm font-bold">Connected Nodes</h3>
+<!-- Relation Item 1 -->
+<div class="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors group/item cursor-pointer">
+<div class="flex items-center gap-3">
+<div class="size-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400">
+<span class="material-symbols-outlined text-sm">description</span>
+</div>
+<div class="flex flex-col">
+<span class="text-white text-xs font-medium">Study 2023-B</span>
+<span class="text-slate-500 text-[10px] font-mono">Supports</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-slate-600 group-hover/item:text-primary transition-colors text-sm">arrow_forward</span>
+</div>
+<!-- Relation Item 2 -->
+<div class="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors group/item cursor-pointer">
+<div class="flex items-center gap-3">
+<div class="size-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400">
+<span class="material-symbols-outlined text-sm">schema</span>
+</div>
+<div class="flex flex-col">
+<span class="text-white text-xs font-medium">Quantum Coherence</span>
+<span class="text-slate-500 text-[10px] font-mono">Related Concept</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-slate-600 group-hover/item:text-primary transition-colors text-sm">arrow_forward</span>
+</div>
+</div>
+<!-- Actions -->
+<div class="pt-2 flex gap-3">
+<button class="flex-1 h-10 rounded-full bg-primary hover:bg-blue-600 text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-[18px]">open_in_new</span>
+                                Open Source
+                            </button>
+<button class="size-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white flex items-center justify-center transition-colors">
+<span class="material-symbols-outlined">share</span>
+</button>
+<button class="size-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white flex items-center justify-center transition-colors">
+<span class="material-symbols-outlined">bookmark_border</span>
+</button>
+</div>
+</div>
+</div>
+</aside>
+</div>
+<!-- Bottom Controls -->
+<div class="absolute bottom-8 left-1/2 -translate-x-1/2 pointer-events-auto">
+<div class="glass-panel h-14 pl-2 pr-2 rounded-full flex items-center gap-1 shadow-lg shadow-black/20">
+<!-- View Toggles -->
+<div class="flex p-1 bg-black/20 rounded-full">
+<button class="px-4 h-9 rounded-full bg-primary text-white text-xs font-bold shadow-sm">Graph</button>
+<button class="px-4 h-9 rounded-full text-slate-400 hover:text-white text-xs font-medium transition-colors">List</button>
+</div>
+<div class="w-px h-6 bg-white/10 mx-2"></div>
+<!-- Filters -->
+<button class="h-9 px-3 rounded-full hover:bg-white/5 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-2 transition-colors">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+                    High Conf.
+                </button>
+<button class="h-9 px-3 rounded-full hover:bg-white/5 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-2 transition-colors">
+<span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                    Low Conf.
+                </button>
+<div class="w-px h-6 bg-white/10 mx-2"></div>
+<!-- Zoom Controls -->
+<div class="flex items-center gap-1">
+<button class="size-9 rounded-full hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors">
+<span class="material-symbols-outlined text-[20px]">remove</span>
+</button>
+<span class="text-xs font-mono text-slate-500 w-8 text-center">100%</span>
+<button class="size-9 rounded-full hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors">
+<span class="material-symbols-outlined text-[20px]">add</span>
+</button>
+</div>
+<div class="w-px h-6 bg-white/10 mx-2"></div>
+<button class="size-9 rounded-full hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors">
+<span class="material-symbols-outlined text-[20px]">center_focus_strong</span>
+</button>
+</div>
+</div>
+<!-- Legend (Bottom Left) -->
+<div class="absolute bottom-8 left-8 pointer-events-auto">
+<div class="glass-panel p-3 rounded-xl flex flex-col gap-2">
+<div class="flex items-center gap-2">
+<div class="w-6 h-0.5 bg-primary"></div>
+<span class="text-[10px] text-slate-400 font-mono uppercase">Supports</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-6 h-0.5 bg-red-500 border-t border-dotted border-red-500 bg-transparent"></div>
+<span class="text-[10px] text-slate-400 font-mono uppercase">Contradicts</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-6 h-0.5 bg-slate-500 border-t border-dashed border-slate-500 bg-transparent"></div>
+<span class="text-[10px] text-slate-400 font-mono uppercase">Related</span>
+</div>
+</div>
+</div>
+</div>
+</body></html>

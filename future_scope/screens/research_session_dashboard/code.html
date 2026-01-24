@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Research Session Dashboard</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind Config -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2b7cee",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#101822",
+                        "surface-dark": "#16202e",
+                        "surface-border": "#283545",
+                        "accent-success": "#10b981",
+                        "accent-neutral": "#64748b",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: {"DEFAULT": "0.375rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-white font-display overflow-hidden">
+<div class="flex h-screen w-full">
+<!-- Sidebar -->
+<div class="w-64 flex flex-col border-r border-slate-200 dark:border-surface-border bg-white dark:bg-[#11161d] h-full shrink-0">
+<div class="p-6">
+<div class="flex items-center gap-3">
+<div class="flex items-center justify-center w-8 h-8 rounded bg-primary/10 text-primary">
+<span class="material-symbols-outlined text-[20px]">science</span>
+</div>
+<span class="font-bold text-lg tracking-tight">Research AI</span>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto px-4 py-2 space-y-6">
+<!-- Active Sessions -->
+<div>
+<h3 class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3 px-2">Active Sessions</h3>
+<div class="flex flex-col gap-1">
+<button class="flex items-center w-full gap-3 px-3 py-2.5 rounded-lg bg-primary/10 dark:bg-primary/20 text-slate-900 dark:text-white transition-colors group">
+<div class="w-2 h-2 rounded-full bg-accent-success shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+<span class="text-sm font-medium truncate">Market Analysis</span>
+<span class="ml-auto opacity-0 group-hover:opacity-100 material-symbols-outlined text-[16px] text-slate-400">arrow_forward_ios</span>
+</button>
+</div>
+</div>
+<!-- Recent History -->
+<div>
+<h3 class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3 px-2">History</h3>
+<div class="flex flex-col gap-1">
+<button class="flex items-center w-full gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-surface-border/50 text-slate-600 dark:text-slate-400 transition-colors group">
+<div class="w-2 h-2 rounded-full bg-accent-neutral"></div>
+<span class="text-sm font-medium truncate">Competitor Research</span>
+</button>
+<button class="flex items-center w-full gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-surface-border/50 text-slate-600 dark:text-slate-400 transition-colors group">
+<div class="w-2 h-2 rounded-full bg-accent-neutral"></div>
+<span class="text-sm font-medium truncate">Q3 Trends</span>
+</button>
+<button class="flex items-center w-full gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-surface-border/50 text-slate-600 dark:text-slate-400 transition-colors group">
+<div class="w-2 h-2 rounded-full bg-accent-neutral"></div>
+<span class="text-sm font-medium truncate">User Persona Study</span>
+</button>
+<button class="flex items-center w-full gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-100 dark:hover:bg-surface-border/50 text-slate-600 dark:text-slate-400 transition-colors group">
+<div class="w-2 h-2 rounded-full bg-accent-neutral"></div>
+<span class="text-sm font-medium truncate">Technical Feasibility</span>
+</button>
+</div>
+</div>
+</div>
+<div class="p-4 border-t border-slate-200 dark:border-surface-border">
+<button class="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg h-10 px-4 bg-primary hover:bg-blue-600 text-white text-sm font-bold transition-all shadow-lg shadow-blue-500/20">
+<span class="material-symbols-outlined text-[20px]">add</span>
+<span class="truncate">New Session</span>
+</button>
+</div>
+</div>
+<!-- Main Content -->
+<main class="flex-1 flex flex-col h-full overflow-hidden bg-background-light dark:bg-background-dark relative">
+<!-- Header -->
+<header class="flex items-center justify-between px-8 py-6 border-b border-slate-200 dark:border-surface-border bg-white/50 dark:bg-[#11161d]/50 backdrop-blur-sm z-10">
+<div>
+<div class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mb-1">
+<span>Sessions</span>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+<span class="text-primary font-medium">Running</span>
+</div>
+<h1 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Market Analysis Report #8492-A</h1>
+</div>
+<div class="flex items-center gap-3">
+<button class="flex items-center gap-2 h-9 px-3 rounded border border-slate-200 dark:border-surface-border text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-surface-border transition-colors text-sm font-medium">
+<span class="material-symbols-outlined text-[18px]">pause</span>
+                        Pause
+                    </button>
+<button class="flex items-center gap-2 h-9 px-3 rounded bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 transition-opacity text-sm font-medium">
+<span class="material-symbols-outlined text-[18px]">download</span>
+                        Export Report
+                    </button>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto">
+<div class="max-w-5xl mx-auto px-8 py-8 flex flex-col gap-10">
+<!-- Stats Grid -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div class="bg-white dark:bg-surface-dark border border-slate-200 dark:border-surface-border p-5 rounded-xl shadow-sm hover:border-primary/50 transition-colors group">
+<div class="flex justify-between items-start mb-2">
+<p class="text-sm font-medium text-slate-500 dark:text-slate-400">Sources Found</p>
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">travel_explore</span>
+</div>
+<p class="font-mono text-3xl font-bold text-slate-900 dark:text-white tracking-tighter">24</p>
+</div>
+<div class="bg-white dark:bg-surface-dark border border-slate-200 dark:border-surface-border p-5 rounded-xl shadow-sm hover:border-primary/50 transition-colors group">
+<div class="flex justify-between items-start mb-2">
+<p class="text-sm font-medium text-slate-500 dark:text-slate-400">Findings Count</p>
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">lightbulb</span>
+</div>
+<p class="font-mono text-3xl font-bold text-slate-900 dark:text-white tracking-tighter">12</p>
+</div>
+<div class="bg-white dark:bg-surface-dark border border-slate-200 dark:border-surface-border p-5 rounded-xl shadow-sm hover:border-primary/50 transition-colors group relative overflow-hidden">
+<div class="absolute top-0 right-0 w-16 h-16 bg-primary/10 rounded-bl-full -mr-4 -mt-4 z-0"></div>
+<div class="relative z-10">
+<div class="flex justify-between items-start mb-2">
+<p class="text-sm font-medium text-slate-500 dark:text-slate-400">Time Remaining</p>
+<span class="relative flex h-3 w-3">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+<span class="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+</span>
+</div>
+<p class="font-mono text-3xl font-bold text-slate-900 dark:text-white tracking-tighter">04:20</p>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-8">
+<!-- Timeline Section -->
+<div class="bg-white dark:bg-surface-dark border border-slate-200 dark:border-surface-border rounded-xl p-8 shadow-sm">
+<h2 class="text-lg font-bold text-slate-900 dark:text-white mb-6">Execution Timeline</h2>
+<div class="relative pl-2">
+<!-- Vertical Line -->
+<div class="absolute left-[19px] top-2 bottom-4 w-[2px] bg-slate-200 dark:bg-surface-border"></div>
+<!-- Step 1: Completed -->
+<div class="relative flex gap-6 pb-10 group">
+<div class="flex flex-col items-center">
+<div class="z-10 flex items-center justify-center w-10 h-10 rounded-full bg-accent-success/10 border-2 border-accent-success text-accent-success bg-white dark:bg-surface-dark transition-all">
+<span class="material-symbols-outlined text-[20px] font-bold">check</span>
+</div>
+</div>
+<div class="flex flex-col pt-2 flex-1">
+<div class="flex justify-between items-start">
+<h3 class="text-base font-semibold text-slate-900 dark:text-white">Initial Search Queries</h3>
+<span class="text-xs font-mono py-1 px-2 rounded bg-accent-success/10 text-accent-success">Completed</span>
+</div>
+<p class="text-sm text-slate-500 dark:text-slate-400 mt-1">120 queries processed across 15 domains.</p>
+</div>
+</div>
+<!-- Step 2: Active -->
+<div class="relative flex gap-6 pb-10 group">
+<div class="flex flex-col items-center">
+<div class="z-10 flex items-center justify-center w-10 h-10 rounded-full border-2 border-primary bg-primary text-white shadow-[0_0_15px_rgba(43,124,238,0.4)]">
+<span class="material-symbols-outlined text-[20px] animate-spin">sync</span>
+</div>
+</div>
+<div class="flex flex-col pt-2 flex-1">
+<div class="flex justify-between items-start">
+<h3 class="text-base font-semibold text-primary">Extracting Findings</h3>
+<span class="text-xs font-mono py-1 px-2 rounded bg-primary/10 text-primary animate-pulse">Running...</span>
+</div>
+<p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Analyzing content structure and extracting key data points.</p>
+<!-- Mini Progress Bar inside step -->
+<div class="mt-4 w-full h-1.5 bg-slate-100 dark:bg-surface-border rounded-full overflow-hidden">
+<div class="h-full bg-primary rounded-full w-[45%] shadow-[0_0_10px_rgba(43,124,238,0.6)]"></div>
+</div>
+<p class="text-xs text-slate-400 mt-2 font-mono">Processing batch 2 of 5</p>
+</div>
+</div>
+<!-- Step 3: Pending -->
+<div class="relative flex gap-6 group">
+<div class="flex flex-col items-center">
+<div class="z-10 flex items-center justify-center w-10 h-10 rounded-full border-2 border-slate-200 dark:border-surface-border bg-white dark:bg-surface-dark text-slate-300 dark:text-slate-600">
+<span class="material-symbols-outlined text-[20px]">verified</span>
+</div>
+</div>
+<div class="flex flex-col pt-2 flex-1 opacity-50">
+<div class="flex justify-between items-start">
+<h3 class="text-base font-semibold text-slate-900 dark:text-white">Verification Status</h3>
+<span class="text-xs font-mono py-1 px-2 rounded bg-slate-100 dark:bg-surface-border text-slate-500">Pending</span>
+</div>
+<p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Cross-referencing findings with trusted primary sources.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Live Console / Details -->
+<div class="flex flex-col gap-4">
+<!-- Live Logs -->
+<div class="bg-[#0f1216] border border-surface-border rounded-xl p-4 shadow-sm flex flex-col h-[300px] font-mono text-xs overflow-hidden">
+<div class="flex items-center justify-between border-b border-surface-border pb-2 mb-2">
+<span class="text-slate-400 font-semibold uppercase tracking-wider text-[10px]">System Logs</span>
+<div class="flex gap-1.5">
+<div class="w-2 h-2 rounded-full bg-red-500/20"></div>
+<div class="w-2 h-2 rounded-full bg-yellow-500/20"></div>
+<div class="w-2 h-2 rounded-full bg-green-500"></div>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto space-y-2 text-slate-400 scrollbar-hide">
+<p><span class="text-primary">[14:02:11]</span> Initializing search module...</p>
+<p><span class="text-primary">[14:02:15]</span> <span class="text-accent-success">Connected</span> to source database.</p>
+<p><span class="text-primary">[14:02:30]</span> Querying: "market trends 2024"...</p>
+<p><span class="text-primary">[14:02:45]</span> Retrieved 45 articles.</p>
+<p><span class="text-primary">[14:03:00]</span> Filtering noise...</p>
+<p><span class="text-primary">[14:03:10]</span> Starting NLP extraction...</p>
+<p><span class="text-primary">[14:03:12]</span> <span class="text-yellow-500">Warning:</span> Source #4 timeout, retrying...</p>
+<p><span class="text-primary">[14:03:15]</span> Extracted entity: "SaaS Growth"</p>
+<p class="text-white bg-white/5 p-1 -mx-1"><span class="text-primary animate-pulse">&gt;</span> Processing batch data...</p>
+</div>
+</div>
+<!-- Quick Info Card -->
+<div class="bg-primary/5 border border-primary/20 rounded-xl p-5 shadow-sm">
+<h3 class="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">info</span>
+                                    Session Details
+                                </h3>
+<div class="space-y-3 text-sm">
+<div class="flex justify-between">
+<span class="text-slate-500 dark:text-slate-400">Owner</span>
+<span class="text-slate-900 dark:text-white font-medium">Alex M.</span>
+</div>
+<div class="flex justify-between">
+<span class="text-slate-500 dark:text-slate-400">Target Region</span>
+<span class="text-slate-900 dark:text-white font-medium">North America</span>
+</div>
+<div class="flex justify-between">
+<span class="text-slate-500 dark:text-slate-400">Depth</span>
+<span class="text-slate-900 dark:text-white font-medium">Deep Dive</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>
