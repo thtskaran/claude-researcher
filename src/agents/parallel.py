@@ -60,11 +60,8 @@ class ParallelInternPool:
         self.console = console or Console()
         self.verification_pipeline = verification_pipeline
 
-        # Create intern instances
-        self.interns: list[InternAgent] = []
-        for i in range(pool_size):
-            intern = InternAgent(db, config, console, verification_pipeline)
-            self.interns.append(intern)
+        # Note: We no longer store intern instances - they are created fresh per directive
+        # to prevent state corruption from concurrent access
 
     async def research_parallel(
         self,
@@ -88,10 +85,13 @@ class ParallelInternPool:
         self._log(f"Starting parallel research with {len(active_directives)} interns")
 
         # Create tasks for parallel execution
+        # Each task gets a FRESH intern instance to prevent state corruption
         tasks = []
         for i, directive in enumerate(active_directives):
-            intern = self.interns[i]
-            intern.reset()  # Reset state for new directive
+            # Create a fresh intern for each directive to avoid shared state issues
+            intern = InternAgent(
+                self.db, self.config, self.console, self.verification_pipeline
+            )
             task = self._execute_with_error_handling(intern, directive, session_id, i)
             tasks.append(task)
 
@@ -255,16 +255,14 @@ Return ONLY a JSON array of {max_aspects} aspects:
             self.console.print(f"{prefix} {message}")
 
     def reset_all(self) -> None:
-        """Reset all interns in the pool."""
-        for intern in self.interns:
-            intern.reset()
+        """Reset method - no-op since interns are created fresh per directive."""
+        pass  # Interns are created fresh per directive, no state to reset
 
     def set_verification_pipeline(self, pipeline: "VerificationPipeline") -> None:
-        """Set the verification pipeline for all interns.
+        """Set the verification pipeline for future intern instances.
 
         Args:
             pipeline: The verification pipeline to use
         """
         self.verification_pipeline = pipeline
-        for intern in self.interns:
-            intern.verification_pipeline = pipeline
+        # Note: New interns created in research_parallel() will use this pipeline

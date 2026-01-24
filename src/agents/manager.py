@@ -1,5 +1,6 @@
 """Manager agent - coordinates research and critiques findings."""
 
+import asyncio
 import json
 from typing import Any, Optional, TYPE_CHECKING
 from datetime import datetime
@@ -76,6 +77,9 @@ class ManagerAgent(BaseAgent):
         self.max_depth: int = 5
         self.start_time: Optional[datetime] = None
         self.time_limit_minutes: int = 60
+
+        # Locks for thread-safe state access (prevents race conditions in parallel execution)
+        self._state_lock = asyncio.Lock()  # Protects topics_queue, all_findings, all_reports
 
         # User interaction support
         self.interaction = interaction
@@ -318,8 +322,9 @@ Think step by step about the best next action."""
                 intern_report = await self.intern.execute_directive(
                     directive, self.session_id
                 )
-                self.all_reports.append(intern_report)
-                self.all_findings.extend(intern_report.findings)
+                async with self._state_lock:
+                    self.all_reports.append(intern_report)
+                    self.all_findings.extend(intern_report.findings)
 
                 # Process findings into knowledge graph
                 await self._process_findings_to_kg(intern_report.findings)
@@ -353,11 +358,12 @@ Think step by step about the best next action."""
         if self.topics_queue:
             # Use parallel execution if we have multiple topics and pool is available
             if len(self.topics_queue) >= 2 and self.intern_pool:
-                # Pop multiple topics for parallel execution
-                topics_to_run = []
-                for _ in range(min(self.pool_size, len(self.topics_queue))):
-                    if self.topics_queue:
-                        topics_to_run.append(self.topics_queue.pop(0))
+                # Pop multiple topics for parallel execution (with lock for thread safety)
+                async with self._state_lock:
+                    topics_to_run = []
+                    for _ in range(min(self.pool_size, len(self.topics_queue))):
+                        if self.topics_queue:
+                            topics_to_run.append(self.topics_queue.pop(0))
 
                 self._log("═" * 70, style="bold blue")
                 self._log(f"[PARALLEL TOPICS] Running {len(topics_to_run)} topics in parallel", style="bold green")
@@ -381,7 +387,8 @@ Think step by step about the best next action."""
                 }
 
             # Single topic - use regular intern
-            topic = self.topics_queue.pop(0)
+            async with self._state_lock:
+                topic = self.topics_queue.pop(0)
             directive = ManagerDirective(
                 action="search",
                 topic=topic.topic,
@@ -398,10 +405,11 @@ Think step by step about the best next action."""
             intern_report = await self.intern.execute_directive(
                 directive, self.session_id
             )
-            self.all_reports.append(intern_report)
-            self.all_findings.extend(intern_report.findings)
-            self.completed_topics.append(topic)
-            self.current_depth = max(self.current_depth, topic.depth)
+            async with self._state_lock:
+                self.all_reports.append(intern_report)
+                self.all_findings.extend(intern_report.findings)
+                self.completed_topics.append(topic)
+                self.current_depth = max(self.current_depth, topic.depth)
 
             # Process findings into knowledge graph
             await self._process_findings_to_kg(intern_report.findings)
@@ -807,6 +815,16 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
         new_depth = (parent_topic.depth + 1) if parent_topic else self.current_depth + 1
 
         for followup in report.suggested_followups[:3]:  # Limit follow-ups
+            # Filter out meta-questions/clarifying questions
+            followup_lower = followup.lower()
+            is_meta_question = any(phrase in followup_lower for phrase in [
+                "please provide", "what information", "could you clarify",
+                "what are you looking for", "what topic", "what subject",
+                "what would you like", "can you specify", "please specify",
+            ])
+            if is_meta_question:
+                continue
+
             # Check if we already have this topic
             existing = [t for t in self.topics_queue if t.topic.lower() == followup.lower()]
             if existing:
@@ -819,7 +837,8 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
                 depth=new_depth,
                 priority=max(1, directive.priority - 1),
             )
-            self.topics_queue.append(topic)
+            async with self._state_lock:
+                self.topics_queue.append(topic)
 
     async def _synthesize_report(self) -> ManagerReport:
         """Synthesize all findings into a final report with verification awareness."""
@@ -971,13 +990,17 @@ Be thorough and insightful. Note where findings have lower confidence."""
         # Execute in parallel
         result = await self.intern_pool.research_parallel(directives, self.session_id)
 
-        # Process results
-        self.all_findings.extend(result.total_findings)
-        self.all_reports.extend(result.reports)
+        # Process results (with lock for thread safety)
+        async with self._state_lock:
+            self.all_findings.extend(result.total_findings)
+            self.all_reports.extend(result.reports)
 
-        # Mark topics as completed and track them
+            # Mark topics as completed and track them
+            for topic in aspect_topics:
+                self.completed_topics.append(topic)
+
+        # Update DB status outside lock
         for topic in aspect_topics:
-            self.completed_topics.append(topic)
             await self.db.update_topic_status(topic.id, "completed", len(result.total_findings) // len(aspects))
 
         # Update depth tracking
@@ -991,7 +1014,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
             findings_summary = "\n".join([
                 f"- {f.content[:200]}" for f in result.total_findings[:20]
             ])
-            self.external_memory.store(
+            await self.external_memory.store(
                 session_id=self.session_id,
                 content=f"Parallel research findings:\n{findings_summary}",
                 memory_type="finding",
@@ -1044,15 +1067,19 @@ Be thorough and insightful. Note where findings have lower confidence."""
 
         result = await self.intern_pool.research_parallel(directives, self.session_id)
 
-        # Process results
-        self.all_findings.extend(result.total_findings)
-        self.all_reports.extend(result.reports)
+        # Process results (with lock for thread safety)
+        async with self._state_lock:
+            self.all_findings.extend(result.total_findings)
+            self.all_reports.extend(result.reports)
 
-        # Mark topics as completed and update database
+            # Mark topics as completed
+            for topic in topics[:max_parallel]:
+                self.completed_topics.append(topic)
+                self.current_depth = max(self.current_depth, topic.depth)
+
+        # Update database outside lock
         findings_per_topic = len(result.total_findings) // max(len(topics[:max_parallel]), 1)
         for topic in topics[:max_parallel]:
-            self.completed_topics.append(topic)
-            self.current_depth = max(self.current_depth, topic.depth)
             await self.db.update_topic_status(topic.id, "completed", findings_per_topic)
 
         # Process findings to KG
@@ -1100,7 +1127,8 @@ Be thorough and insightful. Note where findings have lower confidence."""
                 depth=0,
                 priority=10,
             )
-            self.topics_queue.append(initial_topic)
+            async with self._state_lock:
+                self.topics_queue.append(initial_topic)
 
         context = {
             "goal": goal,
@@ -1111,7 +1139,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
         result = await self.run(context)
 
         # Store final summary in external memory
-        self.external_memory.store(
+        await self.external_memory.store(
             session_id=self.session_id,
             content=f"Research completed on: {goal}\nTotal findings: {len(self.all_findings)}\nTopics explored: {len(self.completed_topics)}",
             memory_type="summary",

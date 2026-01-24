@@ -613,18 +613,27 @@ Return ONLY the JSON array, no explanation."""
         self, _section: PlannedSection, goal: str, findings: list[Finding]
     ) -> str:
         """Generate a 2-3 sentence TL;DR summary."""
-        top_findings = sorted(findings, key=lambda f: f.confidence, reverse=True)[:15]
+        # Filter out any meta-questions or placeholder content from findings
+        valid_findings = [
+            f for f in findings
+            if not any(phrase in f.content.lower() for phrase in [
+                "please provide", "what information", "could you clarify",
+                "what are you looking for", "template or placeholder",
+            ])
+        ]
+        top_findings = sorted(valid_findings, key=lambda f: f.confidence, reverse=True)[:15]
         findings_text = "\n".join([f"- {f.content[:200]}" for f in top_findings])
 
         prompt = f"""Write a TL;DR (Too Long; Didn't Read) summary for this research.
 
 RESEARCH QUESTION: {goal}
 
-KEY FINDINGS:
+KEY FINDINGS (focus on these substantive findings):
 {findings_text}
 
 Write 2-3 sentences that directly answer the research question with the most important takeaways.
-Be specific and definitive. This is the bottom-line answer.
+Be specific and definitive. This is the bottom-line answer based on the actual findings above.
+Do NOT say the research is incomplete or a placeholder - summarize what was actually found.
 
 Format as a blockquote (start each line with >).
 Output ONLY the blockquote, nothing else."""

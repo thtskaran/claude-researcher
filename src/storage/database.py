@@ -1,5 +1,6 @@
 """SQLite database for persisting research state and findings."""
 
+import asyncio
 import aiosqlite
 import secrets
 import re
@@ -66,18 +67,23 @@ class ResearchDatabase:
     def __init__(self, db_path: str = "research.db"):
         self.db_path = Path(db_path)
         self._connection: Optional[aiosqlite.Connection] = None
+        self._connection_lock = asyncio.Lock()  # Protects connection access
 
     async def connect(self) -> None:
         """Connect to the database and create tables if needed."""
-        self._connection = await aiosqlite.connect(self.db_path)
-        self._connection.row_factory = aiosqlite.Row
-        await self._create_tables()
+        async with self._connection_lock:
+            if self._connection is not None:
+                return  # Already connected
+            self._connection = await aiosqlite.connect(self.db_path)
+            self._connection.row_factory = aiosqlite.Row
+            await self._create_tables()
 
     async def close(self) -> None:
         """Close the database connection."""
-        if self._connection:
-            await self._connection.close()
-            self._connection = None
+        async with self._connection_lock:
+            if self._connection:
+                await self._connection.close()
+                self._connection = None
 
     async def _create_tables(self) -> None:
         """Create database tables if they don't exist."""
@@ -180,14 +186,18 @@ class ResearchDatabase:
         slug = _generate_slug(goal)
         now = datetime.now().isoformat()
 
-        await self._connection.execute(
-            """
-            INSERT INTO sessions (id, goal, slug, time_limit_minutes, started_at, status)
-            VALUES (?, ?, ?, ?, ?, 'active')
-            """,
-            (session_id, goal, slug, time_limit_minutes, now),
-        )
-        await self._connection.commit()
+        try:
+            await self._connection.execute(
+                """
+                INSERT INTO sessions (id, goal, slug, time_limit_minutes, started_at, status)
+                VALUES (?, ?, ?, ?, ?, 'active')
+                """,
+                (session_id, goal, slug, time_limit_minutes, now),
+            )
+            await self._connection.commit()
+        except Exception:
+            await self._connection.rollback()
+            raise
         return ResearchSession(
             id=session_id,
             goal=goal,
@@ -220,26 +230,30 @@ class ResearchDatabase:
 
     async def update_session(self, session: ResearchSession) -> None:
         """Update a session."""
-        await self._connection.execute(
-            """
-            UPDATE sessions SET
-                status = ?,
-                ended_at = ?,
-                total_findings = ?,
-                total_searches = ?,
-                depth_reached = ?
-            WHERE id = ?
-            """,
-            (
-                session.status,
-                session.ended_at.isoformat() if session.ended_at else None,
-                session.total_findings,
-                session.total_searches,
-                session.depth_reached,
-                session.id,
-            ),
-        )
-        await self._connection.commit()
+        try:
+            await self._connection.execute(
+                """
+                UPDATE sessions SET
+                    status = ?,
+                    ended_at = ?,
+                    total_findings = ?,
+                    total_searches = ?,
+                    depth_reached = ?
+                WHERE id = ?
+                """,
+                (
+                    session.status,
+                    session.ended_at.isoformat() if session.ended_at else None,
+                    session.total_findings,
+                    session.total_searches,
+                    session.depth_reached,
+                    session.id,
+                ),
+            )
+            await self._connection.commit()
+        except Exception:
+            await self._connection.rollback()
+            raise
 
     # Topic methods
     async def create_topic(
@@ -251,14 +265,18 @@ class ResearchDatabase:
         priority: int = 5,
     ) -> ResearchTopic:
         """Create a new research topic."""
-        cursor = await self._connection.execute(
-            """
-            INSERT INTO topics (session_id, topic, parent_topic_id, depth, priority)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (session_id, topic, parent_topic_id, depth, priority),
-        )
-        await self._connection.commit()
+        try:
+            cursor = await self._connection.execute(
+                """
+                INSERT INTO topics (session_id, topic, parent_topic_id, depth, priority)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (session_id, topic, parent_topic_id, depth, priority),
+            )
+            await self._connection.commit()
+        except Exception:
+            await self._connection.rollback()
+            raise
         return ResearchTopic(
             id=cursor.lastrowid,
             session_id=session_id,
@@ -298,45 +316,53 @@ class ResearchDatabase:
     ) -> None:
         """Update topic status."""
         completed_at = datetime.now().isoformat() if status == "completed" else None
-        await self._connection.execute(
-            """
-            UPDATE topics SET status = ?, completed_at = ?, findings_count = ?
-            WHERE id = ?
-            """,
-            (status, completed_at, findings_count, topic_id),
-        )
-        await self._connection.commit()
+        try:
+            await self._connection.execute(
+                """
+                UPDATE topics SET status = ?, completed_at = ?, findings_count = ?
+                WHERE id = ?
+                """,
+                (status, completed_at, findings_count, topic_id),
+            )
+            await self._connection.commit()
+        except Exception:
+            await self._connection.rollback()
+            raise
 
     # Finding methods
     async def save_finding(self, finding: Finding, topic_id: Optional[int] = None) -> Finding:
         """Save a research finding."""
-        cursor = await self._connection.execute(
-            """
-            INSERT INTO findings (
-                session_id, topic_id, content, finding_type, source_url,
-                confidence, search_query, created_at, validated_by_manager, manager_notes,
-                verification_status, verification_method, kg_support_score, original_confidence
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                finding.session_id,
-                topic_id,
-                finding.content,
-                finding.finding_type.value,
-                finding.source_url,
-                finding.confidence,
-                finding.search_query,
-                finding.created_at.isoformat(),
-                1 if finding.validated_by_manager else 0,
-                finding.manager_notes,
-                finding.verification_status,
-                finding.verification_method,
-                finding.kg_support_score,
-                finding.original_confidence,
-            ),
-        )
-        await self._connection.commit()
-        finding.id = cursor.lastrowid
+        try:
+            cursor = await self._connection.execute(
+                """
+                INSERT INTO findings (
+                    session_id, topic_id, content, finding_type, source_url,
+                    confidence, search_query, created_at, validated_by_manager, manager_notes,
+                    verification_status, verification_method, kg_support_score, original_confidence
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    finding.session_id,
+                    topic_id,
+                    finding.content,
+                    finding.finding_type.value,
+                    finding.source_url,
+                    finding.confidence,
+                    finding.search_query,
+                    finding.created_at.isoformat(),
+                    1 if finding.validated_by_manager else 0,
+                    finding.manager_notes,
+                    finding.verification_status,
+                    finding.verification_method,
+                    finding.kg_support_score,
+                    finding.original_confidence,
+                ),
+            )
+            await self._connection.commit()
+            finding.id = cursor.lastrowid
+        except Exception:
+            await self._connection.rollback()
+            raise
         return finding
 
     async def update_finding_verification(
@@ -349,34 +375,38 @@ class ResearchDatabase:
         new_confidence: Optional[float] = None,
     ) -> None:
         """Update a finding's verification status."""
-        if new_confidence is not None:
-            await self._connection.execute(
-                """
-                UPDATE findings SET
-                    verification_status = ?,
-                    verification_method = ?,
-                    kg_support_score = ?,
-                    original_confidence = ?,
-                    confidence = ?
-                WHERE id = ?
-                """,
-                (verification_status, verification_method, kg_support_score,
-                 original_confidence, new_confidence, finding_id),
-            )
-        else:
-            await self._connection.execute(
-                """
-                UPDATE findings SET
-                    verification_status = ?,
-                    verification_method = ?,
-                    kg_support_score = ?,
-                    original_confidence = ?
-                WHERE id = ?
-                """,
-                (verification_status, verification_method, kg_support_score,
-                 original_confidence, finding_id),
-            )
-        await self._connection.commit()
+        try:
+            if new_confidence is not None:
+                await self._connection.execute(
+                    """
+                    UPDATE findings SET
+                        verification_status = ?,
+                        verification_method = ?,
+                        kg_support_score = ?,
+                        original_confidence = ?,
+                        confidence = ?
+                    WHERE id = ?
+                    """,
+                    (verification_status, verification_method, kg_support_score,
+                     original_confidence, new_confidence, finding_id),
+                )
+            else:
+                await self._connection.execute(
+                    """
+                    UPDATE findings SET
+                        verification_status = ?,
+                        verification_method = ?,
+                        kg_support_score = ?,
+                        original_confidence = ?
+                    WHERE id = ?
+                    """,
+                    (verification_status, verification_method, kg_support_score,
+                     original_confidence, finding_id),
+                )
+            await self._connection.commit()
+        except Exception:
+            await self._connection.rollback()
+            raise
 
     async def save_verification_result(
         self,
@@ -387,38 +417,42 @@ class ResearchDatabase:
         """Save a verification result."""
         import json
 
-        cursor = await self._connection.execute(
-            """
-            INSERT INTO verification_results (
-                session_id, finding_id, original_confidence, verified_confidence,
-                verification_status, verification_method, consistency_score,
-                kg_support_score, kg_entity_matches, kg_supporting_relations,
-                critic_iterations, corrections_made, external_verification_used,
-                contradictions, verification_time_ms, created_at, error
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                session_id,
-                finding_id,
-                result_dict.get("original_confidence"),
-                result_dict.get("verified_confidence"),
-                result_dict.get("verification_status"),
-                result_dict.get("verification_method"),
-                result_dict.get("consistency_score", 0.0),
-                result_dict.get("kg_support_score", 0.0),
-                result_dict.get("kg_entity_matches", 0),
-                result_dict.get("kg_supporting_relations", 0),
-                result_dict.get("critic_iterations", 0),
-                json.dumps(result_dict.get("corrections_made", [])),
-                1 if result_dict.get("external_verification_used") else 0,
-                json.dumps(result_dict.get("contradictions", [])),
-                result_dict.get("verification_time_ms", 0.0),
-                datetime.now().isoformat(),
-                result_dict.get("error"),
-            ),
-        )
-        await self._connection.commit()
-        return cursor.lastrowid
+        try:
+            cursor = await self._connection.execute(
+                """
+                INSERT INTO verification_results (
+                    session_id, finding_id, original_confidence, verified_confidence,
+                    verification_status, verification_method, consistency_score,
+                    kg_support_score, kg_entity_matches, kg_supporting_relations,
+                    critic_iterations, corrections_made, external_verification_used,
+                    contradictions, verification_time_ms, created_at, error
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    finding_id,
+                    result_dict.get("original_confidence"),
+                    result_dict.get("verified_confidence"),
+                    result_dict.get("verification_status"),
+                    result_dict.get("verification_method"),
+                    result_dict.get("consistency_score", 0.0),
+                    result_dict.get("kg_support_score", 0.0),
+                    result_dict.get("kg_entity_matches", 0),
+                    result_dict.get("kg_supporting_relations", 0),
+                    result_dict.get("critic_iterations", 0),
+                    json.dumps(result_dict.get("corrections_made", [])),
+                    1 if result_dict.get("external_verification_used") else 0,
+                    json.dumps(result_dict.get("contradictions", [])),
+                    result_dict.get("verification_time_ms", 0.0),
+                    datetime.now().isoformat(),
+                    result_dict.get("error"),
+                ),
+            )
+            await self._connection.commit()
+            return cursor.lastrowid
+        except Exception:
+            await self._connection.rollback()
+            raise
 
     async def get_verification_stats(self, session_id: str) -> dict:
         """Get verification statistics for a session."""
@@ -501,24 +535,28 @@ class ResearchDatabase:
         """Save an agent message."""
         import json
 
-        cursor = await self._connection.execute(
-            """
-            INSERT INTO messages (
-                session_id, from_agent, to_agent, message_type, content, metadata, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                message.session_id,
-                message.from_agent.value,
-                message.to_agent.value,
-                message.message_type,
-                message.content,
-                json.dumps(message.metadata),
-                message.created_at.isoformat(),
-            ),
-        )
-        await self._connection.commit()
-        message.id = cursor.lastrowid
+        try:
+            cursor = await self._connection.execute(
+                """
+                INSERT INTO messages (
+                    session_id, from_agent, to_agent, message_type, content, metadata, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    message.session_id,
+                    message.from_agent.value,
+                    message.to_agent.value,
+                    message.message_type,
+                    message.content,
+                    json.dumps(message.metadata),
+                    message.created_at.isoformat(),
+                ),
+            )
+            await self._connection.commit()
+            message.id = cursor.lastrowid
+        except Exception:
+            await self._connection.rollback()
+            raise
         return message
 
     async def get_session_messages(

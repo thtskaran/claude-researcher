@@ -4,6 +4,7 @@ This module provides a SemanticMemoryStore that wraps the existing ExternalMemor
 and adds hybrid retrieval capabilities (semantic + BM25 + reranking).
 """
 
+import aiosqlite
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -39,10 +40,10 @@ class SemanticMemoryStore:
         store = SemanticMemoryStore(db_path="research_memory.db")
 
         # Store memory (indexes in both FTS and hybrid)
-        store.store(session_id, content, memory_type, tags, metadata)
+        await store.store(session_id, content, memory_type, tags, metadata)
 
         # Semantic search (uses hybrid retrieval)
-        results = store.search_semantic(query, session_id, limit=10)
+        results = await store.search_semantic(query, session_id, limit=10)
     """
 
     def __init__(
@@ -59,6 +60,7 @@ class SemanticMemoryStore:
             enable_hybrid: Whether to enable hybrid retrieval (can be disabled for tests)
         """
         self._external_store = ExternalMemoryStore(db_path)
+        self._db_path = Path(db_path)
         self._enable_hybrid = enable_hybrid
 
         if enable_hybrid:
@@ -79,7 +81,7 @@ class SemanticMemoryStore:
         else:
             self._retriever = None
 
-    def store(
+    async def store(
         self,
         session_id: str,
         content: str,
@@ -100,7 +102,7 @@ class SemanticMemoryStore:
             ID of stored memory
         """
         # Store in SQLite (with FTS)
-        memory_id = self._external_store.store(
+        memory_id = await self._external_store.store(
             session_id=session_id,
             content=content,
             memory_type=memory_type,
@@ -131,7 +133,7 @@ class SemanticMemoryStore:
 
         return memory_id
 
-    def search_semantic(
+    async def search_semantic(
         self,
         query: str,
         session_id: Optional[str] = None,
@@ -153,7 +155,7 @@ class SemanticMemoryStore:
         """
         if not self._retriever:
             # Fall back to FTS search
-            memories = self._external_store.search(
+            memories = await self._external_store.search(
                 query=query,
                 session_id=session_id,
                 memory_type=memory_type,
@@ -190,7 +192,7 @@ class SemanticMemoryStore:
         for result in results:
             # Get full memory from SQLite
             memory_id = result.document.metadata.get("memory_id", result.document.id)
-            memories = self._get_memory_by_id(memory_id)
+            memories = await self._get_memory_by_id(memory_id)
 
             if memories:
                 search_results.append(SemanticSearchResult(
@@ -217,21 +219,16 @@ class SemanticMemoryStore:
 
         return search_results
 
-    def _get_memory_by_id(self, memory_id: str) -> list[StoredMemory]:
+    async def _get_memory_by_id(self, memory_id: str) -> list[StoredMemory]:
         """Get memory by ID from SQLite."""
-        import sqlite3
+        async with aiosqlite.connect(self._db_path) as conn:
+            cursor = await conn.execute("""
+                SELECT id, session_id, content, memory_type, tags, created_at, metadata
+                FROM memories
+                WHERE id = ?
+            """, (memory_id,))
 
-        conn = sqlite3.connect(self._external_store.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT id, session_id, content, memory_type, tags, created_at, metadata
-            FROM memories
-            WHERE id = ?
-        """, (memory_id,))
-
-        rows = cursor.fetchall()
-        conn.close()
+            rows = await cursor.fetchall()
 
         return [
             StoredMemory(
@@ -246,7 +243,7 @@ class SemanticMemoryStore:
             for row in rows
         ]
 
-    def search(
+    async def search(
         self,
         query: str,
         session_id: Optional[str] = None,
@@ -257,28 +254,28 @@ class SemanticMemoryStore:
 
         For semantic search, use search_semantic() instead.
         """
-        return self._external_store.search(query, session_id, memory_type, limit)
+        return await self._external_store.search(query, session_id, memory_type, limit)
 
-    def get_by_session(
+    async def get_by_session(
         self,
         session_id: str,
         memory_type: Optional[str] = None,
     ) -> list[StoredMemory]:
         """Get all memories for a session."""
-        return self._external_store.get_by_session(session_id, memory_type)
+        return await self._external_store.get_by_session(session_id, memory_type)
 
-    def get_recent(
+    async def get_recent(
         self,
         session_id: str,
         limit: int = 10,
     ) -> list[StoredMemory]:
         """Get most recent memories for a session."""
-        return self._external_store.get_recent(session_id, limit)
+        return await self._external_store.get_recent(session_id, limit)
 
-    def delete_session(self, session_id: str) -> int:
+    async def delete_session(self, session_id: str) -> int:
         """Delete all memories for a session."""
         # Get memory IDs for this session
-        memories = self._external_store.get_by_session(session_id)
+        memories = await self._external_store.get_by_session(session_id)
         memory_ids = [m.id for m in memories]
 
         # Delete from hybrid retriever
@@ -286,11 +283,11 @@ class SemanticMemoryStore:
             self._retriever.delete(memory_ids)
 
         # Delete from SQLite
-        return self._external_store.delete_session(session_id)
+        return await self._external_store.delete_session(session_id)
 
-    def get_stats(self) -> dict:
+    async def get_stats(self) -> dict:
         """Get memory store statistics."""
-        stats = self._external_store.get_stats()
+        stats = await self._external_store.get_stats()
 
         if self._retriever:
             stats["retrieval"] = self._retriever.stats()
@@ -300,7 +297,7 @@ class SemanticMemoryStore:
 
         return stats
 
-    def reindex_all(self) -> int:
+    async def reindex_all(self) -> int:
         """Reindex all memories in the hybrid retriever.
 
         Useful after enabling hybrid retrieval on existing data.
@@ -315,18 +312,13 @@ class SemanticMemoryStore:
         self._retriever.clear()
 
         # Get all memories from SQLite
-        import sqlite3
+        async with aiosqlite.connect(self._db_path) as conn:
+            cursor = await conn.execute("""
+                SELECT id, session_id, content, memory_type, tags, created_at, metadata
+                FROM memories
+            """)
 
-        conn = sqlite3.connect(self._external_store.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT id, session_id, content, memory_type, tags, created_at, metadata
-            FROM memories
-        """)
-
-        rows = cursor.fetchall()
-        conn.close()
+            rows = await cursor.fetchall()
 
         if not rows:
             return 0
@@ -340,7 +332,6 @@ class SemanticMemoryStore:
             memory_type = row[3]
             tags = json.loads(row[4]) if row[4] else []
             created_at = row[5]
-            metadata = json.loads(row[6]) if row[6] else {}
 
             doc_metadata = {
                 "memory_id": memory_id,
