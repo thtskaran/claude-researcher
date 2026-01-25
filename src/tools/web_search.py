@@ -1,6 +1,8 @@
 """Web search tool using Claude Agent SDK's built-in WebSearch capability."""
 
+import asyncio
 import os
+import random
 import subprocess
 from dataclasses import dataclass
 from typing import Optional
@@ -88,25 +90,37 @@ Focus on recent, authoritative sources. Include URLs in your response."""
         results = []
         summary_text = ""
 
-        try:
-            async for message in query(prompt=prompt, options=options):
-                if isinstance(message, AssistantMessage):
-                    for block in message.content:
-                        if isinstance(block, TextBlock):
-                            summary_text += block.text
+        max_retries = 3
+        base_delay = 1.0  # seconds
 
-                            # Extract URLs from the text to create SearchResults
-                            urls = self._extract_urls(block.text)
-                            for url in urls[:self.max_results]:
-                                if not any(r.url == url for r in results):
-                                    results.append(SearchResult(
-                                        title=self._extract_title_near_url(block.text, url),
-                                        url=url,
-                                        snippet=self._extract_context_near_url(block.text, url),
-                                    ))
+        for attempt in range(max_retries):
+            try:
+                async for message in query(prompt=prompt, options=options):
+                    if isinstance(message, AssistantMessage):
+                        for block in message.content:
+                            if isinstance(block, TextBlock):
+                                summary_text += block.text
 
-        except Exception as e:
-            summary_text = f"Search error: {e}"
+                                # Extract URLs from the text to create SearchResults
+                                urls = self._extract_urls(block.text)
+                                for url in urls[:self.max_results]:
+                                    if not any(r.url == url for r in results):
+                                        results.append(SearchResult(
+                                            title=self._extract_title_near_url(block.text, url),
+                                            url=url,
+                                            snippet=self._extract_context_near_url(block.text, url),
+                                        ))
+                break  # Success, exit retry loop
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 0.5)
+                    await asyncio.sleep(delay)
+                    # Reset for retry
+                    results = []
+                    summary_text = ""
+                else:
+                    summary_text = f"Search error: {e}"
 
         # If no URLs found but we have text, create a result from the summary
         if not results and summary_text:

@@ -1,21 +1,15 @@
 """Deep Research Report Writer - generates comprehensive narrative reports like Gemini/Perplexity."""
 
-import os
-import subprocess
+import asyncio
+import random
 import re
 import json
 from datetime import datetime
 from typing import Optional
-from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
 
-try:
-    import anthropic
-    HAS_ANTHROPIC = True
-except ImportError:
-    anthropic = None
-    HAS_ANTHROPIC = False
+from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
 
 from ..models.findings import Finding, ResearchSession
 from ..verification import VerificationMetricsTracker, BatchVerificationResult
@@ -43,26 +37,6 @@ class PlannedSection:
     description: str
     priority: int = 5
     content: str = ""
-
-
-def _get_api_key() -> Optional[str]:
-    """Get the API key from Claude Code's config or environment."""
-    if api_key := os.environ.get("ANTHROPIC_API_KEY"):
-        return api_key
-    script_path = Path.home() / ".claude" / "get-api-key.sh"
-    if script_path.exists():
-        try:
-            result = subprocess.run(
-                ["bash", str(script_path)],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.strip()
-        except Exception:
-            pass
-    return None
 
 
 # Maximum tokens for prompts to avoid overflows
@@ -98,46 +72,44 @@ class DeepReportWriter:
         self.model = model
 
     async def _call_claude(self, prompt: str, system_prompt: str = "") -> str:
-        """Call Claude for report generation using direct Anthropic API."""
-        api_key = _get_api_key()
-        if not api_key:
-            return "[Error: No API key available for report generation]"
+        """Call Claude for report generation using Claude Agent SDK.
 
-        if not HAS_ANTHROPIC:
-            return "[Error: anthropic package not installed]"
+        Uses claude_agent_sdk.query() which works with both API keys and OAuth
+        authentication (normal Claude Code accounts).
+        """
+        # Combine system prompt with user prompt
+        full_prompt = prompt
+        if system_prompt:
+            full_prompt = f"{system_prompt}\n\n{prompt}"
 
-        # Map model name to full model ID
-        model_map = {
-            "opus": "claude-sonnet-4-20250514",  # Use Sonnet for report gen (faster, reliable)
-            "sonnet": "claude-sonnet-4-20250514",
-            "haiku": "claude-haiku-3-5-20241022",
-        }
-        model_id = model_map.get(self.model, "claude-sonnet-4-20250514")
+        options = ClaudeAgentOptions(
+            model=self.model,  # "opus", "sonnet", or "haiku"
+            max_turns=1,  # Single turn for report generation
+            allowed_tools=[],  # No tools needed for text generation
+        )
 
-        try:
-            client = anthropic.Anthropic(api_key=api_key)
+        response_text = ""
+        max_retries = 3
+        base_delay = 1.0
 
-            # Use extended thinking for synthesis (if sonnet)
-            message = client.messages.create(
-                model=model_id,
-                max_tokens=8000,
-                system=system_prompt if system_prompt else "You are an expert research analyst.",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-            )
+        for attempt in range(max_retries):
+            try:
+                async for message in query(prompt=full_prompt, options=options):
+                    if isinstance(message, AssistantMessage):
+                        for block in message.content:
+                            if isinstance(block, TextBlock):
+                                response_text += block.text
+                break  # Success, exit retry loop
 
-            response_text = ""
-            for block in message.content:
-                if hasattr(block, 'text'):
-                    response_text += block.text
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 0.5)
+                    await asyncio.sleep(delay)
+                    response_text = ""  # Reset for retry
+                else:
+                    return f"[Error generating report section: {str(e)[:200]}]"
 
-            return response_text
-
-        except anthropic.APIError as e:
-            return f"[API Error: {e.message}]"
-        except Exception as e:
-            return f"[Error generating report section: {str(e)[:200]}]"
+        return response_text
 
     async def generate_report(
         self,
