@@ -5,9 +5,10 @@ import json
 from typing import Any, Optional, TYPE_CHECKING
 from datetime import datetime
 
-from .base import BaseAgent, AgentConfig
+from .base import BaseAgent, AgentConfig, DecisionType
 from .intern import InternAgent
 from .parallel import ParallelInternPool
+from ..audit import init_decision_logger
 from ..models.findings import (
     AgentRole,
     Finding,
@@ -89,6 +90,7 @@ class ManagerAgent(BaseAgent):
         self.knowledge_graph = IncrementalKnowledgeGraph(
             llm_callback=self._kg_llm_callback,
             store=self.kg_store,
+            credibility_audit_callback=self._save_credibility_audit,
         )
         self.kg_query = ManagerQueryInterface(self.kg_store)
         self.credibility_scorer = CredibilityScorer()
@@ -143,6 +145,26 @@ class ManagerAgent(BaseAgent):
             return await self.call_claude(prompt)
         finally:
             self.config.model = original_model
+
+    async def _save_credibility_audit(self, audit_data: dict) -> None:
+        """Save credibility audit to database (fire-and-forget)."""
+        try:
+            await self.db.save_credibility_audit(
+                session_id=self.session_id,
+                finding_id=audit_data.get("finding_id"),
+                url=audit_data.get("url", ""),
+                domain=audit_data.get("domain", ""),
+                final_score=audit_data.get("final_score", 0.0),
+                domain_authority_score=audit_data.get("domain_authority_score", 0.0),
+                recency_score=audit_data.get("recency_score", 0.5),
+                source_type_score=audit_data.get("source_type_score", 0.6),
+                https_score=audit_data.get("https_score", 0.5),
+                path_depth_score=audit_data.get("path_depth_score", 0.8),
+                credibility_label=audit_data.get("credibility_label", "Medium"),
+            )
+        except Exception:
+            # Don't let audit errors affect main processing
+            pass
 
     async def _memory_llm_callback(self, prompt: str) -> str:
         """LLM callback for memory summarization (uses faster model)."""
@@ -365,6 +387,20 @@ Think step by step about the best next action."""
                         if self.topics_queue:
                             topics_to_run.append(self.topics_queue.pop(0))
 
+                # Log topic selection decision
+                await self._log_decision(
+                    session_id=self.session_id,
+                    decision_type=DecisionType.TOPIC_SELECTION,
+                    decision_outcome="parallel_execution",
+                    reasoning=f"Selected {len(topics_to_run)} topics for parallel research",
+                    inputs={
+                        "queue_size": len(self.topics_queue) + len(topics_to_run),
+                        "selected_topics": [t.topic for t in topics_to_run],
+                        "depths": [t.depth for t in topics_to_run],
+                    },
+                    metrics={"findings_count": len(self.all_findings), "completed_topics": len(self.completed_topics)},
+                )
+
                 self._log("═" * 70, style="bold blue")
                 self._log(f"[PARALLEL TOPICS] Running {len(topics_to_run)} topics in parallel", style="bold green")
                 for t in topics_to_run:
@@ -389,6 +425,22 @@ Think step by step about the best next action."""
             # Single topic - use regular intern
             async with self._state_lock:
                 topic = self.topics_queue.pop(0)
+
+            # Log topic selection decision
+            await self._log_decision(
+                session_id=self.session_id,
+                decision_type=DecisionType.TOPIC_SELECTION,
+                decision_outcome="single_topic",
+                reasoning=f"Selected topic '{topic.topic}' from queue",
+                inputs={
+                    "queue_size": len(self.topics_queue) + 1,
+                    "selected_topic": topic.topic,
+                    "depth": topic.depth,
+                    "priority": topic.priority,
+                },
+                metrics={"findings_count": len(self.all_findings), "completed_topics": len(self.completed_topics)},
+            )
+
             directive = ManagerDirective(
                 action="search",
                 topic=topic.topic,
@@ -655,6 +707,15 @@ Think step by step about the best next action."""
 
         # Time pressure - synthesize if under 5 minutes and we have findings
         if time_remaining < 5 and self.all_findings:
+            # Log the synthesis trigger decision
+            asyncio.create_task(self._log_decision(
+                session_id=self.session_id,
+                decision_type=DecisionType.SYNTHESIS_TRIGGER,
+                decision_outcome="triggered_time_pressure",
+                reasoning=f"Time remaining ({time_remaining:.1f}min) < 5min with {len(self.all_findings)} findings",
+                inputs={"time_remaining": time_remaining, "findings_count": len(self.all_findings)},
+                metrics={"time_used_percent": time_used_percent},
+            ))
             return True
 
         # Explicit signals - but only if we have meaningful findings AND used enough time
@@ -670,7 +731,20 @@ Think step by step about the best next action."""
             "sufficient coverage",
             "enough findings",
         ]
-        return any(signal in thought_lower for signal in synthesis_signals)
+        should_synthesize = any(signal in thought_lower for signal in synthesis_signals)
+
+        if should_synthesize:
+            # Log the synthesis trigger decision
+            asyncio.create_task(self._log_decision(
+                session_id=self.session_id,
+                decision_type=DecisionType.SYNTHESIS_TRIGGER,
+                decision_outcome="triggered_explicit_signal",
+                reasoning=thought[:500],
+                inputs={"time_remaining": time_remaining, "findings_count": len(self.all_findings)},
+                metrics={"time_used_percent": time_used_percent, "topics_completed": len(self.completed_topics)},
+            ))
+
+        return should_synthesize
 
     def _should_create_directive(self, thought: str) -> bool:
         """Determine if we should create a new directive."""
@@ -710,13 +784,33 @@ Return ONLY the JSON."""
             end = response.rfind("}") + 1
             if start != -1 and end > start:
                 data = json.loads(response[start:end])
-                return ManagerDirective(
+                directive = ManagerDirective(
                     action=data.get("action", "search"),
                     topic=data.get("topic", ""),
                     instructions=data.get("instructions", ""),
                     priority=data.get("priority", 5),
                     max_searches=data.get("max_searches", 5),
                 )
+
+                # Log directive creation decision
+                await self._log_decision(
+                    session_id=self.session_id,
+                    decision_type=DecisionType.DIRECTIVE_CREATE,
+                    decision_outcome=directive.action,
+                    reasoning=thought[:500],
+                    inputs={
+                        "action": directive.action,
+                        "topic": directive.topic,
+                        "priority": directive.priority,
+                        "max_searches": directive.max_searches,
+                    },
+                    metrics={
+                        "findings_count": len(self.all_findings),
+                        "time_remaining": self.time_limit_minutes - self._get_elapsed_minutes(),
+                    },
+                )
+
+                return directive
         except (json.JSONDecodeError, KeyError):
             pass
 
@@ -1107,6 +1201,9 @@ Be thorough and insightful. Note where findings have lower confidence."""
         self.session_id = session_id
         self.time_limit_minutes = time_limit_minutes
         self.start_time = datetime.now()
+
+        # Initialize decision logger for audit trail
+        await init_decision_logger(self.db)
 
         # Initialize memory for this session
         await self.memory.add_message(

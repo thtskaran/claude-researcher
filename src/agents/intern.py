@@ -5,7 +5,7 @@ import json
 from typing import Any, Optional, TYPE_CHECKING
 from datetime import datetime
 
-from .base import BaseAgent, AgentConfig
+from .base import BaseAgent, AgentConfig, DecisionType
 
 
 def _get_current_year() -> int:
@@ -111,13 +111,22 @@ Be brief - just state your decision and reason."""
 
         # Check if we should stop
         if self._should_stop_searching(thought, directive):
+            # Log stop searching decision
+            await self._log_decision(
+                session_id=session_id,
+                decision_type=DecisionType.STOP_SEARCHING,
+                decision_outcome="stop",
+                reasoning=thought[:500],
+                inputs={"topic": directive.topic, "max_searches": directive.max_searches},
+                metrics={"searches_done": self.searches_performed, "findings_count": len(self.findings)},
+            )
             return {
                 "action": "compile_report",
                 "report": await self._compile_report(directive.topic, session_id),
             }
 
         # Extract search query from thought
-        search_query = await self._extract_search_query(thought, directive)
+        search_query = await self._extract_search_query(thought, directive, session_id)
 
         if not search_query:
             return {
@@ -228,7 +237,7 @@ Be brief - just state your decision and reason."""
         return any(indicator in thought_lower for indicator in stop_indicators)
 
     async def _extract_search_query(
-        self, thought: str, directive: ManagerDirective
+        self, thought: str, directive: ManagerDirective, session_id: str = ""
     ) -> Optional[str]:
         """Extract a search query from the agent's thought."""
         # Check if thought indicates we should stop
@@ -239,7 +248,7 @@ Be brief - just state your decision and reason."""
         current_year = _get_current_year()
         if self.searches_performed == 0:
             # First search - use expanded query for broader coverage
-            return await self._expand_query(directive.topic, current_year)
+            return await self._expand_query(directive.topic, current_year, session_id)
 
         # Subsequent searches - use diverse query expansion
         prompt = f"""Topic: {directive.topic}
@@ -271,7 +280,7 @@ Output ONLY the search query, nothing else."""
 
         return query if query and query.upper() != "STOP" else None
 
-    async def _expand_query(self, topic: str, year: int) -> str:
+    async def _expand_query(self, topic: str, year: int, session_id: str = "") -> str:
         """Expand a query to improve search coverage.
 
         Uses query expansion techniques:
@@ -294,9 +303,22 @@ Output ONLY the search query (15-25 words max), nothing else."""
         response = await self.call_claude(prompt, task_type='query_expansion')
         query = response.strip().strip('"').strip("'")
 
-        # Fallback if expansion fails
+        # Determine expansion strategy
+        used_fallback = False
         if not query or len(query) > 200 or "error" in query.lower():
-            return f"{topic} {year} latest research developments"
+            query = f"{topic} {year} latest research developments"
+            used_fallback = True
+
+        # Log query expansion decision
+        if session_id:
+            await self._log_decision(
+                session_id=session_id,
+                decision_type=DecisionType.QUERY_EXPAND,
+                decision_outcome="expanded" if not used_fallback else "fallback",
+                reasoning=f"Expanded '{topic}' -> '{query[:100]}'",
+                inputs={"original_topic": topic, "year": year},
+                metrics={"search_number": self.searches_performed + 1, "used_fallback": used_fallback},
+            )
 
         return query
 
@@ -378,6 +400,15 @@ Format your response as JSON:
                                 f"sim={dedup_result.similarity:.0%})",
                                 style="dim"
                             )
+                            # Log dedup skip decision
+                            await self._log_decision(
+                                session_id=session_id,
+                                decision_type=DecisionType.DEDUP_SKIP,
+                                decision_outcome="skipped",
+                                reasoning=f"Content matched existing finding: {content[:100]}",
+                                inputs={"match_type": dedup_result.match_type},
+                                metrics={"similarity": dedup_result.similarity},
+                            )
                             continue
 
                     finding = Finding(
@@ -444,6 +475,15 @@ Format your response as JSON:
                     if self.deduplicator.enabled:
                         dedup_result = self.deduplicator.check(content)
                         if dedup_result.is_duplicate:
+                            # Log dedup skip decision (fallback path)
+                            await self._log_decision(
+                                session_id=session_id,
+                                decision_type=DecisionType.DEDUP_SKIP,
+                                decision_outcome="skipped_fallback",
+                                reasoning=f"Fallback content matched existing: {content[:100]}",
+                                inputs={"match_type": dedup_result.match_type},
+                                metrics={"similarity": dedup_result.similarity},
+                            )
                             continue
 
                     finding = Finding(

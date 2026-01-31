@@ -148,6 +148,53 @@ class CredibilityScorer:
             url=url,
         )
 
+    def score_source_with_audit(
+        self, url: str, publication_date: Optional[str] = None
+    ) -> tuple["CredibilityScore", dict]:
+        """Score a source's credibility and return audit data.
+
+        This method extends score_source() to also return a detailed audit
+        dictionary with all signal scores and weighted contributions for
+        persistence to the credibility_audit table.
+
+        Args:
+            url: The source URL
+            publication_date: Optional publication date (ISO format)
+
+        Returns:
+            Tuple of (CredibilityScore, audit_dict)
+            audit_dict contains:
+                - domain_authority_score
+                - recency_score
+                - source_type_score
+                - https_score
+                - path_depth_score
+                - weighted_contributions (how each signal contributed to final)
+                - credibility_label
+        """
+        score = self.score_source(url, publication_date)
+
+        # Calculate weighted contributions
+        weighted_contributions = {
+            k: score.signals.get(k, 0) * self.WEIGHTS.get(k, 0)
+            for k in self.WEIGHTS
+        }
+
+        audit = {
+            "url": url,
+            "domain": score.domain,
+            "final_score": score.score,
+            "domain_authority_score": score.signals.get("domain_authority", 0.0),
+            "recency_score": score.signals.get("recency", 0.5),
+            "source_type_score": score.signals.get("source_type", 0.6),
+            "https_score": score.signals.get("https", 0.5),
+            "path_depth_score": score.signals.get("path_depth", 0.8),
+            "credibility_label": self.get_credibility_label(score.score),
+            "weighted_contributions": weighted_contributions,
+        }
+
+        return score, audit
+
     def _score_domain_authority(self, domain: str) -> float:
         """Score domain based on authority patterns."""
         domain_lower = domain.lower()

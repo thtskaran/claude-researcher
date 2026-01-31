@@ -176,6 +176,40 @@ class ResearchDatabase:
             CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
             CREATE INDEX IF NOT EXISTS idx_verification_session ON verification_results(session_id);
             CREATE INDEX IF NOT EXISTS idx_verification_finding ON verification_results(finding_id);
+
+            -- Audit trail tables for explainability
+            CREATE TABLE IF NOT EXISTS credibility_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                finding_id TEXT,
+                url TEXT NOT NULL,
+                domain TEXT NOT NULL,
+                final_score REAL NOT NULL,
+                domain_authority_score REAL,
+                recency_score REAL,
+                source_type_score REAL,
+                https_score REAL,
+                path_depth_score REAL,
+                credibility_label TEXT,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS agent_decisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                agent_role TEXT NOT NULL,
+                decision_type TEXT NOT NULL,
+                decision_outcome TEXT NOT NULL,
+                reasoning TEXT,
+                inputs_json TEXT,
+                metrics_json TEXT,
+                iteration INTEGER,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_credibility_session ON credibility_audit(session_id);
+            CREATE INDEX IF NOT EXISTS idx_decisions_session ON agent_decisions(session_id);
+            CREATE INDEX IF NOT EXISTS idx_decisions_type ON agent_decisions(decision_type);
         """)
         await self._connection.commit()
 
@@ -629,3 +663,195 @@ class ResearchDatabase:
             "max_depth": topics_row["max_depth"] or 0,
             "completed_topics": topics_row["completed_topics"] or 0,
         }
+
+    # Credibility Audit methods
+    async def save_credibility_audit(
+        self,
+        session_id: str,
+        finding_id: Optional[str],
+        url: str,
+        domain: str,
+        final_score: float,
+        domain_authority_score: float,
+        recency_score: float,
+        source_type_score: float,
+        https_score: float,
+        path_depth_score: float,
+        credibility_label: str,
+    ) -> int:
+        """Save a credibility audit record."""
+        try:
+            cursor = await self._connection.execute(
+                """
+                INSERT INTO credibility_audit (
+                    session_id, finding_id, url, domain, final_score,
+                    domain_authority_score, recency_score, source_type_score,
+                    https_score, path_depth_score, credibility_label, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    finding_id,
+                    url,
+                    domain,
+                    final_score,
+                    domain_authority_score,
+                    recency_score,
+                    source_type_score,
+                    https_score,
+                    path_depth_score,
+                    credibility_label,
+                    datetime.now().isoformat(),
+                ),
+            )
+            await self._connection.commit()
+            return cursor.lastrowid
+        except Exception:
+            await self._connection.rollback()
+            raise
+
+    async def get_credibility_audits(self, session_id: str) -> list[dict]:
+        """Get all credibility audit records for a session."""
+        cursor = await self._connection.execute(
+            """
+            SELECT * FROM credibility_audit
+            WHERE session_id = ?
+            ORDER BY created_at
+            """,
+            (session_id,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    # Agent Decision methods
+    async def save_agent_decision(
+        self,
+        session_id: str,
+        agent_role: str,
+        decision_type: str,
+        decision_outcome: str,
+        reasoning: Optional[str] = None,
+        inputs_json: Optional[str] = None,
+        metrics_json: Optional[str] = None,
+        iteration: Optional[int] = None,
+    ) -> int:
+        """Save an agent decision record."""
+        import json as json_module
+
+        try:
+            cursor = await self._connection.execute(
+                """
+                INSERT INTO agent_decisions (
+                    session_id, agent_role, decision_type, decision_outcome,
+                    reasoning, inputs_json, metrics_json, iteration, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    agent_role,
+                    decision_type,
+                    decision_outcome,
+                    reasoning[:500] if reasoning else None,  # Truncate to 500 chars
+                    inputs_json,
+                    metrics_json,
+                    iteration,
+                    datetime.now().isoformat(),
+                ),
+            )
+            await self._connection.commit()
+            return cursor.lastrowid
+        except Exception:
+            await self._connection.rollback()
+            raise
+
+    async def save_agent_decisions_batch(
+        self,
+        decisions: list[dict],
+    ) -> int:
+        """Save multiple agent decisions in a batch."""
+        if not decisions:
+            return 0
+
+        try:
+            await self._connection.executemany(
+                """
+                INSERT INTO agent_decisions (
+                    session_id, agent_role, decision_type, decision_outcome,
+                    reasoning, inputs_json, metrics_json, iteration, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        d.get("session_id"),
+                        d.get("agent_role"),
+                        d.get("decision_type"),
+                        d.get("decision_outcome"),
+                        d.get("reasoning", "")[:500] if d.get("reasoning") else None,
+                        d.get("inputs_json"),
+                        d.get("metrics_json"),
+                        d.get("iteration"),
+                        d.get("created_at", datetime.now().isoformat()),
+                    )
+                    for d in decisions
+                ],
+            )
+            await self._connection.commit()
+            return len(decisions)
+        except Exception:
+            await self._connection.rollback()
+            raise
+
+    async def get_agent_decisions(
+        self,
+        session_id: str,
+        agent_role: Optional[str] = None,
+        decision_type: Optional[str] = None,
+    ) -> list[dict]:
+        """Get agent decisions for a session, optionally filtered."""
+        query = "SELECT * FROM agent_decisions WHERE session_id = ?"
+        params = [session_id]
+
+        if agent_role:
+            query += " AND agent_role = ?"
+            params.append(agent_role)
+        if decision_type:
+            query += " AND decision_type = ?"
+            params.append(decision_type)
+
+        query += " ORDER BY created_at"
+
+        cursor = await self._connection.execute(query, params)
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_decision_stats(self, session_id: str) -> dict:
+        """Get decision statistics for a session."""
+        cursor = await self._connection.execute(
+            """
+            SELECT
+                agent_role,
+                decision_type,
+                COUNT(*) as count
+            FROM agent_decisions
+            WHERE session_id = ?
+            GROUP BY agent_role, decision_type
+            """,
+            (session_id,),
+        )
+        rows = await cursor.fetchall()
+
+        stats = {"by_agent": {}, "by_type": {}, "total": 0}
+        for row in rows:
+            agent = row["agent_role"]
+            dtype = row["decision_type"]
+            count = row["count"]
+
+            stats["by_agent"].setdefault(agent, 0)
+            stats["by_agent"][agent] += count
+
+            stats["by_type"].setdefault(dtype, 0)
+            stats["by_type"][dtype] += count
+
+            stats["total"] += count
+
+        return stats

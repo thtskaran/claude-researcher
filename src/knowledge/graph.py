@@ -49,6 +49,7 @@ class IncrementalKnowledgeGraph:
         store: Optional[HybridKnowledgeGraphStore] = None,
         similarity_threshold: float = 0.7,
         use_fast_ner: bool = True,
+        credibility_audit_callback: Optional[Callable[[dict], Any]] = None,
     ):
         """Initialize the incremental knowledge graph.
 
@@ -57,11 +58,13 @@ class IncrementalKnowledgeGraph:
             store: Storage backend (creates new if not provided)
             similarity_threshold: Threshold for entity matching (0.7 = 70% similar)
             use_fast_ner: Use spaCy for fast NER (with LLM fallback for domain types)
+            credibility_audit_callback: Optional async callback to persist credibility audits
         """
         self.llm_callback = llm_callback
         self.store = store or HybridKnowledgeGraphStore()
         self.similarity_threshold = similarity_threshold
         self.credibility_scorer = CredibilityScorer()
+        self.credibility_audit_callback = credibility_audit_callback
 
         # Fast NER using spaCy (falls back to LLM for domain types)
         self.use_fast_ner = use_fast_ner
@@ -77,6 +80,18 @@ class IncrementalKnowledgeGraph:
 
         # Processing lock for thread safety
         self._processing_lock = asyncio.Lock()
+
+    async def _save_credibility_audit(self, audit_data: dict) -> None:
+        """Fire-and-forget save of credibility audit data."""
+        if not self.credibility_audit_callback:
+            return
+        try:
+            result = self.credibility_audit_callback(audit_data)
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception:
+            # Don't let audit errors affect main processing
+            pass
 
     async def add_finding(self, finding: KGFinding, fast_mode: bool = True) -> dict:
         """Process a new finding and integrate it into the knowledge graph.
@@ -96,12 +111,17 @@ class IncrementalKnowledgeGraph:
                 'finding_id': finding.id,
             }
 
-            # Score source credibility
-            credibility = self.credibility_scorer.score_source(
+            # Score source credibility with full audit trail
+            credibility, audit_data = self.credibility_scorer.score_source_with_audit(
                 finding.source_url,
                 finding.timestamp,
             )
             finding.credibility_score = credibility.score
+
+            # Queue async credibility audit write if callback provided
+            if self.credibility_audit_callback:
+                audit_data['finding_id'] = finding.id
+                asyncio.create_task(self._save_credibility_audit(audit_data))
 
             if fast_mode:
                 # Fast mode: Single LLM call for both entities and relations

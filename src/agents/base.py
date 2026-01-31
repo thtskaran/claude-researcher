@@ -14,6 +14,7 @@ from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBl
 from ..models.findings import AgentRole, AgentMessage
 from ..storage.database import ResearchDatabase
 from ..costs.tracker import get_cost_tracker
+from ..audit import DecisionType, DecisionLogger, get_decision_logger
 
 
 def _get_api_key() -> Optional[str]:
@@ -414,3 +415,45 @@ class BaseAgent(ABC):
             self.console.print(f"{prefix} {message}", style=style)
         else:
             self.console.print(f"{prefix} {message}")
+
+    async def _log_decision(
+        self,
+        session_id: str,
+        decision_type: DecisionType,
+        decision_outcome: str,
+        reasoning: Optional[str] = None,
+        inputs: Optional[dict] = None,
+        metrics: Optional[dict] = None,
+    ) -> None:
+        """Log an agent decision for audit trail.
+
+        This is a fire-and-forget async operation that won't block
+        the main agent loop. Decisions are batched and written to DB
+        in the background.
+
+        Args:
+            session_id: Current research session ID
+            decision_type: Type of decision (from DecisionType enum)
+            decision_outcome: The outcome/choice made
+            reasoning: Agent's reasoning (truncated to 500 chars in DB)
+            inputs: Key inputs that influenced the decision
+            metrics: Metrics at decision time (e.g., time_remaining, findings_count)
+        """
+        logger = get_decision_logger(self.db)
+        if logger is None:
+            return
+
+        try:
+            await logger.log_decision(
+                session_id=session_id,
+                agent_role=self.role.value,
+                decision_type=decision_type,
+                decision_outcome=decision_outcome,
+                reasoning=reasoning,
+                inputs=inputs,
+                metrics=metrics,
+                iteration=self.state.iteration,
+            )
+        except Exception:
+            # Don't let logging errors affect agent operation
+            pass
