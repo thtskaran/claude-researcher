@@ -68,28 +68,22 @@ A concise done/not-done checklist for each future scope document.
 
 ## 3. data-sources.md
 
-**Focus:** External APIs (arXiv, Semantic Scholar, GitHub, Hacker News, SEC EDGAR, etc.)
+**Focus:** Unified data access via Bright Data (replaces all individual API integrations)
 
 ### Implemented ✅
 | Feature | Location |
 |---------|----------|
-| Web search (basic) | `src/tools/web_search.py` |
+| SERP search (Google) | `src/tools/web_search.py` → Bright Data API |
+| Page scraping (bot-bypass) | `src/tools/web_search.py` → `fetch_page()` |
 
 ### Remaining 🔴
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| **Semantic Scholar API** | High (Tier 1) | Citation graphs, paper discovery |
-| **GitHub API** | High (Tier 1) | Real adoption signals |
-| **Hacker News API** | High (Tier 1) | No rate limits, tech pulse |
-| **arXiv API** | Medium (Tier 2) | Academic papers |
-| **SEC EDGAR** | Medium (Tier 2) | Business/financial data |
-| **Wikidata SPARQL** | Medium (Tier 2) | Entity verification |
-| **Wayback Machine** | Low (Tier 3) | Source verification |
-| **npm/PyPI Stats** | Low (Tier 3) | Tech adoption metrics |
-| **Document processing** (PyMuPDF, Marker) | Medium | PDF/document parsing |
-| **Rate limit handling** | High | Exponential backoff, per-source limits |
+| **Intern scrapes top SERP results** | High | Full content vs snippets only |
+| **Structured extractors in pipeline** | Medium | GitHub/Reddit/YouTube Bright Data datasets |
+| **PDF extraction from arXiv** | Medium | `fetch_page()` returns markdown; needs wiring |
 
-**Status: ~10% Complete**
+**Status: ~40% Complete**
 
 ---
 
@@ -185,9 +179,9 @@ A concise done/not-done checklist for each future scope document.
 
 | Document | % Complete | Key Gaps |
 |----------|------------|----------|
-| improvements-research.md | ~70% | Query expansion, diverse sources, model routing |
+| improvements-research.md | ~75% | Self-RAG loop, model routing |
 | user-interaction-design.md | ~95% | Windows support, Web UI |
-| data-sources.md | ~10% | All external APIs missing |
+| data-sources.md | ~40% | Full-content scraping and structured extractors not wired |
 | classical-ml-integration.md | ~60% | LambdaMART ranking, topic modeling |
 | power-user-features-research.md | ~25% | Checkpoints, memory persistence, integrations, exports |
 
@@ -202,11 +196,10 @@ A concise done/not-done checklist for each future scope document.
 4. **Explainable Agent Reasoning** - Log agent decisions to DB
 
 ### High Impact (Medium effort)
-1. **Semantic Scholar API** - Citation graphs for source authority
-2. **GitHub/Hacker News APIs** - Real adoption signals
-3. **Research Checkpoint System** - Pause/redirect mid-research
-4. **Persistent Cross-Session Memory** - Project-level memory
-5. **Query expansion** - LLM-generated query variations
+1. **Intern scrapes top SERP results** - Full content via Bright Data `fetch_page()`
+2. **Research Checkpoint System** - Pause/redirect mid-research
+3. **Persistent Cross-Session Memory** - Project-level memory
+4. **Bright Data structured extractors** - GitHub/Reddit/YouTube datasets in pipeline
 
 ### Strategic (High effort, transformative)
 1. **API-First Architecture** - Enable integrations

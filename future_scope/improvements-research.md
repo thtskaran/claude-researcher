@@ -180,14 +180,14 @@ class SelfCorrectingRAG:
 ### 2.3 Source Diversity Strategy
 
 **Recommended Source Mix**
-| Source Type | Purpose | Examples |
-|-------------|---------|----------|
-| Academic Databases | Peer-reviewed research | Semantic Scholar, PubMed, Scopus |
-| Web Search | Current information | Google, Bing, DuckDuckGo |
-| News APIs | Recent events | NewsAPI, GDELT |
-| Domain Databases | Specialized knowledge | JSTOR (humanities), IEEE (engineering) |
-| Government Sources | Official statistics | Science.gov, data.gov |
-| Open Access | Free full-text | DOAJ, CORE, BASE |
+| Source Type | Purpose | Via Bright Data |
+|-------------|---------|-----------------|
+| Academic papers | Peer-reviewed research | `fetch_page(arxiv_url)` or scrape Semantic Scholar |
+| Web Search | Current information | SERP API (Google/Bing/Yandex) |
+| News | Recent events | SERP news tab or `fetch_page(news_url)` |
+| Code/Tech | Adoption signals | `web_data_github_repository_file` |
+| Government/Data | Official statistics | `fetch_page(data.gov_url)` |
+| Social signals | Community discussion | `web_data_reddit_posts` |
 
 **Implementation Pattern**
 ```python
@@ -900,11 +900,10 @@ class ExternalMemory:
          │                    │                    │
          ▼                    ▼                    ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    DIVERSE SEARCH LAYER                          │
-│  • Web Search (Google, Bing, DuckDuckGo)                        │
-│  • Academic (Semantic Scholar, PubMed, arXiv)                   │
-│  • News APIs                                                     │
-│  • Domain-specific databases                                     │
+│                    BRIGHT DATA LAYER                             │
+│  • SERP (Google, Bing, Yandex)                                  │
+│  • Scrape any URL — arXiv, GitHub, HN, news, academic sites     │
+│  • Structured extractors — GitHub, Reddit, YouTube, etc.        │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
