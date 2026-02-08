@@ -20,9 +20,17 @@ from ..models.findings import (
     ManagerDirective,
     InternReport,
 )
+import asyncio
+
 from ..tools.web_search import WebSearchTool, SearchResult
 from ..storage.database import ResearchDatabase
 from ..retrieval.deduplication import FindingDeduplicator, get_deduplicator
+from ..retrieval.query_expansion import (
+    QueryExpander,
+    QueryExpansionConfig,
+    QueryExpansionResult,
+    merge_search_results,
+)
 from rich.console import Console
 
 if TYPE_CHECKING:
@@ -46,6 +54,7 @@ class InternAgent(BaseAgent):
         config: Optional[AgentConfig] = None,
         console: Optional[Console] = None,
         verification_pipeline: Optional["VerificationPipeline"] = None,
+        query_expansion_config: Optional[QueryExpansionConfig] = None,
     ):
         super().__init__(AgentRole.INTERN, db, config, console)
         self.search_tool = WebSearchTool(max_results=10)
@@ -55,6 +64,51 @@ class InternAgent(BaseAgent):
         self.suggested_followups: list[str] = []
         self.verification_pipeline = verification_pipeline
         self.deduplicator = get_deduplicator()
+
+        # Initialize query expander
+        self.query_expander = QueryExpander(
+            config=query_expansion_config or QueryExpansionConfig(),
+            llm_callback=self._query_expansion_callback,
+            kg_query=None,  # Set by manager via set_kg_query()
+            deduplicator=self.deduplicator,
+            decision_logger_callback=self._expansion_decision_logger,
+        )
+        self._pending_expanded_queries: list[Any] = []
+
+    def set_kg_query(self, kg_query: Any) -> None:
+        """Set the knowledge graph query interface for contextual expansion."""
+        self.query_expander.set_kg_query(kg_query)
+
+    async def _query_expansion_callback(self, prompt: str) -> str:
+        """Callback for QueryExpander to call the LLM."""
+        return await self.call_claude(prompt, task_type='query_expansion')
+
+    async def _expansion_decision_logger(
+        self,
+        session_id: str,
+        decision_type: str,
+        decision_outcome: str,
+        reasoning: str = "",
+        inputs: Optional[dict] = None,
+        metrics: Optional[dict] = None,
+    ) -> None:
+        """Log query expansion decisions."""
+        type_map = {
+            "multi_query_gen": DecisionType.MULTI_QUERY_GEN,
+            "contextual_expand": DecisionType.CONTEXTUAL_EXPAND,
+            "sufficiency_check": DecisionType.SUFFICIENCY_CHECK,
+            "query_merge": DecisionType.QUERY_MERGE,
+        }
+        dt = type_map.get(decision_type)
+        if dt:
+            await self._log_decision(
+                session_id=session_id,
+                decision_type=dt,
+                decision_outcome=decision_outcome,
+                reasoning=reasoning,
+                inputs=inputs,
+                metrics=metrics,
+            )
 
     @property
     def system_prompt(self) -> str:
@@ -125,25 +179,25 @@ Be brief - just state your decision and reason."""
                 "report": await self._compile_report(directive.topic, session_id),
             }
 
-        # Extract search query from thought
-        search_query = await self._extract_search_query(thought, directive, session_id)
+        # Use query expansion for better coverage
+        results, search_summary, queries_used = await self._search_with_expansion(
+            directive.topic, session_id
+        )
 
-        if not search_query:
+        # Check for early stop due to sufficiency
+        if not queries_used:
+            self._log("[Sufficiency] Gathered enough information", style="bold magenta")
             return {
                 "action": "compile_report",
                 "report": await self._compile_report(directive.topic, session_id),
             }
 
-        # Perform the search
-        self._log(f"Searching: {search_query}", style="cyan")
-        results, search_summary = await self.search_tool.search(search_query)
         self.searches_performed += 1
 
         # Show search summary
         if search_summary:
             self._log("─" * 60, style="dim")
             self._log("[Search Summary]", style="bold cyan")
-            # Show first 1000 chars of summary
             summary_preview = search_summary[:1500] + "..." if len(search_summary) > 1500 else search_summary
             self.console.print(summary_preview)
             self._log("─" * 60, style="dim")
@@ -159,9 +213,10 @@ Be brief - just state your decision and reason."""
                     snippet = r.snippet[:200] + "..." if len(r.snippet) > 200 else r.snippet
                     self._log(f"     {snippet}", style="dim")
 
-        # Process results and extract findings
+        # Process results and extract findings (use primary query for logging)
+        primary_query = queries_used[0] if queries_used else directive.topic
         new_findings = await self._process_search_results(
-            results, search_query, session_id, search_summary
+            results, primary_query, session_id, search_summary
         )
 
         # Show extracted findings
@@ -175,7 +230,8 @@ Be brief - just state your decision and reason."""
 
         return {
             "action": "search",
-            "query": search_query,
+            "query": primary_query,
+            "queries_used": queries_used,
             "results_count": len(results),
             "findings_extracted": len(new_findings),
             "results": results,
@@ -235,6 +291,77 @@ Be brief - just state your decision and reason."""
             "covered the topic",
         ]
         return any(indicator in thought_lower for indicator in stop_indicators)
+
+    async def _search_with_expansion(
+        self, topic: str, session_id: str
+    ) -> tuple[list[SearchResult], str, list[str]]:
+        """Search using expanded queries for better coverage.
+
+        Uses QueryExpander to generate multiple query variations, executes them
+        in parallel, and merges results using Reciprocal Rank Fusion.
+
+        Returns:
+            Tuple of (merged_results, combined_summary, queries_used)
+            Empty queries_used indicates sufficiency was reached.
+        """
+        expansion = await self.query_expander.expand(
+            query=topic,
+            session_id=session_id,
+            previous_findings=self.findings,
+            search_iteration=self.searches_performed,
+        )
+
+        # Early stop if sufficient information gathered
+        if expansion.is_sufficient:
+            self._log(
+                f"[Query Expansion] Sufficiency reached: {expansion.sufficiency_score:.0%}",
+                style="magenta"
+            )
+            return [], "Sufficient information gathered", []
+
+        queries = [eq.query for eq in expansion.expanded_queries]
+        if not queries:
+            queries = [topic]
+
+        self._log(f"[Query Expansion] Executing {len(queries)} queries", style="cyan")
+        for i, q in enumerate(queries, 1):
+            self._log(f"  {i}. {q[:80]}...", style="dim") if len(q) > 80 else self._log(f"  {i}. {q}", style="dim")
+
+        # Execute searches in parallel
+        tasks = [self.search_tool.search(q) for q in queries]
+        results_list = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Merge results using RRF
+        merged_results, merge_summary = merge_search_results(
+            queries=queries,
+            results_list=results_list,
+            k=60,
+            max_results=15,
+        )
+
+        # Log query merge decision
+        await self._log_decision(
+            session_id=session_id,
+            decision_type=DecisionType.QUERY_MERGE,
+            decision_outcome=f"merged_{len(queries)}_queries",
+            reasoning=merge_summary,
+            inputs={"queries": queries[:3]},
+            metrics={
+                "query_count": len(queries),
+                "total_results": len(merged_results),
+                "kg_gaps_used": len(expansion.kg_gaps_used),
+            },
+        )
+
+        # Combine summaries from all searches
+        summaries = []
+        for r in results_list:
+            if isinstance(r, tuple) and len(r) > 1 and r[1]:
+                summaries.append(r[1])
+
+        combined_summary = "\n\n---\n\n".join(summaries[:2]) if summaries else ""
+
+        return merged_results, combined_summary, queries
 
     async def _extract_search_query(
         self, thought: str, directive: ManagerDirective, session_id: str = ""
@@ -538,6 +665,7 @@ Format your response as JSON:
         self.suggested_followups = []
         self.search_tool.reset_count()
         self.state = type(self.state)()
+        self._pending_expanded_queries = []
 
     async def execute_directive(
         self, directive: ManagerDirective, session_id: str

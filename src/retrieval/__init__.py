@@ -44,6 +44,13 @@ from .deduplication import (
     get_deduplicator,
     reset_deduplicator,
 )
+from .query_expansion import (
+    QueryExpander,
+    QueryExpansionConfig,
+    QueryExpansionResult,
+    ExpandedQuery,
+    merge_search_results,
+)
 
 __all__ = [
     # Core components
@@ -78,4 +85,10 @@ __all__ = [
     "DeduplicationResult",
     "get_deduplicator",
     "reset_deduplicator",
+    # Query expansion
+    "QueryExpander",
+    "QueryExpansionConfig",
+    "QueryExpansionResult",
+    "ExpandedQuery",
+    "merge_search_results",
 ]

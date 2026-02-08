@@ -28,6 +28,12 @@ class DecisionType(Enum):
     QUERY_EXPAND = "query_expand"
     DEDUP_SKIP = "dedup_skip"
 
+    # Query expansion decisions
+    MULTI_QUERY_GEN = "multi_query_gen"
+    CONTEXTUAL_EXPAND = "contextual_expand"
+    SUFFICIENCY_CHECK = "sufficiency_check"
+    QUERY_MERGE = "query_merge"
+
     # Common decisions
     ERROR_RECOVERY = "error_recovery"
     PRIORITY_CHANGE = "priority_change"

@@ -1,37 +1,11 @@
-"""Web search tool using Claude Agent SDK's built-in WebSearch capability."""
+"""Web search and scraping using Bright Data API."""
 
 import asyncio
 import os
 import random
-import subprocess
 from dataclasses import dataclass
 from typing import Optional
-from pathlib import Path
-from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
-
-
-def _get_api_key() -> Optional[str]:
-    """Get the API key from Claude Code's config or environment."""
-    # First check environment
-    if api_key := os.environ.get("ANTHROPIC_API_KEY"):
-        return api_key
-
-    # Try Claude Code's get-api-key.sh script
-    script_path = Path.home() / ".claude" / "get-api-key.sh"
-    if script_path.exists():
-        try:
-            result = subprocess.run(
-                ["bash", str(script_path)],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.strip()
-        except Exception:
-            pass
-
-    return None
+from urllib.parse import quote
 
 
 @dataclass
@@ -44,200 +18,142 @@ class SearchResult:
 
 
 class WebSearchTool:
-    """Web search tool that uses Claude Agent SDK's WebSearch.
+    """Web search and scraping via Bright Data's SERP and Web Unlocker APIs.
 
-    This tool calls Claude with WebSearch enabled, which performs actual
-    web searches and returns results with citations.
+    Requires BRIGHT_DATA_API_TOKEN env var. Optionally set BRIGHT_DATA_ZONE
+    (defaults to 'mcp_unlocker').
+
+    For each search query this makes one API call to Bright Data's SERP endpoint
+    and returns structured results. Pages can be scraped individually for full
+    content via fetch_page().
     """
 
-    def __init__(self, max_results: int = 10):
+    _API_ENDPOINT = "https://api.brightdata.com/request"
+
+    def __init__(
+        self,
+        api_token: Optional[str] = None,
+        zone: Optional[str] = None,
+        max_results: int = 10,
+    ):
+        self.api_token = api_token or os.environ.get("BRIGHT_DATA_API_TOKEN", "")
+        self.zone = zone or os.environ.get("BRIGHT_DATA_ZONE", "mcp_unlocker")
         self.max_results = max_results
         self._search_count = 0
 
+        if not self.api_token:
+            raise ValueError(
+                "Bright Data API token required. Set BRIGHT_DATA_API_TOKEN env var."
+            )
+
+    @property
+    def _headers(self) -> dict:
+        return {
+            "Authorization": f"Bearer {self.api_token}",
+            "Content-Type": "application/json",
+        }
+
     async def search(self, query_text: str) -> tuple[list[SearchResult], str]:
-        """Perform a web search and return results.
-
-        Uses Claude Agent SDK with WebSearch tool enabled.
-
-        Args:
-            query_text: The search query
+        """Search Google via Bright Data SERP API.
 
         Returns:
-            Tuple of (list of SearchResult, summary text from Claude)
+            Tuple of (list of SearchResult, summary string)
         """
+        import httpx
+
         self._search_count += 1
+        search_url = f"https://www.google.com/search?q={quote(query_text)}"
 
-        prompt = f"""Search the web for: {query_text}
-
-After searching, provide:
-1. A summary of what you found (2-3 paragraphs)
-2. Key facts and findings with their sources
-
-Focus on recent, authoritative sources. Include URLs in your response."""
-
-        # Build environment with API key
-        env = {}
-        if api_key := _get_api_key():
-            env["ANTHROPIC_API_KEY"] = api_key
-
-        options = ClaudeAgentOptions(
-            model="sonnet",
-            max_turns=5,  # Allow multiple search iterations
-            allowed_tools=["WebSearch"],
-            env=env,
-        )
-
-        results = []
-        summary_text = ""
-
-        max_retries = 3
-        base_delay = 1.0  # seconds
-
-        for attempt in range(max_retries):
+        for attempt in range(3):
             try:
-                async for message in query(prompt=prompt, options=options):
-                    if isinstance(message, AssistantMessage):
-                        for block in message.content:
-                            if isinstance(block, TextBlock):
-                                summary_text += block.text
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(
+                        self._API_ENDPOINT,
+                        headers=self._headers,
+                        json={
+                            "url": search_url,
+                            "zone": self.zone,
+                            "format": "raw",
+                            "data_format": "parsed_light",
+                        },
+                    )
+                    response.raise_for_status()
+                    data = response.json()
 
-                                # Extract URLs from the text to create SearchResults
-                                urls = self._extract_urls(block.text)
-                                for url in urls[:self.max_results]:
-                                    if not any(r.url == url for r in results):
-                                        results.append(SearchResult(
-                                            title=self._extract_title_near_url(block.text, url),
-                                            url=url,
-                                            snippet=self._extract_context_near_url(block.text, url),
-                                        ))
-                break  # Success, exit retry loop
+                results = self._parse_google_results(data)
+                summary = self._build_summary(query_text, results)
+                return results[: self.max_results], summary
 
             except Exception as e:
-                if attempt < max_retries - 1:
-                    delay = base_delay * (2 ** attempt) + random.uniform(0, 0.5)
-                    await asyncio.sleep(delay)
-                    # Reset for retry
-                    results = []
-                    summary_text = ""
+                if attempt < 2:
+                    await asyncio.sleep((2**attempt) + random.uniform(0, 0.5))
                 else:
-                    summary_text = f"Search error: {e}"
+                    return [], f"Search error: {e}"
 
-        # If no URLs found but we have text, create a result from the summary
-        if not results and summary_text:
-            results.append(SearchResult(
-                title=query_text,
-                url="",
-                snippet=summary_text[:500],
-            ))
-
-        return results, summary_text
+        return [], ""
 
     async def search_and_summarize(self, query_text: str) -> str:
-        """Perform a web search and return a summary.
-
-        Args:
-            query_text: The search query
-
-        Returns:
-            Summary text from Claude including search findings
-        """
+        """Search and return summary text."""
         _, summary = await self.search(query_text)
         return summary
 
-    async def fetch_page(self, url: str, extract_prompt: str) -> Optional[str]:
-        """Fetch a web page and extract information using Claude.
+    async def fetch_page(self, url: str, extract_prompt: str = "") -> Optional[str]:
+        """Scrape a page via Bright Data Web Unlocker (bypasses bot detection).
 
-        Args:
-            url: The URL to fetch
-            extract_prompt: What to extract from the page
-
-        Returns:
-            Extracted content or None on error
+        Returns full page content as markdown, or None on error.
         """
-        prompt = f"""Fetch and analyze this URL: {url}
+        import httpx
 
-Extract and summarize: {extract_prompt}
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.post(
+                        self._API_ENDPOINT,
+                        headers=self._headers,
+                        json={
+                            "url": url,
+                            "zone": self.zone,
+                            "format": "raw",
+                            "data_format": "markdown",
+                        },
+                    )
+                    response.raise_for_status()
+                    return response.text
 
-Be concise but comprehensive. Include specific facts, dates, and details."""
+            except Exception:
+                if attempt < 2:
+                    await asyncio.sleep((2**attempt) + random.uniform(0, 0.5))
 
-        # Build environment with API key
-        env = {}
-        if api_key := _get_api_key():
-            env["ANTHROPIC_API_KEY"] = api_key
+        return None
 
-        options = ClaudeAgentOptions(
-            model="sonnet",
-            max_turns=3,
-            allowed_tools=["WebFetch"],
-            env=env,
-        )
+    def _parse_google_results(self, data: dict) -> list[SearchResult]:
+        """Parse Bright Data's parsed_light Google SERP response."""
+        results = []
+        for entry in data.get("organic", []):
+            link = entry.get("link", "").strip()
+            title = entry.get("title", "").strip()
+            if not link or not title:
+                continue
+            results.append(SearchResult(
+                title=title,
+                url=link,
+                snippet=entry.get("description", "").strip(),
+            ))
+        return results
 
-        result_text = ""
-        try:
-            async for message in query(prompt=prompt, options=options):
-                if isinstance(message, AssistantMessage):
-                    for block in message.content:
-                        if isinstance(block, TextBlock):
-                            result_text += block.text
-        except Exception:
-            return None
+    def _build_summary(self, query: str, results: list[SearchResult]) -> str:
+        """Build a text summary from search results."""
+        if not results:
+            return f"No results found for: {query}"
 
-        return result_text if result_text else None
-
-    def _extract_urls(self, text: str) -> list[str]:
-        """Extract URLs from text."""
-        import re
-        url_pattern = r'https?://[^\s<>"{}|\\^`\[\])]*'
-        urls = re.findall(url_pattern, text)
-        # Clean up URLs (remove trailing punctuation)
-        cleaned = []
-        for url in urls:
-            url = url.rstrip('.,;:!?)')
-            if url and url not in cleaned:
-                cleaned.append(url)
-        return cleaned
-
-    def _extract_title_near_url(self, text: str, url: str) -> str:
-        """Try to extract a title near a URL in text."""
-        # Look for text in brackets or quotes before the URL
-        import re
-        # Try to find [title](url) markdown pattern
-        pattern = rf'\[([^\]]+)\]\({re.escape(url)}\)'
-        match = re.search(pattern, text)
-        if match:
-            return match.group(1)
-
-        # Try to find title before URL on same line
-        lines = text.split('\n')
-        for line in lines:
-            if url in line:
-                # Get text before URL, clean it up
-                before = line.split(url)[0].strip()
-                # Remove common prefixes
-                before = re.sub(r'^[-*•]\s*', '', before)
-                before = re.sub(r'\[|\]|\(|\)', '', before)
-                if before and len(before) < 200:
-                    return before[:100]
-
-        return url.split('/')[2] if '/' in url else url[:50]
-
-    def _extract_context_near_url(self, text: str, url: str) -> str:
-        """Extract context around a URL in text."""
-        # Find the URL and get surrounding context
-        idx = text.find(url)
-        if idx == -1:
-            return ""
-
-        # Get 200 chars before and after
-        start = max(0, idx - 200)
-        end = min(len(text), idx + len(url) + 200)
-        context = text[start:end]
-
-        # Clean up
-        context = context.replace(url, '').strip()
-        context = ' '.join(context.split())  # Normalize whitespace
-
-        return context[:300] if context else ""
+        lines = [f"Search results for: {query}\n"]
+        for i, r in enumerate(results[:5], 1):
+            lines.append(f"{i}. {r.title}")
+            lines.append(f"   {r.url}")
+            if r.snippet:
+                lines.append(f"   {r.snippet}")
+            lines.append("")
+        return "\n".join(lines)
 
     @property
     def search_count(self) -> int:
