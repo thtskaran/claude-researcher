@@ -25,6 +25,7 @@ from api.models import HealthResponse
 from api.routes import sessions
 from api.routes import research
 from api.routes import events
+from api.routes import findings
 from api.db import get_db, close_db
 from api.events import get_event_emitter, emit_event
 
@@ -69,6 +70,7 @@ app.add_middleware(
 app.include_router(sessions.router)
 app.include_router(research.router)
 app.include_router(events.router)
+app.include_router(findings.router)
 
 
 @app.get("/", response_model=HealthResponse)

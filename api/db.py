@@ -344,6 +344,140 @@ class APIDatabase:
         rows = await cursor.fetchall()
         return rows
 
+    async def list_findings(
+        self,
+        session_id: str,
+        limit: int = 200,
+        offset: int = 0,
+        order: str = "desc",
+        search: Optional[str] = None,
+        finding_type: Optional[str] = None,
+        min_confidence: Optional[float] = None,
+        max_confidence: Optional[float] = None,
+    ):
+        """List findings with optional filters."""
+        order_sql = "DESC" if order.lower() == "desc" else "ASC"
+        params: list = [session_id]
+        where = ["session_id = ?"]
+
+        if search:
+            where.append("(content LIKE ? OR source_url LIKE ? OR search_query LIKE ?)")
+            like = f"%{search}%"
+            params.extend([like, like, like])
+
+        if finding_type and finding_type.lower() != "all":
+            where.append("LOWER(finding_type) = ?")
+            params.append(finding_type.lower())
+
+        if min_confidence is not None:
+            where.append("confidence >= ?")
+            params.append(min_confidence)
+
+        if max_confidence is not None:
+            where.append("confidence <= ?")
+            params.append(max_confidence)
+
+        where_sql = " AND ".join(where)
+
+        cursor = await self._connection.execute(
+            f"""
+            SELECT
+                id,
+                session_id,
+                content,
+                finding_type,
+                source_url,
+                confidence,
+                search_query,
+                created_at,
+                verification_status,
+                verification_method,
+                kg_support_score
+            FROM findings
+            WHERE {where_sql}
+            ORDER BY created_at {order_sql}
+            LIMIT ? OFFSET ?
+            """,
+            (*params, limit, offset),
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "id": row["id"],
+                "session_id": row["session_id"],
+                "content": row["content"],
+                "finding_type": row["finding_type"],
+                "source_url": row["source_url"],
+                "confidence": row["confidence"],
+                "search_query": row["search_query"],
+                "created_at": row["created_at"],
+                "verification_status": row["verification_status"],
+                "verification_method": row["verification_method"],
+                "kg_support_score": row["kg_support_score"],
+            }
+            for row in rows
+        ]
+
+    async def list_sources(
+        self,
+        session_id: str,
+        limit: int = 200,
+        offset: int = 0,
+    ):
+        """List source index for a session."""
+        cursor = await self._connection.execute(
+            """
+            WITH source_stats AS (
+                SELECT
+                    source_url,
+                    COUNT(*) as findings_count,
+                    AVG(confidence) as avg_confidence,
+                    MAX(created_at) as last_seen
+                FROM findings
+                WHERE session_id = ?
+                  AND source_url IS NOT NULL
+                  AND source_url != ''
+                GROUP BY source_url
+            ),
+            latest_audit AS (
+                SELECT url, MAX(created_at) as max_created_at
+                FROM credibility_audit
+                WHERE session_id = ?
+                GROUP BY url
+            )
+            SELECT
+                s.source_url,
+                s.findings_count,
+                s.avg_confidence,
+                s.last_seen,
+                ca.domain,
+                ca.final_score,
+                ca.credibility_label
+            FROM source_stats s
+            LEFT JOIN latest_audit la ON la.url = s.source_url
+            LEFT JOIN credibility_audit ca
+              ON ca.url = la.url
+             AND ca.created_at = la.max_created_at
+             AND ca.session_id = ?
+            ORDER BY s.findings_count DESC, s.avg_confidence DESC
+            LIMIT ? OFFSET ?
+            """,
+            (session_id, session_id, session_id, limit, offset),
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "source_url": row["source_url"],
+                "findings_count": row["findings_count"],
+                "avg_confidence": row["avg_confidence"],
+                "last_seen": row["last_seen"],
+                "domain": row["domain"],
+                "final_score": row["final_score"],
+                "credibility_label": row["credibility_label"],
+            }
+            for row in rows
+        ]
+
 
 # Global database instance
 _db_instance: Optional[APIDatabase] = None

@@ -23,6 +23,7 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
   const seenKeysRef = useRef<Set<string>>(new Set());
   const [historyLoadedAt, setHistoryLoadedAt] = useState<string | null>(null);
   const [historyStatus, setHistoryStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+  const [historySource, setHistorySource] = useState<"api" | "cache" | null>(null);
   const scrollTopBeforeLoadRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -31,6 +32,22 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
 
     // Load historical events for this session
     let cancelled = false;
+    const cacheKey = `activity_cache_${sessionId}`;
+    try {
+      const cachedRaw = localStorage.getItem(cacheKey);
+      if (cachedRaw) {
+        const cachedEvents: AgentEvent[] = JSON.parse(cachedRaw);
+        if (Array.isArray(cachedEvents) && cachedEvents.length > 0) {
+          setEvents((prev) => mergeEvents(prev, cachedEvents, seenKeysRef.current));
+          setHistoryLoadedAt(new Date().toISOString());
+          setHistoryStatus("loaded");
+          setHistorySource("cache");
+        }
+      }
+    } catch {
+      // Ignore cache parse errors
+    }
+
     (async () => {
       try {
         setHistoryStatus("loading");
@@ -51,6 +68,7 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
         setEvents((prev) => mergeEvents(prev, history, seenKeysRef.current));
         setHistoryLoadedAt(new Date().toISOString());
         setHistoryStatus("loaded");
+        setHistorySource("api");
       } catch {
         setHistoryStatus("error");
         // Ignore history load failures (live updates still work)
@@ -84,6 +102,16 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
       ws.disconnect();
     };
   }, [sessionId]);
+
+  useEffect(() => {
+    const cacheKey = `activity_cache_${sessionId}`;
+    try {
+      const snapshot = events.slice(0, 1000);
+      localStorage.setItem(cacheKey, JSON.stringify(snapshot));
+    } catch {
+      // Ignore cache write errors
+    }
+  }, [events, sessionId]);
 
   const typeOptions = useMemo(() => {
     const base = ["thinking", "action", "finding", "synthesis", "error", "system"];
@@ -339,6 +367,9 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
         <div className="mb-3 text-xs text-gray-500 flex items-center gap-2">
           <span className="badge badge-system">History loaded</span>
           <span>{formatTimestamp(historyLoadedAt)}</span>
+          {historySource === "cache" ? (
+            <span className="badge badge-system">cached</span>
+          ) : null}
         </div>
       ) : null}
       {historyStatus === "error" ? (
@@ -366,7 +397,9 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
                 d="M13 10V3L4 14h7v7l9-11h-7z"
               />
             </svg>
-            <p className="text-sm">Waiting for events...</p>
+            <p className="text-sm">
+              {historyStatus === "loading" ? "Loading history..." : "Waiting for events..."}
+            </p>
             <p className="text-xs mt-1">
               Events will appear here when agents start working
             </p>
