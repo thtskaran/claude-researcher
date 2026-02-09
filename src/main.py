@@ -187,20 +187,27 @@ def ui(
         border_style="blue",
     ))
 
-    # Check if API server is already running
+    # Check if servers are already running
     import socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_running = sock.connect_ex(('localhost', port)) == 0
-    sock.close()
+    import time
+    import os
+    from pathlib import Path
 
-    if server_running:
+    def check_port(port_num):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex(('localhost', port_num)) == 0
+        sock.close()
+        return result
+
+    api_running = check_port(port)
+    ui_running = check_port(3000)
+
+    # Start API server if not running
+    if api_running:
         console.print(f"[yellow]API server already running on port {port}[/yellow]")
     else:
         console.print(f"[cyan]Starting API server on port {port}...[/cyan]")
-
-        # Start the API server in background
         try:
-            # Modify the server to use the specified port
             subprocess.Popen(
                 [sys.executable, "-m", "api.server"],
                 stdout=subprocess.DEVNULL,
@@ -208,33 +215,63 @@ def ui(
                 start_new_session=True,
             )
 
-            # Wait for server to start
-            import time
+            # Wait for API server to start
             max_wait = 10
             for i in range(max_wait):
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                if sock.connect_ex(('localhost', port)) == 0:
-                    sock.close()
+                if check_port(port):
                     console.print("[green]✓ API server started[/green]")
                     break
-                sock.close()
                 time.sleep(0.5)
             else:
                 console.print("[red]✗ Failed to start API server[/red]")
                 sys.exit(1)
-
         except Exception as e:
             console.print(f"[red]Error starting API server: {e}[/red]")
             sys.exit(1)
 
-    # Construct URL
-    url = f"http://localhost:{port}"
+    # Start Next.js UI server if not running
+    if ui_running:
+        console.print("[yellow]UI server already running on port 3000[/yellow]")
+    else:
+        console.print("[cyan]Starting Next.js UI server on port 3000...[/cyan]")
+        try:
+            ui_path = Path(__file__).parent.parent / "ui"
+            if not ui_path.exists():
+                console.print("[red]✗ UI directory not found[/red]")
+                sys.exit(1)
+
+            # Start Next.js dev server
+            subprocess.Popen(
+                ["npm", "run", "dev"],
+                cwd=str(ui_path),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+
+            # Wait for UI server to start
+            max_wait = 15
+            for i in range(max_wait):
+                if check_port(3000):
+                    console.print("[green]✓ UI server started[/green]")
+                    break
+                time.sleep(1)
+            else:
+                console.print("[red]✗ Failed to start UI server[/red]")
+                sys.exit(1)
+        except Exception as e:
+            console.print(f"[red]Error starting UI server: {e}[/red]")
+            sys.exit(1)
+
+    # Construct UI URL (port 3000, not API port)
+    url = f"http://localhost:3000"
     if session_id:
         url += f"/session/{session_id}"
 
-    console.print(f"\n[bold green]✓ Server ready[/bold green]")
+    console.print(f"\n[bold green]✓ All servers ready[/bold green]")
+    console.print(f"[dim]Frontend: http://localhost:3000[/dim]")
+    console.print(f"[dim]API: http://localhost:{port}[/dim]")
     console.print(f"[dim]API Docs: http://localhost:{port}/docs[/dim]")
-    console.print(f"[dim]WebSocket: ws://localhost:{port}/ws/{{session_id}}[/dim]")
 
     # Open browser
     if not no_browser:

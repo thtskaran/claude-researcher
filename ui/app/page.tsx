@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import NewSessionForm from "@/components/NewSessionForm";
 
 interface Session {
@@ -13,6 +14,7 @@ interface Session {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewSession, setShowNewSession] = useState(false);
@@ -47,6 +49,13 @@ export default function Home() {
           <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold text-gradient">Claude Researcher</h1>
             <span className="badge bg-primary/20 text-primary">v0.1.0</span>
+            <button
+              onClick={() => router.push('/test-websocket')}
+              className="text-xs text-gray-400 hover:text-primary transition-colors"
+              title="Test WebSocket Events"
+            >
+              [Test WebSocket]
+            </button>
           </div>
           <button
             onClick={() => setShowNewSession(true)}
@@ -98,6 +107,7 @@ export default function Home() {
             {sessions.map((session) => (
               <div
                 key={session.session_id}
+                onClick={() => router.push(`/session/${session.session_id}`)}
                 className="card hover:border-primary/50 cursor-pointer transition-all hover:scale-[1.02] group"
               >
                 {/* Header */}
