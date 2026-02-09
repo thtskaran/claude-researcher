@@ -4,8 +4,15 @@ import asyncio
 import os
 import random
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
+
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+dotenv_path = Path(__file__).parent.parent.parent / ".env"
+load_dotenv(dotenv_path=dotenv_path)
 
 
 @dataclass

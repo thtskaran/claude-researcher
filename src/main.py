@@ -208,11 +208,13 @@ def ui(
     else:
         console.print(f"[cyan]Starting API server on port {port}...[/cyan]")
         try:
+            # Explicitly pass environment to subprocess to ensure env vars like
+            # BRIGHT_DATA_API_TOKEN are available
+            # Logs will be visible in the terminal for debugging
             subprocess.Popen(
                 [sys.executable, "-m", "api.server"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
                 start_new_session=True,
+                env=os.environ.copy(),
             )
 
             # Wait for API server to start
@@ -240,13 +242,12 @@ def ui(
                 console.print("[red]✗ UI directory not found[/red]")
                 sys.exit(1)
 
-            # Start Next.js dev server
+            # Start Next.js dev server (output visible for debugging)
             subprocess.Popen(
                 ["npm", "run", "dev"],
                 cwd=str(ui_path),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
                 start_new_session=True,
+                env=os.environ.copy(),
             )
 
             # Wait for UI server to start

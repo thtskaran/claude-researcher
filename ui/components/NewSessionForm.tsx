@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface NewSessionFormProps {
   onClose: () => void;
@@ -8,6 +9,7 @@ interface NewSessionFormProps {
 }
 
 export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormProps) {
+  const router = useRouter();
   const [goal, setGoal] = useState("");
   const [timeLimit, setTimeLimit] = useState(60);
   const [loading, setLoading] = useState(false);
@@ -24,7 +26,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
     setError("");
 
     try {
-      const response = await fetch("http://localhost:8080/api/sessions/", {
+      const response = await fetch("http://localhost:8080/api/research/start", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -32,22 +34,19 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
         body: JSON.stringify({
           goal: goal.trim(),
           time_limit: timeLimit,
+          autonomous: true,
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to create session");
+        throw new Error("Failed to start research");
       }
 
       const data = await response.json();
-      console.log("Created session:", data);
+      console.log("Research started:", data);
 
-      // Reset form
-      setGoal("");
-      setTimeLimit(60);
-
-      // Call success callback
-      onSuccess();
+      // Navigate to session detail page to watch live
+      router.push(`/session/${data.session_id}`);
     } catch (err) {
       console.error("Error creating session:", err);
       setError("Failed to create session. Please try again.");
@@ -99,8 +98,14 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
               disabled={loading}
             />
             <p className="text-xs text-gray-500 mt-2">
-              Tip: Specific questions get better results. Try "Latest developments in fusion energy" instead of "fusion"
+              💡 Tip: Specific questions get better results. Try "Latest developments in fusion energy" instead of "fusion"
             </p>
+            <div className="mt-3 p-3 bg-primary/10 border border-primary/30 rounded-lg">
+              <p className="text-xs text-primary">
+                <strong>ℹ️ Note:</strong> Research will start automatically when you click "Start Research".
+                Navigate to the session details page to watch live progress!
+              </p>
+            </div>
           </div>
 
           {/* Time Limit Slider */}
@@ -174,7 +179,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
                 </>
               ) : (
                 <>
-                  <span>Start Research</span>
+                  <span>Start Research (Auto-runs)</span>
                   <svg
                     className="w-4 h-4"
                     fill="none"

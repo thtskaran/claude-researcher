@@ -78,9 +78,9 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
             </p>
           </div>
         ) : (
-          events.map((event, idx) => (
+          events.map((event) => (
             <div
-              key={idx}
+              key={`${event.timestamp}-${event.event_type}-${event.agent}-${Math.random()}`}
               className="bg-dark-bg border border-dark-border rounded-lg p-3 hover:border-primary/30 transition-colors"
             >
               {/* Event Header */}
@@ -137,11 +137,28 @@ function formatTimestamp(timestamp: string): string {
 }
 
 function renderEventData(data: Record<string, any>): React.ReactNode {
+  // Handle different event data structures
+  if (data.thought) {
+    return <p className="italic">{data.thought}</p>;
+  }
+
+  if (data.action) {
+    return <p className="font-medium">{data.action}</p>;
+  }
+
+  if (data.content) {
+    return <p>{data.content}</p>;
+  }
+
   if (data.message) {
     return <p>{data.message}</p>;
   }
 
-  // Render as JSON for debugging
+  if (data.error) {
+    return <p className="text-error">{data.error}</p>;
+  }
+
+  // Render as JSON for debugging (any other structure)
   return (
     <pre className="text-xs font-mono overflow-x-auto">
       {JSON.stringify(data, null, 2)}

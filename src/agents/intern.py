@@ -6,6 +6,7 @@ from typing import Any, Optional, TYPE_CHECKING
 from datetime import datetime
 
 from .base import BaseAgent, AgentConfig, DecisionType
+from ..events import emit_finding
 
 
 def _get_current_year() -> int:
@@ -538,11 +539,12 @@ Format your response as JSON:
                             )
                             continue
 
+                    source_url = f.get("url")
                     finding = Finding(
                         session_id=session_id,
                         content=content,
                         finding_type=FindingType(f.get("type", "fact").lower()),
-                        source_url=f.get("url"),
+                        source_url=source_url,
                         confidence=f.get("confidence", 0.7),
                         search_query=query,
                     )
@@ -565,6 +567,16 @@ Format your response as JSON:
                     await self.db.save_finding(finding)
                     findings.append(finding)
                     self.findings.append(finding)
+
+                    # Emit finding event for WebSocket
+                    if self.session_id:
+                        await emit_finding(
+                            session_id=self.session_id,
+                            agent=self.role.value,
+                            content=content[:300],  # Truncate for display
+                            source=source_url,
+                            confidence=finding.confidence
+                        )
 
                     # Add to deduplication index after saving
                     if self.deduplicator.enabled:
@@ -673,6 +685,8 @@ Format your response as JSON:
         """Execute a directive from the Manager and return a report."""
         self.reset()
         self.current_directive = directive
+        # Ensure WebSocket event emission uses the correct session ID
+        self.session_id = session_id
 
         context = {
             "directive": directive,

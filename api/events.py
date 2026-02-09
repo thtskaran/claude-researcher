@@ -108,14 +108,17 @@ class EventEmitter:
             data: Event data
         """
         event = AgentEvent(session_id, event_type, agent, data)
+        print(f"📤 Emitting event: [{event_type}] {agent} for session {session_id}")
 
         async with self._subscribers_lock:
             if session_id not in self._subscribers:
                 # No subscribers, but log the event
+                print(f"   ⚠️  No subscribers for session {session_id}")
                 logger.debug(f"Event emitted but no subscribers for {session_id}: {event_type}")
                 return
 
             subscribers = list(self._subscribers[session_id])
+            print(f"   ✓ Sending to {len(subscribers)} subscriber(s)")
 
         # Send to all subscribers (outside lock to avoid blocking)
         dead_connections = []

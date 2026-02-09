@@ -4,16 +4,27 @@ FastAPI server for claude-researcher UI.
 Provides REST API + WebSocket endpoints for real-time research monitoring.
 """
 import asyncio
+import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Dict, Set
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+# Load environment variables from .env file
+dotenv_path = Path(__file__).parent.parent / ".env"
+load_dotenv(dotenv_path=dotenv_path)
+# Mark this process as the API server to avoid event proxy loops
+os.environ.setdefault("CLAUDE_RESEARCHER_IN_API", "1")
+
 from api.models import HealthResponse
 from api.routes import sessions
+from api.routes import research
+from api.routes import events
 from api.db import get_db, close_db
 from api.events import get_event_emitter, emit_event
 
@@ -56,6 +67,8 @@ app.add_middleware(
 
 # Include routers
 app.include_router(sessions.router)
+app.include_router(research.router)
+app.include_router(events.router)
 
 
 @app.get("/", response_model=HealthResponse)

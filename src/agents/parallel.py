@@ -1,12 +1,14 @@
 """Parallel research execution with multiple interns."""
 
 import asyncio
+import os
 from typing import Optional, TYPE_CHECKING
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from .base import AgentConfig
 from .intern import InternAgent
+from ..events import emit_agent_event
 from ..models.findings import ManagerDirective, InternReport, Finding
 from ..storage.database import ResearchDatabase
 from rich.console import Console
@@ -59,6 +61,7 @@ class ParallelInternPool:
         self.config = config or AgentConfig()
         self.console = console or Console()
         self.verification_pipeline = verification_pipeline
+        self._current_session_id: Optional[str] = None
 
         # Note: We no longer store intern instances - they are created fresh per directive
         # to prevent state corruption from concurrent access
@@ -78,6 +81,7 @@ class ParallelInternPool:
             ParallelResearchResult with aggregated findings
         """
         start_time = datetime.now()
+        self._current_session_id = session_id
 
         # Limit directives to pool size
         active_directives = directives[:self.pool_size]
@@ -123,13 +127,15 @@ class ParallelInternPool:
             f"Parallel research complete: {len(all_findings)} total findings in {execution_time:.1f}s"
         )
 
-        return ParallelResearchResult(
+        result = ParallelResearchResult(
             reports=reports,
             total_findings=all_findings,
             total_searches=total_searches,
             execution_time_seconds=execution_time,
             errors=errors,
         )
+        self._current_session_id = None
+        return result
 
     async def _execute_with_error_handling(
         self,
@@ -253,6 +259,23 @@ Return ONLY a JSON array of {max_aspects} aspects:
             self.console.print(f"{prefix} {message}", style=style)
         else:
             self.console.print(f"{prefix} {message}")
+
+        if (
+            self._current_session_id
+            and os.environ.get("CLAUDE_RESEARCHER_DISABLE_LOG_EVENTS") != "1"
+        ):
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return
+            loop.create_task(
+                emit_agent_event(
+                    session_id=self._current_session_id,
+                    event_type="system",
+                    agent="parallel",
+                    data={"message": f"{prefix} {message}"},
+                )
+            )
 
     def reset_all(self) -> None:
         """Reset method - no-op since interns are created fresh per directive."""

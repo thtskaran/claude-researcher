@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import os
 import subprocess
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Callable
@@ -15,6 +16,7 @@ from ..models.findings import AgentRole, AgentMessage
 from ..storage.database import ResearchDatabase
 from ..costs.tracker import get_cost_tracker
 from ..audit import DecisionType, DecisionLogger, get_decision_logger
+from ..events import emit_thinking, emit_action, emit_error, emit_agent_event
 
 
 def _get_api_key() -> Optional[str]:
@@ -140,6 +142,7 @@ class BaseAgent(ABC):
         db: ResearchDatabase,
         config: Optional[AgentConfig] = None,
         console: Optional[Console] = None,
+        session_id: Optional[str] = None,
     ):
         self.role = role
         self.db = db
@@ -148,6 +151,7 @@ class BaseAgent(ABC):
         self.state = AgentState()
         self._stop_requested = False
         self._callbacks: list[Callable] = []
+        self.session_id = session_id  # For WebSocket events
 
     @property
     @abstractmethod
@@ -196,6 +200,14 @@ class BaseAgent(ABC):
                 self._log(f"[Think] {thought}")
                 self.state.history.append({"type": "thought", "content": thought})
 
+                # Emit thinking event
+                if self.session_id:
+                    await emit_thinking(
+                        session_id=self.session_id,
+                        agent=self.role.value,
+                        thought=thought[:500]  # Truncate for display
+                    )
+
                 if self._stop_requested:
                     break
 
@@ -205,6 +217,15 @@ class BaseAgent(ABC):
                 self.state.last_action = str(action_result.get("action", "unknown"))
                 self._log(f"[Act] {self.state.last_action}")
                 self.state.history.append({"type": "action", "content": action_result})
+
+                # Emit action event
+                if self.session_id:
+                    await emit_action(
+                        session_id=self.session_id,
+                        agent=self.role.value,
+                        action=self.state.last_action,
+                        details={"iteration": self.state.iteration}
+                    )
 
                 if self._stop_requested:
                     break
@@ -228,6 +249,16 @@ class BaseAgent(ABC):
             except Exception as e:
                 self.state.error = str(e)
                 self._log(f"[Error] {e}", style="red")
+
+                # Emit error event
+                if self.session_id:
+                    await emit_error(
+                        session_id=self.session_id,
+                        agent=self.role.value,
+                        error=str(e),
+                        recoverable=False
+                    )
+
                 break
 
         self.state.is_complete = self.is_done(context)
@@ -415,6 +446,24 @@ class BaseAgent(ABC):
             self.console.print(f"{prefix} {message}", style=style)
         else:
             self.console.print(f"{prefix} {message}")
+
+        # Optionally mirror logs to the UI as "system" events for verbosity
+        if (
+            self.session_id
+            and os.environ.get("CLAUDE_RESEARCHER_DISABLE_LOG_EVENTS") != "1"
+        ):
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return
+            loop.create_task(
+                emit_agent_event(
+                    session_id=self.session_id,
+                    event_type="system",
+                    agent=self.role.value,
+                    data={"message": message},
+                )
+            )
 
     async def _log_decision(
         self,

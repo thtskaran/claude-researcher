@@ -11,6 +11,7 @@ from .intern import InternAgent
 from ..models.findings import AgentRole, ManagerReport, ResearchSession
 from ..storage.database import ResearchDatabase
 from ..reports.writer import DeepReportWriter
+from ..events import emit_synthesis
 from ..interaction import InteractionConfig, UserInteraction
 from ..costs.tracker import get_cost_tracker, reset_cost_tracker, CostSummary
 from rich.console import Console
@@ -163,6 +164,7 @@ When presenting results:
         goal: str,
         time_limit_minutes: int = 60,
         skip_clarification: bool = False,
+        existing_session_id: Optional[str] = None,
     ) -> ManagerReport:
         """Start a new research session.
 
@@ -170,6 +172,7 @@ When presenting results:
             goal: The research goal/question to investigate
             time_limit_minutes: Maximum time for the research session
             skip_clarification: Skip pre-research clarification questions
+            existing_session_id: Optional existing session ID to use (for UI/API)
 
         Returns:
             ManagerReport with findings and recommendations
@@ -178,8 +181,8 @@ When presenting results:
         self.interaction.reset()
         reset_cost_tracker()
 
-        # Clarify goal if enabled
-        if not skip_clarification and self.interaction_config.enable_clarification:
+        # Clarify goal if enabled (skip when using existing session from UI)
+        if not skip_clarification and self.interaction_config.enable_clarification and not existing_session_id:
             effective_goal = await self.clarify_research_goal(goal)
         else:
             effective_goal = goal
@@ -187,11 +190,23 @@ When presenting results:
         # Start input listener AFTER clarification is done
         await self._start_input_listener()
 
-        # Create session with the effective goal
-        self.current_session = await self.db.create_session(
-            goal=effective_goal,
-            time_limit_minutes=time_limit_minutes,
-        )
+        # Use existing session or create new one
+        if existing_session_id:
+            # Load existing session from database (created by API)
+            self.current_session = await self.db.get_session(existing_session_id)
+            if not self.current_session:
+                raise ValueError(f"Session {existing_session_id} not found")
+        else:
+            # Create new session (CLI flow)
+            self.current_session = await self.db.create_session(
+                goal=effective_goal,
+                time_limit_minutes=time_limit_minutes,
+            )
+
+        # Set session ID on all agents for WebSocket events
+        self.session_id = self.current_session.id
+        self.manager.session_id = self.current_session.id
+        self.intern.session_id = self.current_session.id
 
         self._log_header(effective_goal, time_limit_minutes)
 
@@ -477,6 +492,15 @@ When presenting results:
         self.console.print("[bold cyan]Generating deep research report...[/bold cyan]")
         self.console.print("[dim]This uses extended thinking to synthesize findings into a narrative report.[/dim]\n")
 
+        # Emit synthesis start event
+        if self.session_id:
+            await emit_synthesis(
+                session_id=self.session_id,
+                agent="director",
+                message=f"Synthesizing {len(findings)} findings into report...",
+                progress=0
+            )
+
         writer = DeepReportWriter(model="opus")
 
         topics_explored = [t.topic for t in self.manager.completed_topics] if self.manager.completed_topics else []
@@ -489,6 +513,15 @@ When presenting results:
             topics_remaining=topics_remaining,
             kg_exports=kg_exports,
         )
+
+        # Emit synthesis complete event
+        if self.session_id:
+            await emit_synthesis(
+                session_id=self.session_id,
+                agent="director",
+                message="Report synthesis complete",
+                progress=100
+            )
 
         md_file = output_dir / "report.md"
         md_file.write_text(report)
@@ -540,12 +573,14 @@ class ResearchHarness:
         self,
         goal: str,
         time_limit_minutes: int = 60,
+        existing_session_id: Optional[str] = None,
     ) -> ManagerReport:
         """Run a research session.
 
         Args:
             goal: The research question or topic to investigate
             time_limit_minutes: Maximum time for the session (default: 60)
+            existing_session_id: Optional existing session ID (for UI/API)
 
         Returns:
             ManagerReport with findings and analysis
@@ -553,7 +588,11 @@ class ResearchHarness:
         if not self.director:
             raise RuntimeError("Harness not initialized - use async with")
 
-        return await self.director.start_research(goal, time_limit_minutes)
+        return await self.director.start_research(
+            goal,
+            time_limit_minutes,
+            existing_session_id=existing_session_id
+        )
 
     def stop(self) -> None:
         """Stop the current research session."""
