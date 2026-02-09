@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import NewSessionForm from "@/components/NewSessionForm";
 
 interface Session {
   session_id: string;
@@ -8,6 +9,7 @@ interface Session {
   time_limit: number;
   status: string;
   created_at: string;
+  completed_at?: string | null;
 }
 
 export default function Home() {
@@ -20,6 +22,7 @@ export default function Home() {
   }, []);
 
   const fetchSessions = async () => {
+    setLoading(true);
     try {
       const response = await fetch("http://localhost:8080/api/sessions/");
       const data = await response.json();
@@ -29,6 +32,11 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleNewSessionSuccess = () => {
+    setShowNewSession(false);
+    fetchSessions();
   };
 
   return (
@@ -90,23 +98,42 @@ export default function Home() {
             {sessions.map((session) => (
               <div
                 key={session.session_id}
-                className="card hover:border-primary/50 cursor-pointer transition-all hover:scale-105"
+                className="card hover:border-primary/50 cursor-pointer transition-all hover:scale-[1.02] group"
               >
+                {/* Header */}
                 <div className="flex items-start justify-between mb-3">
                   <span className={`badge ${getStatusBadgeClass(session.status)}`}>
                     {session.status}
                   </span>
                   <span className="text-xs text-gray-500 font-mono">
-                    {session.session_id}
+                    #{session.session_id}
                   </span>
                 </div>
-                <h3 className="font-semibold text-lg mb-2 line-clamp-2">
+
+                {/* Goal */}
+                <h3 className="font-semibold text-lg mb-3 line-clamp-3 group-hover:text-primary transition-colors">
                   {session.goal}
                 </h3>
-                <div className="flex items-center gap-4 text-sm text-gray-400">
-                  <span>{session.time_limit} min</span>
-                  <span>•</span>
-                  <span>{new Date(session.created_at).toLocaleDateString()}</span>
+
+                {/* Metadata */}
+                <div className="space-y-2 text-sm text-gray-400">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>{session.time_limit} minutes</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span>{formatDate(session.created_at)}</span>
+                  </div>
+                  {session.completed_at && (
+                    <div className="text-xs text-success">
+                      ✓ Completed {formatDate(session.completed_at)}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -114,22 +141,12 @@ export default function Home() {
         )}
       </main>
 
-      {/* New Session Modal (placeholder) */}
+      {/* New Session Modal */}
       {showNewSession && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="card max-w-2xl w-full mx-4">
-            <h3 className="text-2xl font-bold mb-4">New Research Session</h3>
-            <p className="text-gray-400 mb-4">
-              Coming soon: Start a new research session from the UI
-            </p>
-            <button
-              onClick={() => setShowNewSession(false)}
-              className="btn btn-secondary"
-            >
-              Close
-            </button>
-          </div>
-        </div>
+        <NewSessionForm
+          onClose={() => setShowNewSession(false)}
+          onSuccess={handleNewSessionSuccess}
+        />
       )}
     </div>
   );
@@ -137,6 +154,7 @@ export default function Home() {
 
 function getStatusBadgeClass(status: string): string {
   switch (status) {
+    case "active":
     case "running":
       return "badge-action";
     case "completed":
@@ -146,4 +164,24 @@ function getStatusBadgeClass(status: string): string {
     default:
       return "badge-thinking";
   }
+}
+
+function formatDate(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+  });
 }

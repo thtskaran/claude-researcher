@@ -5,3 +5,14 @@
 /docs
 todo.md
 /research_retrieval
+
+# UI
+/ui/node_modules
+/ui/.next
+/ui/out
+/ui/.env*.local
+
+# Development logs and PIDs
+*.log
+*.pid
+/tmp

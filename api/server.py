@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 
 from api.models import HealthResponse
 from api.routes import sessions
+from api.db import get_db, close_db
 
 # Server state
 START_TIME = time.time()
@@ -25,8 +26,14 @@ active_sessions: Dict[str, Dict] = {}
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     print("🚀 FastAPI server starting...")
+    # Initialize database connection
+    await get_db()
+    print("✓ Database connected")
     yield
     print("🛑 FastAPI server shutting down...")
+    # Close database connection
+    await close_db()
+    print("✓ Database closed")
 
 
 # Create FastAPI app
