@@ -20,15 +20,52 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
   const feedRef = useRef<HTMLDivElement | null>(null);
   const [unseenCount, setUnseenCount] = useState(0);
   const [isAtTop, setIsAtTop] = useState(true);
+  const seenKeysRef = useRef<Set<string>>(new Set());
+  const [historyLoadedAt, setHistoryLoadedAt] = useState<string | null>(null);
+  const [historyStatus, setHistoryStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+  const scrollTopBeforeLoadRef = useRef<number | null>(null);
 
   useEffect(() => {
     // Create WebSocket connection
     const ws = new ResearchWebSocket(sessionId);
 
+    // Load historical events for this session
+    let cancelled = false;
+    (async () => {
+      try {
+        setHistoryStatus("loading");
+        if (feedRef.current) {
+          scrollTopBeforeLoadRef.current = feedRef.current.scrollTop;
+        }
+        const response = await fetch(
+          `/api/events/${sessionId}?limit=1000&order=desc`
+        );
+        if (!response.ok) {
+          setHistoryStatus("error");
+          return;
+        }
+        const history: AgentEvent[] = await response.json();
+        if (cancelled || !Array.isArray(history)) {
+          return;
+        }
+        setEvents((prev) => mergeEvents(prev, history, seenKeysRef.current));
+        setHistoryLoadedAt(new Date().toISOString());
+        setHistoryStatus("loaded");
+      } catch {
+        setHistoryStatus("error");
+        // Ignore history load failures (live updates still work)
+      }
+    })();
+
     // Subscribe to events
     ws.onEvent((event) => {
       console.log("Received event:", event);
-      setEvents((prev) => [event, ...prev].slice(0, 100)); // Keep last 100 events
+      const key = getEventKey(event);
+      if (seenKeysRef.current.has(key)) {
+        return;
+      }
+      seenKeysRef.current.add(key);
+      setEvents((prev) => [event, ...prev].slice(0, 2000)); // Keep last 2000 events
     });
 
     // Connect
@@ -42,6 +79,7 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
 
     // Cleanup
     return () => {
+      cancelled = true;
       clearInterval(checkConnection);
       ws.disconnect();
     };
@@ -141,6 +179,16 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
     }
     setUnseenCount((prev) => prev + 1);
   }, [displayItems.length, isAtTop]);
+
+  useEffect(() => {
+    if (!feedRef.current) {
+      return;
+    }
+    if (scrollTopBeforeLoadRef.current !== null) {
+      feedRef.current.scrollTop = scrollTopBeforeLoadRef.current;
+      scrollTopBeforeLoadRef.current = null;
+    }
+  }, [historyStatus]);
 
   const handleScroll = () => {
     const el = feedRef.current;
@@ -281,6 +329,22 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
         >
           {unseenCount} new update{unseenCount > 1 ? "s" : ""} — Jump to latest
         </button>
+      ) : null}
+      {historyStatus === "loading" ? (
+        <div className="mb-3 text-xs text-gray-500 flex items-center gap-2">
+          <span className="animate-pulse">Loading history…</span>
+        </div>
+      ) : null}
+      {historyStatus === "loaded" && historyLoadedAt ? (
+        <div className="mb-3 text-xs text-gray-500 flex items-center gap-2">
+          <span className="badge badge-system">History loaded</span>
+          <span>{formatTimestamp(historyLoadedAt)}</span>
+        </div>
+      ) : null}
+      {historyStatus === "error" ? (
+        <div className="mb-3 text-xs text-error">
+          Failed to load history. Live updates will continue.
+        </div>
       ) : null}
       <div
         ref={feedRef}
@@ -560,6 +624,44 @@ function getEventSearchText(event: AgentEvent): string {
   ]
     .join(" ")
     .toLowerCase();
+}
+
+function getEventKey(event: AgentEvent): string {
+  return [
+    event.timestamp,
+    event.event_type,
+    event.agent,
+    stableStringify(event.data || {}),
+  ].join("|");
+}
+
+function mergeEvents(
+  existing: AgentEvent[],
+  incoming: AgentEvent[],
+  seen: Set<string>
+): AgentEvent[] {
+  const merged = [...existing];
+  for (const event of incoming) {
+    const key = getEventKey(event);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(event);
+  }
+  return merged.slice(0, 2000);
+}
+
+function stableStringify(value: any): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => stableStringify(v)).join(",")}]`;
+  }
+  const keys = Object.keys(value).sort();
+  const entries = keys.map((k) => `"${k}":${stableStringify(value[k])}`);
+  return `{${entries.join(",")}}`;
 }
 
 function getEventPhase(event: AgentEvent): Phase {
