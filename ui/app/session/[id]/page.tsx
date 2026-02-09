@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import ActivityFeed from "@/components/ActivityFeed";
 import FindingsBrowser from "@/components/FindingsBrowser";
+import ReportPreview from "@/components/ReportPreview";
 import Link from "next/link";
 
 interface Session {
@@ -32,7 +33,7 @@ export default function SessionDetail() {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState<"activity" | "findings" | "graph">("activity");
+  const [activeTab, setActiveTab] = useState<"activity" | "findings" | "report" | "graph">("activity");
 
   useEffect(() => {
     fetchSession();
@@ -165,6 +166,16 @@ export default function SessionDetail() {
               Findings
             </button>
             <button
+              onClick={() => setActiveTab("report")}
+              className={`py-3 px-2 border-b-2 transition-colors ${
+                activeTab === "report"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-gray-400 hover:text-gray-200"
+              }`}
+            >
+              Report
+            </button>
+            <button
               onClick={() => setActiveTab("graph")}
               className={`py-3 px-2 border-b-2 transition-colors ${
                 activeTab === "graph"
@@ -213,6 +224,10 @@ export default function SessionDetail() {
 
         {activeTab === "findings" && (
           <FindingsBrowser sessionId={sessionId} />
+        )}
+
+        {activeTab === "report" && (
+          <ReportPreview sessionId={sessionId} />
         )}
 
         {activeTab === "graph" && (

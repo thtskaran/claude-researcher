@@ -5,11 +5,11 @@ A hierarchical multi-agent research system that performs autonomous deep researc
 ## Quick Start
 
 ```bash
-# Install
+# Install/update Python dependencies
 pip install -e .
 
-# Run research (requires Claude Code CLI authenticated)
-researcher "What are the latest AI safety research directions?" --time 30
+# Launch the web UI (auto-starts API + UI)
+researcher ui
 ```
 
 Reports saved to `output/{topic}_{session-id}/`

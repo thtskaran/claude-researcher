@@ -478,6 +478,16 @@ class APIDatabase:
             for row in rows
         ]
 
+    async def get_session_slug(self, session_id: str) -> Optional[str]:
+        """Get the slug for a session ID."""
+        cursor = await self._connection.execute(
+            "SELECT slug FROM sessions WHERE id = ?", (session_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return row["slug"]
+
 
 # Global database instance
 _db_instance: Optional[APIDatabase] = None

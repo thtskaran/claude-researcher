@@ -273,16 +273,33 @@ def ui(
             sys.exit(1)
 
     # Start Next.js UI server if not running
+    ui_path = Path(__file__).parent.parent / "ui"
+    if not ui_path.exists():
+        console.print("[red]✗ UI directory not found[/red]")
+        sys.exit(1)
+
+    node_modules = ui_path / "node_modules"
+    react_markdown_dir = node_modules / "react-markdown"
+    ui_needs_install = (not node_modules.exists()) or (not react_markdown_dir.exists())
+
+    if ui_running and ui_needs_install:
+        kill_port(3000, "UI")
+        ui_running = check_port(3000)
+
+    if ui_needs_install:
+        console.print("[cyan]Installing UI dependencies (npm install)...[/cyan]")
+        subprocess.run(
+            ["npm", "install"],
+            cwd=str(ui_path),
+            check=True,
+            env=os.environ.copy(),
+        )
+
     if ui_running:
         console.print("[yellow]UI server already running on port 3000[/yellow]")
     else:
         console.print("[cyan]Starting Next.js UI server on port 3000...[/cyan]")
         try:
-            ui_path = Path(__file__).parent.parent / "ui"
-            if not ui_path.exists():
-                console.print("[red]✗ UI directory not found[/red]")
-                sys.exit(1)
-
             # Start Next.js dev server (output visible for debugging)
             subprocess.Popen(
                 ["npm", "run", "dev"],
