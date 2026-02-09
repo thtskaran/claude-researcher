@@ -207,9 +207,22 @@ class ResearchDatabase:
                 created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                agent TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                data_json TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES sessions(id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_credibility_session ON credibility_audit(session_id);
             CREATE INDEX IF NOT EXISTS idx_decisions_session ON agent_decisions(session_id);
             CREATE INDEX IF NOT EXISTS idx_decisions_type ON agent_decisions(decision_type);
+            CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
+            CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
         """)
         await self._connection.commit()
 

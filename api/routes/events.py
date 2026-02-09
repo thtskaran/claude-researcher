@@ -9,7 +9,9 @@ from typing import Dict, Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+import json
 from api.events import emit_event, get_event_emitter
+from api.db import get_db
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -39,3 +41,28 @@ async def emit_event_endpoint(payload: EventEmitRequest):
         "event_type": payload.event_type,
         "subscribers": emitter.get_subscriber_count(payload.session_id),
     }
+
+
+@router.get("/{session_id}")
+async def list_session_events(session_id: str, limit: int = 500, order: str = "desc"):
+    """List persisted events for a session."""
+    db = await get_db()
+    rows = await db.list_events(session_id, limit=limit, order=order)
+
+    events = []
+    for row in rows:
+        try:
+            data = json.loads(row["data_json"]) if row["data_json"] else {}
+        except Exception:
+            data = {}
+        events.append(
+            {
+                "session_id": row["session_id"],
+                "event_type": row["event_type"],
+                "agent": row["agent"],
+                "timestamp": row["timestamp"],
+                "data": data,
+            }
+        )
+
+    return events

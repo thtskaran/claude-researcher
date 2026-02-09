@@ -110,6 +110,22 @@ class EventEmitter:
         event = AgentEvent(session_id, event_type, agent, data)
         print(f"📤 Emitting event: [{event_type}] {agent} for session {session_id}")
 
+        # Persist event for later playback (best-effort)
+        try:
+            from api.db import get_db
+
+            db = await get_db()
+            await db.save_event(
+                session_id=session_id,
+                event_type=event_type,
+                agent=agent,
+                timestamp=event.timestamp.isoformat(),
+                data_json=json.dumps(data),
+                created_at=event.timestamp.isoformat(),
+            )
+        except Exception as e:
+            logger.debug(f"Failed to persist event: {e}")
+
         async with self._subscribers_lock:
             if session_id not in self._subscribers:
                 # No subscribers, but log the event
