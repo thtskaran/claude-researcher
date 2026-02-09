@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from api.models import HealthResponse
 from api.routes import sessions
 from api.db import get_db, close_db
+from api.events import get_event_emitter, emit_event
 
 # Server state
 START_TIME = time.time()
@@ -67,6 +68,33 @@ async def health_check():
     )
 
 
+@app.post("/api/test/emit/{session_id}")
+async def test_emit_event(session_id: str, event_type: str = "test", message: str = "Test event"):
+    """
+    Test endpoint to emit events manually.
+
+    Useful for testing WebSocket functionality without running actual research.
+    """
+    emitter = get_event_emitter()
+
+    await emit_event(
+        session_id=session_id,
+        event_type=event_type,
+        agent="test",
+        data={
+            "message": message,
+            "timestamp": time.time()
+        }
+    )
+
+    return {
+        "status": "emitted",
+        "session_id": session_id,
+        "event_type": event_type,
+        "subscribers": emitter.get_subscriber_count(session_id)
+    }
+
+
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     """
@@ -77,29 +105,57 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
     active_websockets.add(websocket)
 
+    # Get event emitter and subscribe to this session
+    emitter = get_event_emitter()
+    await emitter.subscribe(session_id, websocket)
+
     try:
         print(f"📡 WebSocket connected for session: {session_id}")
+        print(f"   Active subscribers: {emitter.get_subscriber_count(session_id)}")
 
         # Send connection confirmation
         await websocket.send_json({
             "type": "connected",
             "session_id": session_id,
-            "timestamp": time.time()
+            "timestamp": time.time(),
+            "subscribers": emitter.get_subscriber_count(session_id)
         })
+
+        # Send a welcome event
+        await emit_event(
+            session_id=session_id,
+            event_type="system",
+            agent="server",
+            data={
+                "message": "WebSocket connected successfully",
+                "status": "ready"
+            }
+        )
 
         # Keep connection alive and listen for client messages
         while True:
             data = await websocket.receive_text()
-            # Echo back for now (will implement proper handling later)
-            await websocket.send_json({
-                "type": "echo",
-                "message": data
-            })
+
+            # Handle ping messages
+            if data == "ping":
+                await websocket.send_json({
+                    "type": "pong",
+                    "timestamp": time.time()
+                })
+            else:
+                # Echo other messages for debugging
+                await websocket.send_json({
+                    "type": "echo",
+                    "message": data
+                })
 
     except WebSocketDisconnect:
         print(f"📡 WebSocket disconnected for session: {session_id}")
     finally:
+        # Unsubscribe from events
+        await emitter.unsubscribe(session_id, websocket)
         active_websockets.discard(websocket)
+        print(f"   Remaining subscribers: {emitter.get_subscriber_count(session_id)}")
 
 
 @app.exception_handler(Exception)
