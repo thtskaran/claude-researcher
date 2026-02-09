@@ -166,6 +166,11 @@ def ui(
         "--no-browser",
         help="Don't auto-open browser",
     ),
+    restart: bool = typer.Option(
+        True,
+        "--restart/--no-restart",
+        help="Restart servers if ports are already in use (default: restart)",
+    ),
 ):
     """
     Launch the web UI for claude-researcher.
@@ -198,6 +203,42 @@ def ui(
         result = sock.connect_ex(('localhost', port_num)) == 0
         sock.close()
         return result
+
+    def kill_port(port_num: int, label: str) -> None:
+        if not restart:
+            return
+        try:
+            import signal
+            result = subprocess.run(
+                ["lsof", f"-ti:{port_num}"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            pids = [pid for pid in result.stdout.splitlines() if pid.strip()]
+            if not pids:
+                return
+            console.print(
+                f"[yellow]{label} port {port_num} is in use. Restarting it...[/yellow]"
+            )
+            for pid in pids:
+                try:
+                    os.kill(int(pid), signal.SIGKILL)
+                except Exception:
+                    pass
+            # Give the OS a moment to release the port
+            time.sleep(0.5)
+        except Exception:
+            # If lsof isn't available or kill fails, we fall back to current behavior
+            pass
+
+    api_running = check_port(port)
+    ui_running = check_port(3000)
+
+    if api_running:
+        kill_port(port, "API")
+    if ui_running:
+        kill_port(3000, "UI")
 
     api_running = check_port(port)
     ui_running = check_port(3000)

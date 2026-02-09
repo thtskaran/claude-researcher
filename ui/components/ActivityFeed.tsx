@@ -17,6 +17,9 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
   const [groupSystemLogs, setGroupSystemLogs] = useState(true);
   const [compactView, setCompactView] = useState(false);
   const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
+  const feedRef = useRef<HTMLDivElement | null>(null);
+  const [unseenCount, setUnseenCount] = useState(0);
+  const [isAtTop, setIsAtTop] = useState(true);
 
   useEffect(() => {
     // Create WebSocket connection
@@ -72,7 +75,9 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
   }, [events, query, selectedTypes, selectedAgents]);
 
   const displayItems = useMemo(() => {
-    const ordered = [...filteredEvents].reverse(); // oldest -> newest
+    const ordered = [...filteredEvents].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    ); // newest -> oldest
     const items: DisplayItem[] = [];
     let currentBlock: LogBlock | null = null;
     let lastEventKey: string | null = null;
@@ -126,8 +131,28 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
     }
 
     flushBlock();
-    return items.reverse(); // newest -> oldest
+    return items; // newest -> oldest
   }, [filteredEvents, groupSystemLogs]);
+
+  useEffect(() => {
+    if (isAtTop) {
+      setUnseenCount(0);
+      return;
+    }
+    setUnseenCount((prev) => prev + 1);
+  }, [displayItems.length, isAtTop]);
+
+  const handleScroll = () => {
+    const el = feedRef.current;
+    if (!el) {
+      return;
+    }
+    const nearTop = el.scrollTop <= 24;
+    setIsAtTop(nearTop);
+    if (nearTop) {
+      setUnseenCount(0);
+    }
+  };
 
   const stats = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -243,7 +268,25 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
       </div>
 
       {/* Events List */}
-      <div className="space-y-2 max-h-[36rem] overflow-y-auto">
+      {unseenCount > 0 ? (
+        <button
+          type="button"
+          className="mb-3 w-full text-xs bg-primary/10 border border-primary/30 text-primary rounded-lg py-2 hover:bg-primary/20 transition-colors"
+          onClick={() => {
+            if (feedRef.current) {
+              feedRef.current.scrollTop = 0;
+            }
+            setUnseenCount(0);
+          }}
+        >
+          {unseenCount} new update{unseenCount > 1 ? "s" : ""} — Jump to latest
+        </button>
+      ) : null}
+      <div
+        ref={feedRef}
+        onScroll={handleScroll}
+        className="space-y-2 max-h-[36rem] overflow-y-auto"
+      >
         {displayItems.length === 0 ? (
           <div className="text-center py-8 text-gray-400">
             <svg
@@ -301,7 +344,7 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
                   </div>
 
                   <div className="text-xs text-gray-500 mb-2">
-                    {formatTimestamp(block.end)}
+                    {formatTimestamp(block.start)}
                   </div>
 
                   {expanded ? (
