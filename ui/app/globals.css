@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-dark-border;
+  }
+
+  body {
+    @apply bg-dark-bg text-gray-100 antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-dark-surface;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-dark-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-600;
+  }
+}
+
+@layer components {
+  /* Button styles matching design system */
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+    @apply hover:scale-105 active:scale-95;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-white hover:bg-primary-dark;
+  }
+
+  .btn-secondary {
+    @apply bg-dark-surface text-gray-300 hover:bg-dark-border;
+  }
+
+  /* Card styles */
+  .card {
+    @apply bg-dark-surface border border-dark-border rounded-lg p-4;
+  }
+
+  /* Input styles */
+  .input {
+    @apply bg-dark-bg border border-dark-border rounded-lg px-4 py-2;
+    @apply focus:outline-none focus:border-primary transition-colors;
+    @apply text-gray-100 placeholder-gray-500;
+  }
+
+  /* Glass effect for panels */
+  .glass {
+    @apply bg-dark-surface/80 backdrop-blur-sm border border-dark-border/50;
+  }
+
+  /* Agent status badges */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-thinking {
+    @apply bg-info/20 text-info;
+  }
+
+  .badge-action {
+    @apply bg-primary/20 text-primary;
+  }
+
+  .badge-finding {
+    @apply bg-success/20 text-success;
+  }
+
+  .badge-error {
+    @apply bg-error/20 text-error;
+  }
+}
+
+@layer utilities {
+  /* Text gradient */
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary to-primary-light bg-clip-text text-transparent;
+  }
+
+  /* Glow effect */
+  .glow {
+    box-shadow: 0 0 20px rgba(43, 124, 238, 0.3);
+  }
+}

@@ -2,7 +2,9 @@
 
 import asyncio
 import signal
+import subprocess
 import sys
+import webbrowser
 from typing import Optional
 
 import typer
@@ -145,6 +147,111 @@ def main(
         asyncio.run(run())
     except KeyboardInterrupt:
         console.print("\n[yellow]Exiting...[/yellow]")
+        sys.exit(0)
+
+
+@app.command()
+def ui(
+    session_id: Optional[str] = typer.Argument(
+        None,
+        help="Optional session ID to open directly in UI"
+    ),
+    port: int = typer.Option(
+        8080,
+        "--port", "-p",
+        help="Port for API server (default: 8080)",
+    ),
+    no_browser: bool = typer.Option(
+        False,
+        "--no-browser",
+        help="Don't auto-open browser",
+    ),
+):
+    """
+    Launch the web UI for claude-researcher.
+
+    This starts the FastAPI backend and opens the UI in your browser.
+    The UI provides a visual interface for managing research sessions,
+    viewing agent thinking in real-time, and exploring knowledge graphs.
+
+    Examples:
+        researcher ui                  # Launch UI server
+        researcher ui abc123ef         # Open UI with specific session
+        researcher ui --port 9000      # Use custom port
+        researcher ui --no-browser     # Start server without opening browser
+    """
+    console.print()
+    console.print(Panel(
+        "[bold]Claude Researcher UI[/bold]\n"
+        "Launching web interface...",
+        border_style="blue",
+    ))
+
+    # Check if API server is already running
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_running = sock.connect_ex(('localhost', port)) == 0
+    sock.close()
+
+    if server_running:
+        console.print(f"[yellow]API server already running on port {port}[/yellow]")
+    else:
+        console.print(f"[cyan]Starting API server on port {port}...[/cyan]")
+
+        # Start the API server in background
+        try:
+            # Modify the server to use the specified port
+            subprocess.Popen(
+                [sys.executable, "-m", "api.server"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+
+            # Wait for server to start
+            import time
+            max_wait = 10
+            for i in range(max_wait):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                if sock.connect_ex(('localhost', port)) == 0:
+                    sock.close()
+                    console.print("[green]✓ API server started[/green]")
+                    break
+                sock.close()
+                time.sleep(0.5)
+            else:
+                console.print("[red]✗ Failed to start API server[/red]")
+                sys.exit(1)
+
+        except Exception as e:
+            console.print(f"[red]Error starting API server: {e}[/red]")
+            sys.exit(1)
+
+    # Construct URL
+    url = f"http://localhost:{port}"
+    if session_id:
+        url += f"/session/{session_id}"
+
+    console.print(f"\n[bold green]✓ Server ready[/bold green]")
+    console.print(f"[dim]API Docs: http://localhost:{port}/docs[/dim]")
+    console.print(f"[dim]WebSocket: ws://localhost:{port}/ws/{{session_id}}[/dim]")
+
+    # Open browser
+    if not no_browser:
+        console.print(f"\n[cyan]Opening {url} in browser...[/cyan]")
+        webbrowser.open(url)
+    else:
+        console.print(f"\n[cyan]Server URL: {url}[/cyan]")
+
+    console.print("\n[dim]Press Ctrl+C to stop the server[/dim]\n")
+
+    # Keep the process running
+    try:
+        while True:
+            import time
+            time.sleep(1)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Stopping server...[/yellow]")
         sys.exit(0)
 
 
