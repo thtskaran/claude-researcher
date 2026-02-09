@@ -82,6 +82,23 @@
   .badge-error {
     @apply bg-error/20 text-error;
   }
+
+  .badge-system {
+    @apply bg-gray-500/20 text-gray-400;
+  }
+
+  .badge-synthesis {
+    @apply bg-primary-dark/20 text-primary-light;
+  }
+
+  .chip {
+    @apply px-3 py-1 rounded-full text-xs border border-dark-border bg-dark-surface/70;
+    @apply text-gray-300 hover:text-gray-100 hover:border-primary/40 transition-colors;
+  }
+
+  .chip-active {
+    @apply bg-primary/20 text-primary border-primary/40;
+  }
 }
 
 @layer utilities {
