@@ -19,179 +19,212 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [showNewSession, setShowNewSession] = useState(false);
 
-  useEffect(() => {
-    fetchSessions();
-  }, []);
-
   const fetchSessions = async () => {
-    setLoading(true);
     try {
-      const response = await fetch("/api/sessions/");
-      const data = await response.json();
-      setSessions(data);
-    } catch (error) {
-      console.error("Failed to fetch sessions:", error);
+      const response = await fetch("/api/sessions/?limit=50");
+      if (response.ok) {
+        const data = await response.json();
+        setSessions(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch sessions:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleNewSessionSuccess = () => {
-    setShowNewSession(false);
+  useEffect(() => {
     fetchSessions();
-  };
+  }, []);
+
+  const activeSessions = sessions.filter((s) => s.status === "running" || s.status === "pending");
+  const completedSessions = sessions.filter((s) => s.status !== "running" && s.status !== "pending");
 
   return (
-    <div className="min-h-screen bg-dark-bg">
+    <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="border-b border-dark-border bg-dark-surface/50 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b border-dark-border bg-dark-surface/50 backdrop-blur-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-2xl font-bold text-gradient">Claude Researcher</h1>
-            <span className="badge bg-primary/20 text-primary">v0.1.0</span>
-            <button
-              onClick={() => router.push('/test-websocket')}
-              className="text-xs text-gray-400 hover:text-primary transition-colors"
-              title="Test WebSocket Events"
-            >
-              [Test WebSocket]
-            </button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 text-primary">
+              <span className="material-symbols-outlined text-xl">science</span>
+            </div>
+            <div>
+              <h1 className="text-lg font-bold tracking-tight">Claude Researcher</h1>
+              <p className="text-xs text-gray-500">Deep research with glass-box transparency</p>
+            </div>
           </div>
           <button
             onClick={() => setShowNewSession(true)}
-            className="btn btn-primary flex items-center gap-2"
+            className="btn btn-primary"
           >
-            <span>+</span>
-            <span>New Research</span>
+            <span className="material-symbols-outlined text-lg">add</span>
+            New Research
           </button>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold mb-2">Research Sessions</h2>
-          <p className="text-gray-400">
-            Start a new research session or continue from where you left off
-          </p>
+      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div className="card card-hover">
+            <div className="flex justify-between items-start mb-2">
+              <p className="text-sm font-medium text-gray-400">Total Sessions</p>
+              <span className="material-symbols-outlined text-gray-400">folder_open</span>
+            </div>
+            <p className="font-mono text-3xl font-bold tracking-tighter">{sessions.length}</p>
+          </div>
+          <div className="card card-hover">
+            <div className="flex justify-between items-start mb-2">
+              <p className="text-sm font-medium text-gray-400">Active</p>
+              <span className="material-symbols-outlined text-accent-success">play_circle</span>
+            </div>
+            <p className="font-mono text-3xl font-bold tracking-tighter text-accent-success">{activeSessions.length}</p>
+          </div>
+          <div className="card card-hover">
+            <div className="flex justify-between items-start mb-2">
+              <p className="text-sm font-medium text-gray-400">Completed</p>
+              <span className="material-symbols-outlined text-gray-400">check_circle</span>
+            </div>
+            <p className="font-mono text-3xl font-bold tracking-tighter">{completedSessions.length}</p>
+          </div>
         </div>
 
-        {/* Sessions Grid */}
-        {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="text-gray-400">Loading sessions...</div>
-          </div>
-        ) : sessions.length === 0 ? (
-          <div className="card text-center py-16">
-            <div className="text-gray-400 mb-4">
-              <svg
-                className="w-16 h-16 mx-auto mb-4 opacity-50"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              <p className="text-lg font-medium">No research sessions yet</p>
-              <p className="text-sm mt-2">Click "New Research" to get started</p>
+        {/* Active Sessions */}
+        {activeSessions.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 px-1">
+              Active Sessions
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {activeSessions.map((session) => (
+                <SessionCard key={session.session_id} session={session} onClick={() => router.push(`/session/${session.session_id}`)} />
+              ))}
             </div>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {sessions.map((session) => (
-              <div
-                key={session.session_id}
-                onClick={() => router.push(`/session/${session.session_id}`)}
-                className="card hover:border-primary/50 cursor-pointer transition-all hover:scale-[1.02] group"
-              >
-                {/* Header */}
-                <div className="flex items-start justify-between mb-3">
-                  <span className={`badge ${getStatusBadgeClass(session.status)}`}>
-                    {session.status}
-                  </span>
-                  <span className="text-xs text-gray-500 font-mono">
-                    #{session.session_id}
-                  </span>
-                </div>
-
-                {/* Goal */}
-                <h3 className="font-semibold text-lg mb-3 line-clamp-3 group-hover:text-primary transition-colors">
-                  {session.goal}
-                </h3>
-
-                {/* Metadata */}
-                <div className="space-y-2 text-sm text-gray-400">
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>{session.time_limit} minutes</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span>{formatDate(session.created_at)}</span>
-                  </div>
-                  {session.completed_at && (
-                    <div className="text-xs text-success">
-                      ✓ Completed {formatDate(session.completed_at)}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
         )}
+
+        {/* Session History */}
+        <div>
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 px-1">
+            {activeSessions.length > 0 ? "History" : "All Sessions"}
+          </h2>
+
+          {loading ? (
+            <div className="card">
+              <div className="flex items-center gap-3 text-gray-400">
+                <span className="material-symbols-outlined animate-spin">progress_activity</span>
+                <span className="text-sm">Loading sessions...</span>
+              </div>
+            </div>
+          ) : completedSessions.length === 0 && activeSessions.length === 0 ? (
+            <div className="card flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+                <span className="material-symbols-outlined text-primary text-3xl">science</span>
+              </div>
+              <h3 className="text-lg font-semibold mb-2">No research sessions yet</h3>
+              <p className="text-sm text-gray-400 max-w-md mb-6">
+                Start your first research session to explore topics with hierarchical deep research and transparent AI reasoning.
+              </p>
+              <button
+                onClick={() => setShowNewSession(true)}
+                className="btn btn-primary"
+              >
+                <span className="material-symbols-outlined text-lg">rocket_launch</span>
+                Start Research
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {completedSessions.map((session) => (
+                <SessionCard key={session.session_id} session={session} onClick={() => router.push(`/session/${session.session_id}`)} />
+              ))}
+            </div>
+          )}
+        </div>
       </main>
 
       {/* New Session Modal */}
       {showNewSession && (
-        <NewSessionForm
-          onClose={() => setShowNewSession(false)}
-          onSuccess={handleNewSessionSuccess}
-        />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-[640px]">
+            <NewSessionForm
+              onClose={() => setShowNewSession(false)}
+              onSuccess={() => {
+                setShowNewSession(false);
+                fetchSessions();
+              }}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-function getStatusBadgeClass(status: string): string {
-  switch (status) {
-    case "active":
-    case "running":
-      return "badge-action";
-    case "completed":
-      return "badge-finding";
-    case "error":
-      return "badge-error";
-    default:
-      return "badge-thinking";
-  }
+function SessionCard({ session, onClick }: { session: Session; onClick: () => void }) {
+  const isActive = session.status === "running" || session.status === "pending";
+  const timeAgo = getTimeAgo(session.created_at);
+
+  return (
+    <button
+      onClick={onClick}
+      className="card card-hover text-left w-full group relative overflow-hidden"
+    >
+      {/* Active indicator bar */}
+      {isActive && (
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary/60 via-primary to-primary/60" />
+      )}
+
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2">
+          {isActive ? (
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-success opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-accent-success" />
+            </span>
+          ) : (
+            <span className="status-dot status-dot-idle" />
+          )}
+          <span className={`text-xs font-mono font-medium ${isActive ? "text-accent-success" : "text-gray-500"}`}>
+            {session.status}
+          </span>
+        </div>
+        <span className="material-symbols-outlined text-gray-600 group-hover:text-primary transition-colors text-lg">
+          arrow_forward
+        </span>
+      </div>
+
+      <h3 className="text-sm font-medium text-white group-hover:text-primary transition-colors line-clamp-2 mb-3 leading-snug">
+        {session.goal}
+      </h3>
+
+      <div className="flex items-center justify-between text-xs text-gray-500 font-mono">
+        <span className="flex items-center gap-1">
+          <span className="material-symbols-outlined text-[14px]">schedule</span>
+          {timeAgo}
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="material-symbols-outlined text-[14px]">timer</span>
+          {session.time_limit}m
+        </span>
+      </div>
+    </button>
+  );
 }
 
-function formatDate(dateString: string): string {
-  const date = new Date(dateString);
+function getTimeAgo(dateString: string): string {
   const now = new Date();
+  const date = new Date(dateString);
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return "Just now";
+  if (diffMins < 1) return "just now";
   if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
   if (diffDays < 7) return `${diffDays}d ago`;
-
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
-  });
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }

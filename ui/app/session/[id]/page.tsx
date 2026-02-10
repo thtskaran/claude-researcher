@@ -16,6 +16,18 @@ interface Session {
   completed_at?: string | null;
 }
 
+const tabs = [
+  { id: "activity", label: "Live Activity", icon: "stream" },
+  { id: "findings", label: "Findings", icon: "description" },
+  { id: "report", label: "Report", icon: "article" },
+  { id: "graph", label: "Knowledge Graph", icon: "hub" },
+  { id: "sources", label: "Sources", icon: "travel_explore" },
+  { id: "agents", label: "Agents", icon: "psychology" },
+  { id: "verify", label: "Verification", icon: "verified" },
+] as const;
+
+type TabId = (typeof tabs)[number]["id"];
+
 export default function SessionDetail() {
   const params = useParams();
   const sessionId = params.id as string;
@@ -24,7 +36,7 @@ export default function SessionDetail() {
   const [stats, setStats] = useState<{ findings: number; sources: number; topics: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState<"activity" | "findings" | "report" | "graph">("activity");
+  const [activeTab, setActiveTab] = useState<TabId>("activity");
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   useEffect(() => {
@@ -33,13 +45,10 @@ export default function SessionDetail() {
   }, [sessionId]);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setNowTick(Date.now());
-    }, 1000);
+    const timer = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Poll session and stats for live updates
   useEffect(() => {
     if (!session || session.status === "completed" || session.status === "error") return;
     const interval = setInterval(() => {
@@ -52,16 +61,11 @@ export default function SessionDetail() {
   const fetchSession = async () => {
     try {
       const response = await fetch(`/api/sessions/${sessionId}`);
-
       if (!response.ok) {
-        if (response.status === 404) {
-          setError("Session not found");
-        } else {
-          throw new Error("Failed to fetch session");
-        }
+        if (response.status === 404) setError("Session not found");
+        else throw new Error("Failed to fetch session");
         return;
       }
-
       const data = await response.json();
       setSession(data);
     } catch (err) {
@@ -75,20 +79,17 @@ export default function SessionDetail() {
   const fetchStats = async () => {
     try {
       const response = await fetch(`/api/sessions/${sessionId}/stats`);
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
-      }
+      if (response.ok) setStats(await response.json());
     } catch {
-      // Stats are non-critical, ignore errors
+      // Non-critical
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <span className="material-symbols-outlined text-4xl text-primary animate-spin mb-4 block">progress_activity</span>
           <p className="text-gray-400">Loading session...</p>
         </div>
       </div>
@@ -97,212 +98,289 @@ export default function SessionDetail() {
 
   if (error || !session) {
     return (
-      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <svg
-            className="w-16 h-16 text-error mx-auto mb-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            />
-          </svg>
+          <span className="material-symbols-outlined text-5xl text-error mb-4 block">error</span>
           <h2 className="text-2xl font-bold mb-2">{error || "Session not found"}</h2>
-          <Link href="/" className="text-primary hover:underline">
-            ← Back to Dashboard
-          </Link>
+          <Link href="/" className="text-primary hover:underline text-sm">← Back to Dashboard</Link>
         </div>
       </div>
     );
   }
 
+  const isRunning = session.status === "running" || session.status === "pending";
+  const elapsed = getElapsedTime(session.created_at, nowTick);
+  const remaining = getRemainingTime(session.created_at, session.time_limit, nowTick);
+
   return (
-    <div className="min-h-screen bg-dark-bg">
+    <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="border-b border-dark-border bg-dark-surface/50 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b border-dark-border bg-dark-surface/50 backdrop-blur-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-4 mb-3">
-            <Link href="/" className="text-gray-400 hover:text-primary transition-colors">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <h1 className="text-2xl font-bold line-clamp-1">{session.goal}</h1>
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
+            <Link href="/" className="hover:text-primary transition-colors">Sessions</Link>
+            <span className="material-symbols-outlined text-[12px]">chevron_right</span>
+            <span className={isRunning ? "text-accent-success" : "text-gray-400"}>
+              {isRunning ? "Running" : session.status}
+            </span>
           </div>
 
-          <div className="flex items-center gap-6 text-sm">
-            <div className="flex items-center gap-2">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-4 min-w-0">
+              <Link href="/" className="text-gray-400 hover:text-primary transition-colors mt-1 shrink-0">
+                <span className="material-symbols-outlined">arrow_back</span>
+              </Link>
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold line-clamp-2 leading-tight">{session.goal}</h1>
+                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                  <span className="font-mono">#{session.session_id.slice(0, 8)}</span>
+                  <span className="flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[14px]">schedule</span>
+                    {formatDate(session.created_at)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
               <span className={`badge ${getStatusBadgeClass(session.status)}`}>
+                {isRunning && (
+                  <span className="relative flex h-1.5 w-1.5 mr-1">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-current" />
+                  </span>
+                )}
                 {session.status}
               </span>
-            </div>
-            <div className="flex items-center gap-2 text-gray-400">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-              </svg>
-              <span className="font-mono">#{session.session_id}</span>
-            </div>
-            <div className="flex items-center gap-2 text-gray-400">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>{session.time_limit} minutes</span>
-            </div>
-            <div className="flex items-center gap-2 text-gray-400">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <span>{formatDate(session.created_at)}</span>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Tabs */}
-      <div className="border-b border-dark-border bg-dark-surface/30">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex gap-6">
-            <button
-              onClick={() => setActiveTab("activity")}
-              className={`py-3 px-2 border-b-2 transition-colors ${
-                activeTab === "activity"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-gray-400 hover:text-gray-200"
-              }`}
-            >
-              Live Activity
-            </button>
-            <button
-              onClick={() => setActiveTab("findings")}
-              className={`py-3 px-2 border-b-2 transition-colors ${
-                activeTab === "findings"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-gray-400 hover:text-gray-200"
-              }`}
-            >
-              Findings
-            </button>
-            <button
-              onClick={() => setActiveTab("report")}
-              className={`py-3 px-2 border-b-2 transition-colors ${
-                activeTab === "report"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-gray-400 hover:text-gray-200"
-              }`}
-            >
-              Report
-            </button>
-            <button
-              onClick={() => setActiveTab("graph")}
-              className={`py-3 px-2 border-b-2 transition-colors ${
-                activeTab === "graph"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-gray-400 hover:text-gray-200"
-              }`}
-            >
-              Knowledge Graph
-            </button>
+      {/* Stats Cards */}
+      <div className="border-b border-dark-border bg-dark-surface/20">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard
+              icon="travel_explore"
+              label="Sources Found"
+              value={stats ? String(stats.sources) : "--"}
+              color="text-accent-blue"
+            />
+            <StatCard
+              icon="description"
+              label="Findings"
+              value={stats ? String(stats.findings) : "--"}
+              color="text-accent-green"
+            />
+            <StatCard
+              icon="topic"
+              label="Topics"
+              value={stats ? String(stats.topics) : "--"}
+              color="text-accent-yellow"
+            />
+            <StatCard
+              icon="timer"
+              label={isRunning ? "Time Remaining" : "Duration"}
+              value={isRunning ? remaining : elapsed}
+              color={isRunning ? "text-primary" : "text-gray-400"}
+              animate={isRunning}
+            />
           </div>
         </div>
       </div>
 
-      {/* Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      {/* Tabs */}
+      <div className="border-b border-dark-border bg-dark-surface/10 sticky top-[89px] z-10 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="tab-bar overflow-x-auto scrollbar-hide">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`tab-item whitespace-nowrap ${activeTab === tab.id ? "tab-item-active" : ""}`}
+              >
+                <span className="material-symbols-outlined text-lg">{tab.icon}</span>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      <main className="max-w-7xl mx-auto w-full px-6 py-8 flex-1">
         {activeTab === "activity" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Main Activity Feed */}
             <div className="lg:col-span-2">
               <ActivityFeed sessionId={sessionId} />
             </div>
-
-            {/* Side Panel - Agent Status */}
             <div className="space-y-6">
+              {/* Agent Status */}
               <div className="card">
-                <h3 className="text-lg font-semibold mb-4">Agent Status</h3>
+                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Agent Status</h3>
                 <div className="space-y-3">
-                  <AgentStatusCard name="Director" status="active" />
-                  <AgentStatusCard name="Manager" status="thinking" />
-                  <AgentStatusCard name="Intern Pool" status="active" count={3} />
+                  <AgentStatusCard name="Director" role="Level 0" status="active" icon="military_tech" />
+                  <AgentStatusCard name="Manager" role="Level 1" status="thinking" icon="psychology" />
+                  <AgentStatusCard name="Intern Pool" role="Level 2" status="active" icon="group" count={3} />
                 </div>
               </div>
 
-              <div className="card">
-                <h3 className="text-lg font-semibold mb-4">Quick Stats</h3>
-                <div className="space-y-2 text-sm">
-                  <StatRow label="Findings" value={stats ? String(stats.findings) : "--"} />
-                  <StatRow label="Sources" value={stats ? String(stats.sources) : "--"} />
-                  <StatRow label="Topics" value={stats ? String(stats.topics) : "--"} />
-                  <StatRow label="Elapsed" value={getElapsedTime(session.created_at, nowTick)} />
+              {/* System Logs */}
+              <div className="card bg-terminal-black border-terminal-border">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">System Logs</h3>
+                  <span className="status-dot status-dot-active" />
+                </div>
+                <div className="space-y-1.5 font-mono text-xs text-gray-400 max-h-48 overflow-y-auto scrollbar-hide">
+                  <p><span className="text-primary">[{new Date().toLocaleTimeString()}]</span> Monitoring research session...</p>
+                  <p><span className="text-primary">[{new Date().toLocaleTimeString()}]</span> WebSocket connection established</p>
+                  <p className="text-white bg-white/5 p-1 -mx-1 rounded">
+                    <span className="text-primary animate-pulse">›</span> Awaiting agent events...
+                  </p>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {activeTab === "findings" && (
-          <FindingsBrowser sessionId={sessionId} />
-        )}
-
-        {activeTab === "report" && (
-          <ReportPreview sessionId={sessionId} />
-        )}
+        {activeTab === "findings" && <FindingsBrowser sessionId={sessionId} />}
+        {activeTab === "report" && <ReportPreview sessionId={sessionId} />}
 
         {activeTab === "graph" && (
-          <div className="card">
-            <h2 className="text-2xl font-bold mb-6">Knowledge Graph</h2>
-            <div className="text-center py-12 text-gray-400">
-              <svg
-                className="w-16 h-16 mx-auto mb-4 opacity-50"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
-                />
-              </svg>
-              <p className="text-lg">Interactive graph visualization coming soon</p>
-              <p className="text-sm mt-2">Will show entities, relationships, and knowledge network</p>
-            </div>
-          </div>
+          <SubPagePlaceholder
+            icon="hub"
+            title="Knowledge Graph"
+            description="Interactive visualization of entities, relationships, and the knowledge network built during research."
+            linkHref={`/session/${sessionId}/graph`}
+            linkText="Open Full Graph View"
+          />
+        )}
+
+        {activeTab === "sources" && (
+          <SubPagePlaceholder
+            icon="travel_explore"
+            title="Sources Index"
+            description="Browse all sources discovered during research with credibility scores, citation counts, and extracted findings."
+            linkHref={`/session/${sessionId}/sources`}
+            linkText="Open Sources Index"
+          />
+        )}
+
+        {activeTab === "agents" && (
+          <SubPagePlaceholder
+            icon="psychology"
+            title="Agent Transparency"
+            description="See the hierarchical agent structure, their current goals, reasoning traces, and real-time decision-making process."
+            linkHref={`/session/${sessionId}/agents`}
+            linkText="Open Agent View"
+          />
+        )}
+
+        {activeTab === "verify" && (
+          <SubPagePlaceholder
+            icon="verified"
+            title="CoVe Verification Pipeline"
+            description="Track how findings are verified through the Chain-of-Verification pipeline with confidence scoring."
+            linkHref={`/session/${sessionId}/verify`}
+            linkText="Open Verification Pipeline"
+          />
         )}
       </main>
     </div>
   );
 }
 
-function AgentStatusCard({ name, status, count }: { name: string; status: string; count?: number }) {
-  const statusColors = {
-    active: "bg-success",
-    thinking: "bg-primary",
-    idle: "bg-gray-500",
-  };
-
+function StatCard({
+  icon,
+  label,
+  value,
+  color,
+  animate,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  color: string;
+  animate?: boolean;
+}) {
   return (
-    <div className="flex items-center justify-between p-3 bg-dark-bg rounded-lg border border-dark-border">
-      <div className="flex items-center gap-3">
-        <div className={`w-2 h-2 rounded-full ${statusColors[status as keyof typeof statusColors]} animate-pulse`} />
-        <span className="font-medium">{name}</span>
-        {count && <span className="text-xs text-gray-500">({count})</span>}
+    <div className="bg-dark-surface border border-dark-border rounded-xl p-4 hover:border-primary/30 transition-colors group">
+      <div className="flex justify-between items-start mb-2">
+        <p className="text-xs font-medium text-gray-500">{label}</p>
+        <span className={`material-symbols-outlined text-lg transition-colors group-hover:text-primary ${color}`}>
+          {icon}
+        </span>
       </div>
-      <span className="text-xs text-gray-400 capitalize">{status}</span>
+      <p className={`font-mono text-2xl font-bold tracking-tighter ${animate ? "animate-pulse" : ""}`}>{value}</p>
     </div>
   );
 }
 
-function StatRow({ label, value }: { label: string; value: string }) {
+function AgentStatusCard({
+  name,
+  role,
+  status,
+  icon,
+  count,
+}: {
+  name: string;
+  role: string;
+  status: string;
+  icon: string;
+  count?: number;
+}) {
+  const statusConfig: Record<string, { dot: string; label: string }> = {
+    active: { dot: "status-dot-active", label: "Active" },
+    thinking: { dot: "bg-primary animate-pulse", label: "Thinking" },
+    idle: { dot: "status-dot-idle", label: "Idle" },
+  };
+  const cfg = statusConfig[status] || statusConfig.idle;
+
   return (
-    <div className="flex justify-between py-2 border-b border-dark-border last:border-0">
-      <span className="text-gray-400">{label}</span>
-      <span className="font-semibold">{value}</span>
+    <div className="flex items-center justify-between p-3 bg-dark-bg rounded-lg border border-dark-border hover:border-primary/20 transition-colors">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+          <span className="material-symbols-outlined text-primary text-base">{icon}</span>
+        </div>
+        <div>
+          <span className="text-sm font-medium block">{name}</span>
+          <span className="text-xs text-gray-500">{role}{count ? ` (${count})` : ""}</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className={`status-dot ${cfg.dot}`} />
+        <span className="text-xs text-gray-400">{cfg.label}</span>
+      </div>
+    </div>
+  );
+}
+
+function SubPagePlaceholder({
+  icon,
+  title,
+  description,
+  linkHref,
+  linkText,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  linkHref: string;
+  linkText: string;
+}) {
+  return (
+    <div className="card flex flex-col items-center justify-center py-16 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+        <span className="material-symbols-outlined text-primary text-3xl">{icon}</span>
+      </div>
+      <h2 className="text-xl font-bold mb-2">{title}</h2>
+      <p className="text-sm text-gray-400 max-w-md mb-6">{description}</p>
+      <Link href={linkHref} className="btn btn-primary">
+        <span className="material-symbols-outlined text-lg">open_in_new</span>
+        {linkText}
+      </Link>
     </div>
   );
 }
@@ -313,11 +391,11 @@ function getStatusBadgeClass(status: string): string {
     case "running":
       return "badge-action";
     case "completed":
-      return "badge-finding";
+      return "badge-success";
     case "error":
       return "badge-error";
     default:
-      return "badge-thinking";
+      return "badge-system";
   }
 }
 
@@ -335,16 +413,22 @@ function getElapsedTime(startDate: string, nowMs: number): string {
   const start = new Date(startDate);
   const diffMs = nowMs - start.getTime();
   const diffSecs = Math.max(0, Math.floor(diffMs / 1000));
-  const diffMins = Math.floor(diffSecs / 60);
-  const diffHours = Math.floor(diffMins / 60);
+  const mins = Math.floor(diffSecs / 60);
+  const hrs = Math.floor(mins / 60);
   const secs = diffSecs % 60;
-  const mins = diffMins % 60;
 
-  if (diffHours > 0) {
-    return `${diffHours}h ${mins}m ${secs}s`;
-  }
-  if (diffMins > 0) {
-    return `${diffMins}m ${secs}s`;
-  }
+  if (hrs > 0) return `${hrs}h ${mins % 60}m`;
+  if (mins > 0) return `${mins}m ${secs}s`;
   return `${secs}s`;
+}
+
+function getRemainingTime(startDate: string, limitMins: number, nowMs: number): string {
+  const start = new Date(startDate);
+  const endMs = start.getTime() + limitMins * 60 * 1000;
+  const remainMs = endMs - nowMs;
+  if (remainMs <= 0) return "0:00";
+  const remainSecs = Math.floor(remainMs / 1000);
+  const mins = Math.floor(remainSecs / 60);
+  const secs = remainSecs % 60;
+  return `${mins}:${String(secs).padStart(2, "0")}`;
 }

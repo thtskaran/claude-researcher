@@ -31,84 +31,234 @@
 }
 
 @layer components {
-  /* Button styles matching design system */
+
+  /* Cards */
+  .card {
+    @apply bg-dark-surface border border-dark-border rounded-xl p-6 shadow-sm;
+  }
+
+  .card-hover {
+    @apply hover:border-primary/50 transition-all duration-200;
+  }
+
+  /* Glass morphism panel */
+  .glass-panel {
+    background: rgba(28, 32, 39, 0.65);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* Buttons */
   .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
-    @apply hover:scale-105 active:scale-95;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-primary {
-    @apply bg-primary text-white hover:bg-primary-dark;
+    @apply bg-primary hover:bg-primary-dark text-white shadow-lg shadow-primary/20 hover:shadow-primary/30;
   }
 
   .btn-secondary {
-    @apply bg-dark-surface text-gray-300 hover:bg-dark-border;
+    @apply bg-dark-surface border border-dark-border text-gray-300 hover:bg-surface-highlight hover:text-white;
   }
 
-  /* Card styles */
-  .card {
-    @apply bg-dark-surface border border-dark-border rounded-lg p-4;
+  .btn-danger {
+    @apply bg-transparent border border-error text-error hover:bg-error/10;
   }
 
-  /* Input styles */
+  .btn-ghost {
+    @apply bg-transparent text-gray-400 hover:text-white hover:bg-dark-border/50;
+  }
+
+  /* Inputs */
   .input {
-    @apply bg-dark-bg border border-dark-border rounded-lg px-4 py-2;
-    @apply focus:outline-none focus:border-primary transition-colors;
-    @apply text-gray-100 placeholder-gray-500;
+    @apply bg-dark-bg border border-dark-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 transition-all duration-200;
   }
 
-  /* Glass effect for panels */
-  .glass {
-    @apply bg-dark-surface/80 backdrop-blur-sm border border-dark-border/50;
-  }
-
-  /* Agent status badges */
+  /* Badges – semantic event types */
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border;
   }
 
-  .badge-thinking {
-    @apply bg-info/20 text-info;
-  }
-
-  .badge-action {
-    @apply bg-primary/20 text-primary;
+  .badge-search {
+    @apply bg-blue-500/10 text-blue-400 border-blue-500/20;
   }
 
   .badge-finding {
-    @apply bg-success/20 text-success;
+    @apply bg-emerald-500/10 text-emerald-400 border-emerald-500/20;
+  }
+
+  .badge-thinking {
+    @apply bg-purple-500/10 text-purple-400 border-purple-500/20;
+  }
+
+  .badge-verify {
+    @apply bg-amber-500/10 text-amber-400 border-amber-500/20;
   }
 
   .badge-error {
-    @apply bg-error/20 text-error;
+    @apply bg-red-500/10 text-red-400 border-red-500/20;
+  }
+
+  .badge-action {
+    @apply bg-primary/10 text-primary border-primary/20;
   }
 
   .badge-system {
-    @apply bg-gray-500/20 text-gray-400;
+    @apply bg-gray-500/10 text-gray-400 border-gray-500/20;
   }
 
-  .badge-synthesis {
-    @apply bg-primary-dark/20 text-primary-light;
+  .badge-success {
+    @apply bg-emerald-500/10 text-emerald-400 border-emerald-500/20;
   }
 
+  /* Status dots */
+  .status-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .status-dot-active {
+    @apply bg-accent-success;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+  }
+
+  .status-dot-idle {
+    @apply bg-accent-neutral;
+  }
+
+  .status-dot-error {
+    @apply bg-accent-red;
+  }
+
+  .status-dot-pending {
+    @apply bg-accent-yellow;
+  }
+
+  /* Pulse ring animation for live indicators */
+  .pulse-ring {
+    @apply relative;
+  }
+
+  .pulse-ring::before {
+    content: "";
+    @apply absolute inset-0 rounded-full animate-ping;
+    background: inherit;
+    opacity: 0.75;
+  }
+
+  /* Timeline connector for Activity Feed / Execution Timeline */
+  .timeline-connector {
+    @apply absolute w-[2px] bg-dark-border;
+    left: 14px;
+    top: 2rem;
+    bottom: -2rem;
+    z-index: 0;
+  }
+
+  .timeline-item:last-child .timeline-connector {
+    display: none;
+  }
+
+  /* Segmented control (depth selector) */
+  .segmented-control {
+    @apply flex bg-dark-bg p-1 rounded-lg;
+  }
+
+  .segmented-control label {
+    @apply flex-1 cursor-pointer;
+  }
+
+  .segmented-control input {
+    @apply sr-only;
+  }
+
+  .segmented-control .segment {
+    @apply text-center py-2 text-sm font-medium text-gray-500 rounded-md transition-all;
+  }
+
+  .segmented-control input:checked+.segment {
+    @apply bg-surface-highlight text-primary shadow-sm;
+  }
+
+  /* Report markdown prose */
+  .report-markdown h1 {
+    @apply text-2xl font-bold mt-6 mb-3 text-white;
+  }
+
+  .report-markdown h2 {
+    @apply text-xl font-semibold mt-5 mb-2 text-white;
+  }
+
+  .report-markdown h3 {
+    @apply text-lg font-semibold mt-4 mb-2 text-white;
+  }
+
+  .report-markdown p {
+    @apply text-sm text-gray-200 leading-relaxed mb-3;
+  }
+
+  .report-markdown blockquote {
+    @apply border-l-4 border-primary/50 pl-6 italic text-gray-400 my-8;
+  }
+
+  .report-markdown ul {
+    @apply list-disc list-outside ml-6 space-y-2 mb-4 text-gray-300;
+  }
+
+  .report-markdown ol {
+    @apply list-decimal list-outside ml-6 space-y-2 mb-4 text-gray-300;
+  }
+
+  .report-markdown code {
+    @apply text-xs bg-dark-bg/80 border border-dark-border rounded px-1.5 py-0.5;
+  }
+
+  .report-markdown pre {
+    @apply text-xs bg-terminal-black border border-terminal-border rounded-lg p-3 overflow-x-auto mb-3;
+  }
+
+  /* Citation buttons */
+  .citation-btn {
+    @apply inline-flex items-center justify-center align-middle h-5 px-1.5 mx-0.5 text-[10px] font-bold text-primary bg-primary/10 hover:bg-primary/20 rounded cursor-pointer ring-1 ring-primary/30 transition-all;
+  }
+
+  /* Chips (filter toggles) */
   .chip {
-    @apply px-3 py-1 rounded-full text-xs border border-dark-border bg-dark-surface/70;
-    @apply text-gray-300 hover:text-gray-100 hover:border-primary/40 transition-colors;
+    @apply inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-400 bg-dark-bg border border-dark-border rounded-full cursor-pointer transition-all hover:text-white hover:border-gray-500;
   }
 
   .chip-active {
-    @apply bg-primary/20 text-primary border-primary/40;
+    @apply text-primary border-primary/40 bg-primary/10;
+  }
+
+  /* Tabs */
+  .tab-bar {
+    @apply flex border-b border-dark-border gap-1;
+  }
+
+  .tab-item {
+    @apply px-4 py-2.5 text-sm font-medium text-gray-400 hover:text-white border-b-2 border-transparent transition-all cursor-pointer flex items-center gap-2;
+  }
+
+  .tab-item-active {
+    @apply text-primary border-primary;
   }
 }
 
 @layer utilities {
-  /* Text gradient */
-  .text-gradient {
-    @apply bg-gradient-to-r from-primary to-primary-light bg-clip-text text-transparent;
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 
-  /* Glow effect */
-  .glow {
-    box-shadow: 0 0 20px rgba(43, 124, 238, 0.3);
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .bg-grid-pattern {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
   }
 }
