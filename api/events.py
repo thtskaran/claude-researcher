@@ -5,10 +5,11 @@ Agents emit events → EventEmitter → WebSocket → UI
 """
 import asyncio
 import json
-from typing import Dict, Set, Any, Optional
-from datetime import datetime
-from fastapi import WebSocket
 import logging
+from datetime import datetime
+from typing import Any, Optional
+
+from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +22,8 @@ class AgentEvent:
         session_id: str,
         event_type: str,
         agent: str,
-        data: Dict[str, Any],
-        timestamp: Optional[datetime] = None
+        data: dict[str, Any],
+        timestamp: datetime | None = None
     ):
         self.session_id = session_id
         self.event_type = event_type
@@ -30,7 +31,7 @@ class AgentEvent:
         self.data = data
         self.timestamp = timestamp or datetime.now()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "session_id": self.session_id,
@@ -68,7 +69,7 @@ class EventEmitter:
             return
 
         # Session ID -> Set of WebSocket connections
-        self._subscribers: Dict[str, Set[WebSocket]] = {}
+        self._subscribers: dict[str, set[WebSocket]] = {}
         self._subscribers_lock = asyncio.Lock()
         self._initialized = True
 
@@ -96,7 +97,7 @@ class EventEmitter:
         session_id: str,
         event_type: str,
         agent: str,
-        data: Dict[str, Any]
+        data: dict[str, Any]
     ):
         """
         Emit an event to all subscribers of a session.
@@ -175,7 +176,7 @@ async def emit_event(
     session_id: str,
     event_type: str,
     agent: str,
-    data: Dict[str, Any]
+    data: dict[str, Any]
 ):
     """Emit an event to all subscribers."""
     emitter = get_event_emitter()

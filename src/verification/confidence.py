@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from .models import VerificationStatus, VerificationConfig
+from .models import VerificationConfig, VerificationStatus
 
 
 @dataclass
@@ -24,7 +24,7 @@ class ConfidenceCalibrator:
     - <50%: Reject (REJECTED)
     """
 
-    def __init__(self, config: Optional[VerificationConfig] = None):
+    def __init__(self, config: VerificationConfig | None = None):
         self.config = config or VerificationConfig()
 
     def calibrate(

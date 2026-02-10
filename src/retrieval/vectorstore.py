@@ -24,14 +24,14 @@ class Document:
     id: str
     content: str
     metadata: dict[str, Any] = field(default_factory=dict)
-    embedding: Optional[np.ndarray] = None
+    embedding: np.ndarray | None = None
 
     @classmethod
     def create(
         cls,
         content: str,
-        metadata: Optional[dict[str, Any]] = None,
-        doc_id: Optional[str] = None,
+        metadata: dict[str, Any] | None = None,
+        doc_id: str | None = None,
     ) -> "Document":
         """Create a document with auto-generated ID if not provided."""
         if doc_id is None:
@@ -71,7 +71,7 @@ class VectorStore:
     def __init__(
         self,
         embedding_service: "EmbeddingService",
-        config: Optional[VectorStoreConfig] = None,
+        config: VectorStoreConfig | None = None,
     ):
         """Initialize vector store.
 
@@ -179,8 +179,8 @@ class VectorStore:
     def add_texts(
         self,
         texts: list[str],
-        metadatas: Optional[list[dict[str, Any]]] = None,
-        ids: Optional[list[str]] = None,
+        metadatas: list[dict[str, Any]] | None = None,
+        ids: list[str] | None = None,
     ) -> list[str]:
         """Convenience method to add raw texts.
 
@@ -208,7 +208,7 @@ class VectorStore:
         self,
         query: str,
         k: int = 10,
-        filter: Optional[dict[str, Any]] = None,
+        filter: dict[str, Any] | None = None,
     ) -> list[tuple[Document, float]]:
         """Search for similar documents.
 
@@ -261,7 +261,7 @@ class VectorStore:
         self,
         embedding: np.ndarray,
         k: int = 10,
-        filter: Optional[dict[str, Any]] = None,
+        filter: dict[str, Any] | None = None,
     ) -> list[tuple[Document, float]]:
         """Search using a pre-computed embedding.
 

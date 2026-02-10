@@ -2,16 +2,17 @@
 
 import asyncio
 import os
-from typing import Optional, TYPE_CHECKING
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import TYPE_CHECKING, Optional
 
+from rich.console import Console
+
+from ..events import emit_agent_event
+from ..models.findings import Finding, InternReport, ManagerDirective
+from ..storage.database import ResearchDatabase
 from .base import AgentConfig
 from .intern import InternAgent
-from ..events import emit_agent_event
-from ..models.findings import ManagerDirective, InternReport, Finding
-from ..storage.database import ResearchDatabase
-from rich.console import Console
 
 if TYPE_CHECKING:
     from ..verification import VerificationPipeline
@@ -43,8 +44,8 @@ class ParallelInternPool:
         self,
         db: ResearchDatabase,
         pool_size: int = 3,
-        config: Optional[AgentConfig] = None,
-        console: Optional[Console] = None,
+        config: AgentConfig | None = None,
+        console: Console | None = None,
         verification_pipeline: Optional["VerificationPipeline"] = None,
     ):
         """Initialize the intern pool.
@@ -61,7 +62,7 @@ class ParallelInternPool:
         self.config = config or AgentConfig()
         self.console = console or Console()
         self.verification_pipeline = verification_pipeline
-        self._current_session_id: Optional[str] = None
+        self._current_session_id: str | None = None
 
         # Note: We no longer store intern instances - they are created fresh per directive
         # to prevent state corruption from concurrent access
@@ -252,7 +253,7 @@ Return ONLY a JSON array of {max_aspects} aspects:
         # Fallback: return the goal as single aspect
         return [goal]
 
-    def _log(self, message: str, style: Optional[str] = None) -> None:
+    def _log(self, message: str, style: str | None = None) -> None:
         """Log a message to the console."""
         prefix = "[PARALLEL]"
         if style:

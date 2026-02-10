@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import ActivityFeed from "@/components/ActivityFeed";
 import FindingsBrowser from "@/components/FindingsBrowser";
 import ReportPreview from "@/components/ReportPreview";
@@ -16,21 +16,12 @@ interface Session {
   completed_at?: string | null;
 }
 
-interface Finding {
-  id: number;
-  content: string;
-  source_url?: string;
-  confidence: number;
-  created_at: string;
-}
-
 export default function SessionDetail() {
   const params = useParams();
-  const router = useRouter();
   const sessionId = params.id as string;
 
   const [session, setSession] = useState<Session | null>(null);
-  const [findings, setFindings] = useState<Finding[]>([]);
+  const [stats, setStats] = useState<{ findings: number; sources: number; topics: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<"activity" | "findings" | "report" | "graph">("activity");
@@ -38,6 +29,7 @@ export default function SessionDetail() {
 
   useEffect(() => {
     fetchSession();
+    fetchStats();
   }, [sessionId]);
 
   useEffect(() => {
@@ -47,9 +39,19 @@ export default function SessionDetail() {
     return () => clearInterval(timer);
   }, []);
 
+  // Poll session and stats for live updates
+  useEffect(() => {
+    if (!session || session.status === "completed" || session.status === "error") return;
+    const interval = setInterval(() => {
+      fetchSession();
+      fetchStats();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [session?.status]);
+
   const fetchSession = async () => {
     try {
-      const response = await fetch(`http://localhost:8080/api/sessions/${sessionId}`);
+      const response = await fetch(`/api/sessions/${sessionId}`);
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -67,6 +69,18 @@ export default function SessionDetail() {
       setError("Failed to load session");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}/stats`);
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      }
+    } catch {
+      // Stats are non-critical, ignore errors
     }
   };
 
@@ -220,9 +234,9 @@ export default function SessionDetail() {
               <div className="card">
                 <h3 className="text-lg font-semibold mb-4">Quick Stats</h3>
                 <div className="space-y-2 text-sm">
-                  <StatRow label="Findings" value="--" />
-                  <StatRow label="Sources" value="--" />
-                  <StatRow label="Topics" value="--" />
+                  <StatRow label="Findings" value={stats ? String(stats.findings) : "--"} />
+                  <StatRow label="Sources" value={stats ? String(stats.sources) : "--"} />
+                  <StatRow label="Topics" value={stats ? String(stats.topics) : "--"} />
                   <StatRow label="Elapsed" value={getElapsedTime(session.created_at, nowTick)} />
                 </div>
               </div>

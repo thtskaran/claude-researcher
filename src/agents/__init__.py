@@ -1,9 +1,9 @@
 """Hierarchical research agents."""
 
-from .base import BaseAgent, AgentConfig, ModelRouter
+from .base import AgentConfig, BaseAgent, ModelRouter
+from .director import DirectorAgent
 from .intern import InternAgent
 from .manager import ManagerAgent
-from .director import DirectorAgent
 from .parallel import ParallelInternPool, ParallelResearchResult
 
 __all__ = [

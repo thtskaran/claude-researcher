@@ -40,7 +40,7 @@ class RerankerConfig:
 class Reranker:
     """Cross-encoder reranker for final relevance scoring."""
 
-    def __init__(self, config: Optional[RerankerConfig] = None):
+    def __init__(self, config: RerankerConfig | None = None):
         self.config = config or RerankerConfig()
         self._model = None
 
@@ -79,7 +79,7 @@ class Reranker:
         self,
         query: str,
         documents: list["Document"],
-        top_k: Optional[int] = None,
+        top_k: int | None = None,
     ) -> list[tuple["Document", float]]:
         """Rerank documents by relevance to query.
 
@@ -204,7 +204,7 @@ class LightweightReranker:
         self,
         query: str,
         documents: list["Document"],
-        top_k: Optional[int] = None,
+        top_k: int | None = None,
     ) -> list[tuple["Document", float]]:
         """Rerank using embedding similarity.
 

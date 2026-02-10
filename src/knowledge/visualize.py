@@ -47,7 +47,7 @@ class KnowledgeGraphVisualizer:
         height: str = "800px",
         width: str = "100%",
         show_physics_controls: bool = True
-    ) -> Optional[str]:
+    ) -> str | None:
         """Create interactive Pyvis visualization.
 
         Args:

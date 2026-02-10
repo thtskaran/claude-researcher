@@ -2,20 +2,21 @@
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Any, Callable, Optional, Awaitable
+from typing import Any, Optional
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
+from .config import InteractionConfig
 from .models import (
     ClarificationQuestion,
     ClarifiedGoal,
     PendingQuestion,
     UserMessage,
 )
-from .config import InteractionConfig
 
 
 class UserInteraction:
@@ -29,9 +30,9 @@ class UserInteraction:
 
     def __init__(
         self,
-        config: Optional[InteractionConfig] = None,
-        console: Optional[Console] = None,
-        llm_callback: Optional[Callable[[str], Awaitable[str]]] = None,
+        config: InteractionConfig | None = None,
+        console: Console | None = None,
+        llm_callback: Callable[[str], Awaitable[str]] | None = None,
     ):
         """Initialize the interaction handler.
 
@@ -45,9 +46,9 @@ class UserInteraction:
         self.llm_callback = llm_callback
 
         # State for async questions
-        self._pending_question: Optional[PendingQuestion] = None
+        self._pending_question: PendingQuestion | None = None
         self._response_event = asyncio.Event()
-        self._response_value: Optional[str] = None
+        self._response_value: str | None = None
 
         # Message queue for user guidance
         self._message_queue: asyncio.Queue[UserMessage] = asyncio.Queue()
@@ -56,13 +57,13 @@ class UserInteraction:
         self._questions_asked: int = 0
 
         # Callbacks for pausing/resuming progress display
-        self._on_pause: Optional[Callable[[], None]] = None
-        self._on_resume: Optional[Callable[[], None]] = None
+        self._on_pause: Callable[[], None] | None = None
+        self._on_resume: Callable[[], None] | None = None
 
     def set_progress_callbacks(
         self,
-        on_pause: Optional[Callable[[], None]] = None,
-        on_resume: Optional[Callable[[], None]] = None,
+        on_pause: Callable[[], None] | None = None,
+        on_resume: Callable[[], None] | None = None,
     ) -> None:
         """Set callbacks for pausing/resuming the progress display.
 
@@ -174,7 +175,7 @@ Keep questions brief and options concise. Return ONLY the JSON array."""
 
     async def _ask_clarification(
         self, question: ClarificationQuestion
-    ) -> Optional[str]:
+    ) -> str | None:
         """Ask a single clarification question."""
         # Format question with options if available
         prompt_text = f"[bold cyan]{question.question}[/bold cyan]"
@@ -193,7 +194,7 @@ Keep questions brief and options concise. Return ONLY the JSON array."""
                 timeout=self.config.clarification_timeout,
             )
             return answer.strip() if answer else None
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.console.print("[dim]Timeout - skipping question[/dim]")
             return None
 
@@ -236,8 +237,8 @@ Keep it concise but complete. Do not add any preamble or explanation - just outp
         self,
         question: str,
         context: str = "",
-        options: Optional[list[str]] = None,
-    ) -> Optional[str]:
+        options: list[str] | None = None,
+    ) -> str | None:
         """Ask a question during research with a timeout.
 
         If the user doesn't respond within the timeout, returns None
@@ -299,7 +300,7 @@ Keep it concise but complete. Do not add any preamble or explanation - just outp
                 timeout=self.config.question_timeout,
             )
             response = response.strip() if response else None
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.console.print("[dim]No response - continuing research...[/dim]")
             response = None
 
@@ -345,7 +346,7 @@ Keep it concise but complete. Do not add any preamble or explanation - just outp
 
         message = UserMessage(content=text)
         self._message_queue.put_nowait(message)
-        self.console.print(f"[bold green]Guidance queued[/bold green] [dim](will be used in next research iteration)[/dim]")
+        self.console.print("[bold green]Guidance queued[/bold green] [dim](will be used in next research iteration)[/dim]")
 
     def get_pending_messages(self) -> list[UserMessage]:
         """Get all pending messages from the queue (non-blocking).

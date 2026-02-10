@@ -13,16 +13,17 @@ import asyncio
 import json
 import re
 import time
-from typing import Callable, Optional, Any
+from collections.abc import Callable
+from typing import Any, Optional
 
+from .confidence import ConfidenceCalibrator
 from .models import (
+    ContradictionDetail,
+    VerificationConfig,
+    VerificationMethod,
     VerificationResult,
     VerificationStatus,
-    VerificationMethod,
-    VerificationConfig,
-    ContradictionDetail,
 )
-from .confidence import ConfidenceCalibrator
 
 
 class CRITICVerifier:
@@ -35,8 +36,8 @@ class CRITICVerifier:
     def __init__(
         self,
         llm_callback: Callable[[str, str], Any],  # (prompt, model) -> response
-        search_callback: Optional[Callable[[str], Any]] = None,  # query -> results
-        config: Optional[VerificationConfig] = None,
+        search_callback: Callable[[str], Any] | None = None,  # query -> results
+        config: VerificationConfig | None = None,
     ):
         """Initialize CRITIC verifier.
 
@@ -55,8 +56,8 @@ class CRITICVerifier:
         finding_content: str,
         finding_id: str,
         original_confidence: float,
-        source_url: Optional[str] = None,
-        cove_result: Optional[VerificationResult] = None,
+        source_url: str | None = None,
+        cove_result: VerificationResult | None = None,
     ) -> VerificationResult:
         """Run CRITIC verification with iterative critique and correction.
 
@@ -162,7 +163,7 @@ class CRITICVerifier:
     async def _generate_critique(
         self,
         content: str,
-        source_url: Optional[str],
+        source_url: str | None,
     ) -> dict:
         """Generate critique of the finding content."""
         source_context = f"\nSource: {source_url}" if source_url else ""
@@ -194,7 +195,7 @@ Return ONLY the JSON."""
         response = await self.llm_callback(prompt, self.config.batch_model)
         return self._parse_json(response) or {"needs_correction": False}
 
-    async def _external_verify(self, query: str) -> Optional[str]:
+    async def _external_verify(self, query: str) -> str | None:
         """Perform external verification via web search."""
         if not self.search_callback:
             return None
@@ -218,7 +219,7 @@ Return ONLY the JSON."""
         self,
         content: str,
         critique: dict,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Generate corrected version of the finding."""
         issue = critique.get("issue", "Unknown issue")
         suggestion = critique.get("suggestion", "")
@@ -252,7 +253,7 @@ Return ONLY the corrected finding text, no explanation."""
 
         return corrected if corrected else None
 
-    def _parse_json(self, response: str) -> Optional[dict]:
+    def _parse_json(self, response: str) -> dict | None:
         """Parse JSON object from LLM response."""
         try:
             match = re.search(r'\{.*?\}', response, re.DOTALL)

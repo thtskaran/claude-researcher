@@ -33,9 +33,9 @@ export default function ReportPreview({ sessionId }: ReportPreviewProps) {
           setReport(data.report || "");
           setPath(data.path || null);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!cancelled) {
-          setError(err?.message || "Unable to load report");
+          setError(err instanceof Error ? err.message : "Unable to load report");
         }
       } finally {
         if (!cancelled) {

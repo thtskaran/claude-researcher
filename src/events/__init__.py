@@ -5,7 +5,7 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 # Add api directory to path for importing
 api_path = str(Path(__file__).parent.parent.parent / "api")
@@ -13,7 +13,7 @@ if api_path not in sys.path:
     sys.path.insert(0, api_path)
 
 
-def _should_proxy_event(local_subscribers: Optional[int]) -> bool:
+def _should_proxy_event(local_subscribers: int | None) -> bool:
     """Decide whether to forward events to the API server."""
     if os.environ.get("CLAUDE_RESEARCHER_DISABLE_EVENT_PROXY") == "1":
         return False
@@ -28,7 +28,7 @@ async def _emit_remote_event(
     session_id: str,
     event_type: str,
     agent: str,
-    data: Dict[str, Any],
+    data: dict[str, Any],
 ) -> None:
     """Forward event to the API server for WebSocket broadcasting."""
     base_url = os.environ.get("CLAUDE_RESEARCHER_API_URL", "http://localhost:8080").rstrip("/")
@@ -57,7 +57,7 @@ async def emit_agent_event(
     session_id: str,
     event_type: str,
     agent: str,
-    data: Dict[str, Any],
+    data: dict[str, Any],
 ) -> None:
     """
     Emit an event from an agent to all WebSocket subscribers.
@@ -78,7 +78,7 @@ async def emit_agent_event(
             data={"message": "Analyzing research goal..."}
         )
     """
-    local_subscribers: Optional[int] = None
+    local_subscribers: int | None = None
     try:
         # Import here to avoid circular dependencies
         from api.events import emit_event, get_event_emitter
@@ -121,7 +121,7 @@ async def emit_action(
     session_id: str,
     agent: str,
     action: str,
-    details: Optional[Dict[str, Any]] = None
+    details: dict[str, Any] | None = None
 ) -> None:
     """Emit an action event."""
     data = {"action": action}
@@ -140,8 +140,8 @@ async def emit_finding(
     session_id: str,
     agent: str,
     content: str,
-    source: Optional[str] = None,
-    confidence: Optional[float] = None
+    source: str | None = None,
+    confidence: float | None = None
 ) -> None:
     """Emit a finding discovery event."""
     data = {"content": content}
@@ -162,7 +162,7 @@ async def emit_synthesis(
     session_id: str,
     agent: str,
     message: str,
-    progress: Optional[int] = None
+    progress: int | None = None
 ) -> None:
     """Emit a synthesis/report generation event."""
     data = {"message": message}

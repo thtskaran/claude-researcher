@@ -3,8 +3,9 @@
 import asyncio
 import sys
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, Optional
+from typing import Optional
 
 from rich.console import Console
 from rich.prompt import Prompt
@@ -22,9 +23,9 @@ class InputListener:
     def __init__(
         self,
         interaction: UserInteraction,
-        console: Optional[Console] = None,
-        on_interact_start: Optional[Callable[[], None]] = None,
-        on_interact_end: Optional[Callable[[], None]] = None,
+        console: Console | None = None,
+        on_interact_start: Callable[[], None] | None = None,
+        on_interact_end: Callable[[], None] | None = None,
     ):
         """Initialize the input listener.
 
@@ -40,10 +41,10 @@ class InputListener:
         self.on_interact_end = on_interact_end
 
         self._running = False
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._in_interact_mode = False
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def start(self) -> None:
         """Start the background input listener."""

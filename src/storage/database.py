@@ -1,20 +1,21 @@
 """SQLite database for persisting research state and findings."""
 
 import asyncio
-import aiosqlite
-import secrets
 import re
+import secrets
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import aiosqlite
+
 from ..models.findings import (
+    AgentMessage,
+    AgentRole,
     Finding,
     FindingType,
     ResearchSession,
     ResearchTopic,
-    AgentMessage,
-    AgentRole,
 )
 
 
@@ -66,7 +67,7 @@ class ResearchDatabase:
 
     def __init__(self, db_path: str = "research.db"):
         self.db_path = Path(db_path)
-        self._connection: Optional[aiosqlite.Connection] = None
+        self._connection: aiosqlite.Connection | None = None
         self._connection_lock = asyncio.Lock()  # Protects connection access
 
     async def connect(self) -> None:
@@ -254,7 +255,7 @@ class ResearchDatabase:
             status="active",
         )
 
-    async def get_session(self, session_id: str) -> Optional[ResearchSession]:
+    async def get_session(self, session_id: str) -> ResearchSession | None:
         """Get a session by ID."""
         cursor = await self._connection.execute(
             "SELECT * FROM sessions WHERE id = ?", (session_id,)
@@ -307,7 +308,7 @@ class ResearchDatabase:
         self,
         session_id: str,
         topic: str,
-        parent_topic_id: Optional[int] = None,
+        parent_topic_id: int | None = None,
         depth: int = 0,
         priority: int = 5,
     ) -> ResearchTopic:
@@ -377,7 +378,7 @@ class ResearchDatabase:
             raise
 
     # Finding methods
-    async def save_finding(self, finding: Finding, topic_id: Optional[int] = None) -> Finding:
+    async def save_finding(self, finding: Finding, topic_id: int | None = None) -> Finding:
         """Save a research finding."""
         try:
             cursor = await self._connection.execute(
@@ -418,8 +419,8 @@ class ResearchDatabase:
         verification_status: str,
         verification_method: str,
         kg_support_score: float = 0.0,
-        original_confidence: Optional[float] = None,
-        new_confidence: Optional[float] = None,
+        original_confidence: float | None = None,
+        new_confidence: float | None = None,
     ) -> None:
         """Update a finding's verification status."""
         try:
@@ -607,7 +608,7 @@ class ResearchDatabase:
         return message
 
     async def get_session_messages(
-        self, session_id: str, agent_filter: Optional[AgentRole] = None
+        self, session_id: str, agent_filter: AgentRole | None = None
     ) -> list[AgentMessage]:
         """Get messages for a session, optionally filtered by agent."""
         import json
@@ -681,7 +682,7 @@ class ResearchDatabase:
     async def save_credibility_audit(
         self,
         session_id: str,
-        finding_id: Optional[str],
+        finding_id: str | None,
         url: str,
         domain: str,
         final_score: float,
@@ -743,10 +744,10 @@ class ResearchDatabase:
         agent_role: str,
         decision_type: str,
         decision_outcome: str,
-        reasoning: Optional[str] = None,
-        inputs_json: Optional[str] = None,
-        metrics_json: Optional[str] = None,
-        iteration: Optional[int] = None,
+        reasoning: str | None = None,
+        inputs_json: str | None = None,
+        metrics_json: str | None = None,
+        iteration: int | None = None,
     ) -> int:
         """Save an agent decision record."""
         import json as json_module
@@ -817,8 +818,8 @@ class ResearchDatabase:
     async def get_agent_decisions(
         self,
         session_id: str,
-        agent_role: Optional[str] = None,
-        decision_type: Optional[str] = None,
+        agent_role: str | None = None,
+        decision_type: str | None = None,
     ) -> list[dict]:
         """Get agent decisions for a session, optionally filtered."""
         query = "SELECT * FROM agent_decisions WHERE session_id = ?"

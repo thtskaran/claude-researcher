@@ -4,12 +4,13 @@ This module provides a SemanticMemoryStore that wraps the existing ExternalMemor
 and adds hybrid retrieval capabilities (semantic + BM25 + reranking).
 """
 
-import aiosqlite
 import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
+
+import aiosqlite
 
 from ..memory.external import ExternalMemoryStore, StoredMemory
 from .embeddings import EmbeddingConfig, EmbeddingService
@@ -49,7 +50,7 @@ class SemanticMemoryStore:
     def __init__(
         self,
         db_path: str = "memory.db",
-        retrieval_config: Optional[HybridConfig] = None,
+        retrieval_config: HybridConfig | None = None,
         enable_hybrid: bool = True,
     ):
         """Initialize semantic memory store.
@@ -86,8 +87,8 @@ class SemanticMemoryStore:
         session_id: str,
         content: str,
         memory_type: str,
-        tags: Optional[list[str]] = None,
-        metadata: Optional[dict] = None,
+        tags: list[str] | None = None,
+        metadata: dict | None = None,
     ) -> str:
         """Store content to memory with hybrid indexing.
 
@@ -136,8 +137,8 @@ class SemanticMemoryStore:
     async def search_semantic(
         self,
         query: str,
-        session_id: Optional[str] = None,
-        memory_type: Optional[str] = None,
+        session_id: str | None = None,
+        memory_type: str | None = None,
         limit: int = 10,
         use_reranker: bool = True,
     ) -> list[SemanticSearchResult]:
@@ -246,8 +247,8 @@ class SemanticMemoryStore:
     async def search(
         self,
         query: str,
-        session_id: Optional[str] = None,
-        memory_type: Optional[str] = None,
+        session_id: str | None = None,
+        memory_type: str | None = None,
         limit: int = 10,
     ) -> list[StoredMemory]:
         """Search memory (delegates to FTS for backward compatibility).
@@ -259,7 +260,7 @@ class SemanticMemoryStore:
     async def get_by_session(
         self,
         session_id: str,
-        memory_type: Optional[str] = None,
+        memory_type: str | None = None,
     ) -> list[StoredMemory]:
         """Get all memories for a session."""
         return await self._external_store.get_by_session(session_id, memory_type)

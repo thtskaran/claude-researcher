@@ -1,18 +1,19 @@
 """Deep Research Report Writer - generates comprehensive narrative reports like Gemini/Perplexity."""
 
 import asyncio
+import json
 import random
 import re
-import json
-from datetime import datetime
-from typing import Optional, Callable, Awaitable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
+from typing import Optional
 
-from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
+from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
 
 from ..models.findings import Finding, ResearchSession
-from ..verification import VerificationMetricsTracker, BatchVerificationResult
+from ..verification import BatchVerificationResult, VerificationMetricsTracker
 
 
 class SectionType(str, Enum):
@@ -120,7 +121,7 @@ class DeepReportWriter:
         kg_exports: dict = None,
         dynamic: bool = True,
         verification_metrics: dict = None,
-        progress_callback: Optional[Callable[[str, int], Awaitable[None]]] = None,
+        progress_callback: Callable[[str, int], Awaitable[None]] | None = None,
     ) -> str:
         """Generate a comprehensive deep research report.
 
@@ -212,7 +213,7 @@ class DeepReportWriter:
                 domain = ""
                 title = ""
                 try:
-                    from urllib.parse import urlparse, unquote
+                    from urllib.parse import unquote, urlparse
                     parsed = urlparse(f.source_url)
                     domain = parsed.netloc.replace("www.", "")
 
@@ -904,7 +905,7 @@ Output ONLY the conclusions content."""
         topics_remaining: list[str],  # noqa: ARG002 - kept for API compatibility
         kg_exports: dict = None,
         verification_metrics: dict = None,
-        progress_callback: Optional[Callable[[str, int], Awaitable[None]]] = None,
+        progress_callback: Callable[[str, int], Awaitable[None]] | None = None,
     ) -> str:
         """Generate a comprehensive report with AI-driven dynamic structure.
 
@@ -1331,7 +1332,7 @@ These findings had conflicting information that may require further investigatio
 
 
 async def _emit_progress(
-    callback: Optional[Callable[[str, int], Awaitable[None]]],
+    callback: Callable[[str, int], Awaitable[None]] | None,
     message: str,
     progress: int,
 ) -> None:

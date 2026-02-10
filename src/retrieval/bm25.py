@@ -34,7 +34,7 @@ class BM25Config:
     custom_stopwords: set[str] = field(default_factory=set)
 
     # Persistence
-    persist_path: Optional[str] = None
+    persist_path: str | None = None
 
 
 # Common English stopwords
@@ -64,7 +64,7 @@ class IndexedDocument:
 class BM25Index:
     """BM25 index for lexical search with persistence support."""
 
-    def __init__(self, config: Optional[BM25Config] = None):
+    def __init__(self, config: BM25Config | None = None):
         self.config = config or BM25Config()
 
         # Index state
@@ -154,8 +154,8 @@ class BM25Index:
     def add_texts(
         self,
         texts: list[str],
-        metadatas: Optional[list[dict[str, Any]]] = None,
-        ids: Optional[list[str]] = None,
+        metadatas: list[dict[str, Any]] | None = None,
+        ids: list[str] | None = None,
     ) -> list[str]:
         """Convenience method to add raw texts.
 
@@ -204,7 +204,7 @@ class BM25Index:
         self,
         query: str,
         k: int = 10,
-        filter_fn: Optional[callable] = None,
+        filter_fn: callable | None = None,
     ) -> list[tuple["Document", float]]:
         """Search for documents matching the query.
 

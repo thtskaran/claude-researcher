@@ -6,9 +6,10 @@ entity types (CONCEPT, CLAIM, EVIDENCE, METHOD, etc.).
 """
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Optional, Callable, Any
 from datetime import datetime
+from typing import Any, Optional
 
 try:
     import spacy
@@ -17,8 +18,7 @@ try:
 except ImportError:
     HAS_SPACY = False
 
-from .models import Entity, ENTITY_TYPES
-
+from .models import ENTITY_TYPES, Entity
 
 # Allowed spaCy models (whitelist for security)
 ALLOWED_SPACY_MODELS = {
@@ -122,14 +122,14 @@ class FastNER:
         )
     """
 
-    def __init__(self, config: Optional[FastNERConfig] = None):
+    def __init__(self, config: FastNERConfig | None = None):
         """Initialize fast NER.
 
         Args:
             config: Configuration options. Uses defaults if not provided.
         """
         self.config = config or FastNERConfig()
-        self._nlp: Optional[Any] = None
+        self._nlp: Any | None = None
         self._load_attempted = False
 
     @property
@@ -137,7 +137,7 @@ class FastNER:
         """Whether spaCy NER is available."""
         return HAS_SPACY and self._get_nlp() is not None
 
-    def _get_nlp(self) -> Optional[Any]:
+    def _get_nlp(self) -> Any | None:
         """Lazy-load spaCy model."""
         if self._nlp is not None:
             return self._nlp
@@ -357,8 +357,8 @@ class FastNER:
         Returns:
             List of Entity objects ready for knowledge graph
         """
-        import uuid
         import json
+        import uuid
 
         # First, fast extraction with spaCy
         fast_entities = self.extract(text, source_id)
@@ -403,8 +403,8 @@ class FastNER:
 
         Only extracts types not covered by spaCy.
         """
-        import uuid
         import json
+        import uuid
 
         domain_types = list(self.config.llm_entity_types)
         types_desc = "\n".join([
@@ -471,7 +471,7 @@ Do NOT extract people, organizations, locations, or dates (those are already han
     def extract_batch(
         self,
         texts: list[str],
-        source_ids: Optional[list[str]] = None,
+        source_ids: list[str] | None = None,
     ) -> list[list[ExtractedEntity]]:
         """Extract entities from multiple texts efficiently.
 
@@ -543,10 +543,10 @@ Do NOT extract people, organizations, locations, or dates (those are already han
 
 
 # Global instance
-_global_ner: Optional[FastNER] = None
+_global_ner: FastNER | None = None
 
 
-def get_fast_ner(config: Optional[FastNERConfig] = None) -> FastNER:
+def get_fast_ner(config: FastNERConfig | None = None) -> FastNER:
     """Get or create the global FastNER instance.
 
     Args:

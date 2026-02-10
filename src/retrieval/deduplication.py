@@ -38,7 +38,7 @@ class DeduplicationConfig:
 class DeduplicationResult:
     """Result of a deduplication check."""
     is_duplicate: bool
-    duplicate_of: Optional[str] = None  # ID of the duplicate finding
+    duplicate_of: str | None = None  # ID of the duplicate finding
     similarity: float = 0.0
     match_type: str = "none"  # none, exact, near
 
@@ -65,7 +65,7 @@ class FindingDeduplicator:
             print(f"Duplicate of {result.duplicate_of}")
     """
 
-    def __init__(self, config: Optional[DeduplicationConfig] = None):
+    def __init__(self, config: DeduplicationConfig | None = None):
         """Initialize the deduplicator.
 
         Args:
@@ -86,7 +86,7 @@ class FindingDeduplicator:
         )
 
         # Store MinHash signatures for similarity calculation
-        self.signatures: dict[str, "MinHash"] = {}
+        self.signatures: dict[str, MinHash] = {}
 
         # Exact match index (normalized content hash -> finding_id)
         self.exact_index: dict[str, str] = {}
@@ -181,7 +181,7 @@ class FindingDeduplicator:
 
         return True
 
-    def check(self, content: str, exclude_id: Optional[str] = None) -> DeduplicationResult:
+    def check(self, content: str, exclude_id: str | None = None) -> DeduplicationResult:
         """Check if content is a duplicate of existing findings.
 
         Args:
@@ -322,10 +322,10 @@ class FindingDeduplicator:
 
 
 # Global instance for convenience
-_global_deduplicator: Optional[FindingDeduplicator] = None
+_global_deduplicator: FindingDeduplicator | None = None
 
 
-def get_deduplicator(config: Optional[DeduplicationConfig] = None) -> FindingDeduplicator:
+def get_deduplicator(config: DeduplicationConfig | None = None) -> FindingDeduplicator:
     """Get or create the global deduplicator instance.
 
     Args:

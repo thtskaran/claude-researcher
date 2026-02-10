@@ -2,8 +2,8 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from urllib.parse import urlparse
 from typing import Optional
+from urllib.parse import urlparse
 
 
 @dataclass
@@ -90,7 +90,7 @@ class CredibilityScorer:
         'path_depth': 0.10,
     }
 
-    def score_source(self, url: str, publication_date: Optional[str] = None) -> CredibilityScore:
+    def score_source(self, url: str, publication_date: str | None = None) -> CredibilityScore:
         """Score a source's credibility.
 
         Args:
@@ -149,7 +149,7 @@ class CredibilityScorer:
         )
 
     def score_source_with_audit(
-        self, url: str, publication_date: Optional[str] = None
+        self, url: str, publication_date: str | None = None
     ) -> tuple["CredibilityScore", dict]:
         """Score a source's credibility and return audit data.
 
@@ -240,7 +240,7 @@ class CredibilityScorer:
         # Default
         return 0.6
 
-    def _score_recency(self, publication_date: Optional[str]) -> float:
+    def _score_recency(self, publication_date: str | None) -> float:
         """Score based on how recent the source is."""
         if not publication_date:
             return 0.5  # Unknown date, neutral score

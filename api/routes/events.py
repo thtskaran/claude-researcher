@@ -4,14 +4,14 @@ Event emission routes.
 Allows external processes (e.g., CLI) to forward agent events to the API
 so connected WebSocket clients can receive them in real time.
 """
-from typing import Dict, Any
+import json
+from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-import json
-from api.events import emit_event, get_event_emitter
 from api.db import get_db
+from api.events import emit_event, get_event_emitter
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -21,7 +21,7 @@ class EventEmitRequest(BaseModel):
     session_id: str = Field(..., min_length=1)
     event_type: str = Field(..., min_length=1)
     agent: str = Field(..., min_length=1)
-    data: Dict[str, Any] = Field(default_factory=dict)
+    data: dict[str, Any] = Field(default_factory=dict)
 
 
 @router.post("/emit")

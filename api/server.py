@@ -3,15 +3,13 @@ FastAPI server for claude-researcher UI.
 
 Provides REST API + WebSocket endpoints for real-time research monitoring.
 """
-import asyncio
 import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, Set
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -21,19 +19,15 @@ load_dotenv(dotenv_path=dotenv_path)
 # Mark this process as the API server to avoid event proxy loops
 os.environ.setdefault("CLAUDE_RESEARCHER_IN_API", "1")
 
+from api.db import close_db, get_db
+from api.events import emit_event, get_event_emitter
 from api.models import HealthResponse
-from api.routes import sessions
-from api.routes import research
-from api.routes import events
-from api.routes import findings
-from api.routes import report
-from api.db import get_db, close_db
-from api.events import get_event_emitter, emit_event
+from api.routes import events, findings, report, research, sessions
 
 # Server state
 START_TIME = time.time()
-active_websockets: Set[WebSocket] = set()
-active_sessions: Dict[str, Dict] = {}
+active_websockets: set[WebSocket] = set()
+active_sessions: dict[str, dict] = {}
 
 
 @asynccontextmanager
@@ -178,9 +172,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     """Global exception handler."""
+    import logging
+
+    logging.getLogger(__name__).error(f"Unhandled error: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"error": str(exc), "type": type(exc).__name__}
+        content={"error": "Internal server error"},
     )
 
 

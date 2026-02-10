@@ -21,36 +21,36 @@ Usage:
     results = findings_retriever.search("quantum computing")
 """
 
-from .embeddings import EmbeddingService, EmbeddingConfig, get_embedding_service
-from .vectorstore import VectorStore, VectorStoreConfig, Document
-from .bm25 import BM25Index, BM25Config
-from .reranker import Reranker, RerankerConfig, LightweightReranker
-from .hybrid import HybridRetriever, HybridConfig, RetrievalResult, create_retriever
+from .bm25 import BM25Config, BM25Index
+from .deduplication import (
+    DeduplicationConfig,
+    DeduplicationResult,
+    FindingDeduplicator,
+    get_deduplicator,
+    reset_deduplicator,
+)
+from .embeddings import EmbeddingConfig, EmbeddingService, get_embedding_service
 from .findings import (
-    FindingsRetriever,
     FindingSearchResult,
+    FindingsRetriever,
     get_findings_retriever,
     reset_findings_retriever,
 )
+from .hybrid import HybridConfig, HybridRetriever, RetrievalResult, create_retriever
 from .memory_integration import (
     SemanticMemoryStore,
     SemanticSearchResult,
     create_semantic_memory,
 )
-from .deduplication import (
-    FindingDeduplicator,
-    DeduplicationConfig,
-    DeduplicationResult,
-    get_deduplicator,
-    reset_deduplicator,
-)
 from .query_expansion import (
+    ExpandedQuery,
     QueryExpander,
     QueryExpansionConfig,
     QueryExpansionResult,
-    ExpandedQuery,
     merge_search_results,
 )
+from .reranker import LightweightReranker, Reranker, RerankerConfig
+from .vectorstore import Document, VectorStore, VectorStoreConfig
 
 __all__ = [
     # Core components

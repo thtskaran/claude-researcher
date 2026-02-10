@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from .agents.director import ResearchHarness
-from .interaction import InteractionConfig, InputListener
+from .interaction import InputListener, InteractionConfig
 
 console = Console()
 
@@ -24,7 +24,7 @@ app = typer.Typer(
 )
 
 # Global harness for signal handling
-_harness: Optional[ResearchHarness] = None
+_harness: ResearchHarness | None = None
 
 
 def _handle_interrupt(signum, frame):
@@ -120,7 +120,7 @@ def main(
             _harness = harness
 
             # Create listener but don't start it yet - will be started after clarification
-            listener: Optional[InputListener] = None
+            listener: InputListener | None = None
             if not interaction_config.autonomous_mode:
                 listener = InputListener(
                     harness.director.interaction,
@@ -152,7 +152,7 @@ def main(
 
 @app.command()
 def ui(
-    session_id: Optional[str] = typer.Argument(
+    session_id: str | None = typer.Argument(
         None,
         help="Optional session ID to open directly in UI"
     ),
@@ -193,9 +193,9 @@ def ui(
     ))
 
     # Check if servers are already running
+    import os
     import socket
     import time
-    import os
     from pathlib import Path
 
     def check_port(port_num):
@@ -323,12 +323,12 @@ def ui(
             sys.exit(1)
 
     # Construct UI URL (port 3000, not API port)
-    url = f"http://localhost:3000"
+    url = "http://localhost:3000"
     if session_id:
         url += f"/session/{session_id}"
 
-    console.print(f"\n[bold green]✓ All servers ready[/bold green]")
-    console.print(f"[dim]Frontend: http://localhost:3000[/dim]")
+    console.print("\n[bold green]✓ All servers ready[/bold green]")
+    console.print("[dim]Frontend: http://localhost:3000[/dim]")
     console.print(f"[dim]API: http://localhost:{port}[/dim]")
     console.print(f"[dim]API Docs: http://localhost:{port}/docs[/dim]")
 

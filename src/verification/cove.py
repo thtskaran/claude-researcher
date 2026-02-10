@@ -13,16 +13,17 @@ import asyncio
 import json
 import re
 import time
-from typing import Callable, Optional, Any
+from collections.abc import Callable
+from typing import Any, Optional
 
+from .confidence import ConfidenceCalibrator
 from .models import (
+    VerificationConfig,
+    VerificationMethod,
     VerificationQuestion,
     VerificationResult,
     VerificationStatus,
-    VerificationMethod,
-    VerificationConfig,
 )
-from .confidence import ConfidenceCalibrator
 
 
 class ChainOfVerification:
@@ -38,7 +39,7 @@ class ChainOfVerification:
     def __init__(
         self,
         llm_callback: Callable[[str, str], Any],  # (prompt, model) -> response
-        config: Optional[VerificationConfig] = None,
+        config: VerificationConfig | None = None,
     ):
         """Initialize CoVe verifier.
 
@@ -55,8 +56,8 @@ class ChainOfVerification:
         finding_content: str,
         finding_id: str,
         original_confidence: float,
-        source_url: Optional[str] = None,
-        search_query: Optional[str] = None,
+        source_url: str | None = None,
+        search_query: str | None = None,
     ) -> VerificationResult:
         """Streaming verification - fast, lightweight for real-time use.
 
@@ -133,8 +134,8 @@ class ChainOfVerification:
         finding_content: str,
         finding_id: str,
         original_confidence: float,
-        source_url: Optional[str] = None,
-        search_query: Optional[str] = None,
+        source_url: str | None = None,
+        search_query: str | None = None,
         kg_support_score: float = 0.0,
         has_contradictions: bool = False,
     ) -> VerificationResult:
@@ -216,8 +217,8 @@ class ChainOfVerification:
     async def _generate_questions_streaming(
         self,
         finding_content: str,
-        source_url: Optional[str],
-        search_query: Optional[str],
+        source_url: str | None,
+        search_query: str | None,
     ) -> list[VerificationQuestion]:
         """Generate 1-2 quick verification questions."""
         context = f"Source: {source_url}" if source_url else ""
@@ -244,8 +245,8 @@ Return ONLY the JSON array."""
     async def _generate_questions_batch(
         self,
         finding_content: str,
-        source_url: Optional[str],
-        search_query: Optional[str],
+        source_url: str | None,
+        search_query: str | None,
     ) -> list[VerificationQuestion]:
         """Generate 3-5 comprehensive verification questions."""
         context = f"Source: {source_url}" if source_url else ""
@@ -372,7 +373,7 @@ Return ONLY the JSON."""
         max_questions = self.config.max_cove_questions_batch
         return questions[:max_questions]
 
-    def _parse_json(self, response: str) -> Optional[dict]:
+    def _parse_json(self, response: str) -> dict | None:
         """Parse JSON object from LLM response."""
         try:
             match = re.search(r'\{.*?\}', response, re.DOTALL)

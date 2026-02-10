@@ -1,11 +1,11 @@
 """Hybrid NetworkX + SQLite storage for knowledge graphs."""
 
-import sqlite3
-import pickle
 import json
+import pickle
+import sqlite3
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from datetime import datetime
 
 try:
     import networkx as nx
@@ -13,7 +13,7 @@ try:
 except ImportError:
     HAS_NETWORKX = False
 
-from .models import Entity, Relation, Contradiction
+from .models import Contradiction, Entity, Relation
 
 
 class HybridKnowledgeGraphStore:
@@ -255,7 +255,7 @@ class HybridKnowledgeGraphStore:
         conn.close()
         return contradiction.id
 
-    def get_entity(self, entity_id: str) -> Optional[Entity]:
+    def get_entity(self, entity_id: str) -> Entity | None:
         """Get an entity by ID."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()

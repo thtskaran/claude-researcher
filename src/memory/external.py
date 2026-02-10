@@ -2,11 +2,12 @@
 
 import asyncio
 import json
-import aiosqlite
-from pathlib import Path
-from datetime import datetime
-from typing import Optional
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+import aiosqlite
 
 
 @dataclass
@@ -51,7 +52,7 @@ class ExternalMemoryStore:
             db_path: Path to SQLite database
         """
         self.db_path = Path(db_path)
-        self._connection: Optional[aiosqlite.Connection] = None
+        self._connection: aiosqlite.Connection | None = None
         self._connection_lock = asyncio.Lock()
         self._initialized = False
 
@@ -103,8 +104,8 @@ class ExternalMemoryStore:
         session_id: str,
         content: str,
         memory_type: str,
-        tags: Optional[list[str]] = None,
-        metadata: Optional[dict] = None,
+        tags: list[str] | None = None,
+        metadata: dict | None = None,
     ) -> str:
         """Store content to external memory.
 
@@ -161,8 +162,8 @@ class ExternalMemoryStore:
         session_id: str,
         content: str,
         memory_type: str,
-        tags: Optional[list[str]] = None,
-        metadata: Optional[dict] = None,
+        tags: list[str] | None = None,
+        metadata: dict | None = None,
     ) -> str:
         """Synchronous store for backward compatibility.
 
@@ -185,8 +186,8 @@ class ExternalMemoryStore:
     async def search(
         self,
         query: str,
-        session_id: Optional[str] = None,
-        memory_type: Optional[str] = None,
+        session_id: str | None = None,
+        memory_type: str | None = None,
         limit: int = 10,
     ) -> list[StoredMemory]:
         """Search external memory.
@@ -267,7 +268,7 @@ class ExternalMemoryStore:
     async def get_by_session(
         self,
         session_id: str,
-        memory_type: Optional[str] = None,
+        memory_type: str | None = None,
     ) -> list[StoredMemory]:
         """Get all memories for a session.
 

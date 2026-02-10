@@ -19,8 +19,18 @@ async def get_report(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
 
     slug = session.slug or "research"
-    output_dir = Path("output") / f"{slug}_{session_id}"
-    report_path = output_dir / "report.md"
+    # Sanitize slug to prevent path traversal
+    safe_slug = "".join(c for c in slug if c.isalnum() or c in "-_")
+    safe_session_id = "".join(c for c in session_id if c.isalnum())
+    output_dir = Path("output") / f"{safe_slug}_{safe_session_id}"
+
+    # Ensure resolved path stays within the output directory
+    base_output = Path("output").resolve()
+    resolved = output_dir.resolve()
+    if not str(resolved).startswith(str(base_output)):
+        raise HTTPException(status_code=400, detail="Invalid session path")
+
+    report_path = resolved / "report.md"
 
     if not report_path.exists():
         raise HTTPException(status_code=404, detail="Report not found")

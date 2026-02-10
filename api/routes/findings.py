@@ -1,7 +1,6 @@
 """
 Findings and sources endpoints for a session.
 """
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -16,10 +15,10 @@ async def list_findings(
     limit: int = 200,
     offset: int = 0,
     order: str = "desc",
-    search: Optional[str] = None,
-    finding_type: Optional[str] = None,
-    min_confidence: Optional[float] = None,
-    max_confidence: Optional[float] = None,
+    search: str | None = None,
+    finding_type: str | None = None,
+    min_confidence: float | None = None,
+    max_confidence: float | None = None,
 ):
     """List findings for a session with optional filters."""
     db = await get_db()

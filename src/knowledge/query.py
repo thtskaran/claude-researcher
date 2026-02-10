@@ -1,7 +1,7 @@
 """Manager query interface for knowledge graph analysis."""
 
-from typing import Optional
 import sqlite3
+from typing import Optional
 
 try:
     import networkx as nx
@@ -9,8 +9,8 @@ try:
 except ImportError:
     HAS_NETWORKX = False
 
-from .store import HybridKnowledgeGraphStore
 from .models import KnowledgeGap
+from .store import HybridKnowledgeGraphStore
 
 
 class ManagerQueryInterface:
