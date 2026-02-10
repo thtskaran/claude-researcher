@@ -159,7 +159,7 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
       {error && <div className="text-error text-sm">{error}</div>}
 
       {/* Split Pane */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4" style={{ minHeight: "36rem" }}>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 h-[calc(100vh-14rem)]">
         {/* Left: Findings List */}
         <div className="lg:col-span-2 card p-0 flex flex-col overflow-hidden">
           <div className="px-4 py-3 border-b border-dark-border flex items-center justify-between bg-dark-surface">
@@ -186,8 +186,8 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
                     key={finding.id}
                     onClick={() => setSelectedId(finding.id)}
                     className={`w-full text-left flex flex-col gap-2 p-3 rounded-xl transition-all border cursor-pointer ${isActive
-                        ? "bg-card-hover border-primary/40 shadow-lg shadow-black/20 ring-1 ring-primary/20"
-                        : "bg-dark-bg/60 border-dark-border hover:border-gray-600"
+                      ? "bg-card-hover border-primary/40 shadow-lg shadow-black/20 ring-1 ring-primary/20"
+                      : "bg-dark-bg/60 border-dark-border hover:border-gray-600"
                       }`}
                   >
                     <div className="flex items-center gap-2 text-xs">
@@ -196,9 +196,6 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
                       </span>
                       {typeof finding.confidence === "number" && (
                         <ConfidenceRing value={finding.confidence} />
-                      )}
-                      {finding.verification_status && (
-                        <span className="badge badge-verify">{finding.verification_status}</span>
                       )}
                     </div>
                     <p className="text-sm text-gray-200 line-clamp-2 leading-snug">{finding.content}</p>
@@ -223,9 +220,6 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
                     <span className="badge badge-system">
                       {Math.round(selectedFinding.confidence * 100)}% confidence
                     </span>
-                  )}
-                  {selectedFinding.verification_status && (
-                    <span className="badge badge-verify">{selectedFinding.verification_status}</span>
                   )}
                 </div>
                 <span className="text-xs text-gray-500 font-mono">{formatDate(selectedFinding.created_at)}</span>
@@ -255,28 +249,6 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
                     <p className="text-sm text-gray-400 font-mono bg-dark-bg p-3 rounded-lg border border-dark-border">
                       {selectedFinding.search_query}
                     </p>
-                  </div>
-                )}
-                {selectedFinding.verification_method && (
-                  <div>
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Verification Method</h4>
-                    <p className="text-sm text-gray-400">{selectedFinding.verification_method}</p>
-                  </div>
-                )}
-                {typeof selectedFinding.kg_support_score === "number" && (
-                  <div>
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Knowledge Graph Support</h4>
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 h-2 bg-dark-border rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-primary rounded-full transition-all"
-                          style={{ width: `${Math.round(selectedFinding.kg_support_score * 100)}%` }}
-                        />
-                      </div>
-                      <span className="text-sm font-mono text-gray-400">
-                        {Math.round(selectedFinding.kg_support_score * 100)}%
-                      </span>
-                    </div>
                   </div>
                 )}
               </div>
