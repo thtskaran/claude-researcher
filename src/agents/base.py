@@ -143,8 +143,10 @@ class BaseAgent(ABC):
         config: AgentConfig | None = None,
         console: Console | None = None,
         session_id: str | None = None,
+        agent_id: str | None = None,
     ):
         self.role = role
+        self.agent_id = agent_id or role.value  # Unique identifier (e.g., "intern_0", "intern_1")
         self.db = db
         self.config = config or AgentConfig()
         self.console = console or Console()
@@ -495,7 +497,7 @@ class BaseAgent(ABC):
         try:
             await logger.log_decision(
                 session_id=session_id,
-                agent_role=self.role.value,
+                agent_role=self.agent_id,  # Use unique agent_id instead of role
                 decision_type=decision_type,
                 decision_outcome=decision_outcome,
                 reasoning=reasoning,

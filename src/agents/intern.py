@@ -57,8 +57,9 @@ class InternAgent(BaseAgent):
         console: Console | None = None,
         verification_pipeline: Optional["VerificationPipeline"] = None,
         query_expansion_config: QueryExpansionConfig | None = None,
+        agent_id: str | None = None,
     ):
-        super().__init__(AgentRole.INTERN, db, config, console)
+        super().__init__(AgentRole.INTERN, db, config, console, agent_id=agent_id)
         self.search_tool = WebSearchTool(max_results=10)
         self.current_directive: ManagerDirective | None = None
         self.findings: list[Finding] = []

@@ -93,9 +93,13 @@ class ParallelInternPool:
         # Each task gets a FRESH intern instance to prevent state corruption
         tasks = []
         for i, directive in enumerate(active_directives):
-            # Create a fresh intern for each directive to avoid shared state issues
+            # Create a fresh intern for each directive with unique ID
             intern = InternAgent(
-                self.db, self.config, self.console, self.verification_pipeline
+                self.db,
+                self.config,
+                self.console,
+                self.verification_pipeline,
+                agent_id=f"intern_{i}"  # Unique ID for each intern
             )
             task = self._execute_with_error_handling(intern, directive, session_id, i)
             tasks.append(task)
