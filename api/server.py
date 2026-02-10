@@ -23,6 +23,9 @@ from api.db import close_db, get_db
 from api.events import emit_event, get_event_emitter
 from api.models import HealthResponse
 from api.routes import events, findings, report, research, sessions
+from api.routes import agents as agents_routes
+from api.routes import knowledge as knowledge_routes
+from api.routes import verification as verification_routes
 
 # Server state
 START_TIME = time.time()
@@ -67,6 +70,9 @@ app.include_router(research.router)
 app.include_router(events.router)
 app.include_router(findings.router)
 app.include_router(report.router)
+app.include_router(knowledge_routes.router)
+app.include_router(verification_routes.router)
+app.include_router(agents_routes.router)
 
 
 @app.get("/", response_model=HealthResponse)

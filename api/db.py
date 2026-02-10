@@ -499,6 +499,201 @@ class APIDatabase:
             for row in rows
         ]
 
+    async def list_verification_results(
+        self,
+        session_id: str,
+        limit: int = 200,
+        offset: int = 0,
+    ):
+        """List verification results joined with finding content."""
+        cursor = await self._connection.execute(
+            """
+            SELECT
+                vr.id,
+                vr.session_id,
+                vr.finding_id,
+                vr.original_confidence,
+                vr.verified_confidence,
+                vr.verification_status,
+                vr.verification_method,
+                vr.consistency_score,
+                vr.kg_support_score,
+                vr.kg_entity_matches,
+                vr.kg_supporting_relations,
+                vr.critic_iterations,
+                vr.corrections_made,
+                vr.external_verification_used,
+                vr.contradictions,
+                vr.verification_time_ms,
+                vr.created_at,
+                vr.error,
+                f.content AS finding_content,
+                f.finding_type,
+                f.source_url,
+                f.confidence AS current_confidence
+            FROM verification_results vr
+            LEFT JOIN findings f ON f.id = vr.finding_id AND f.session_id = vr.session_id
+            WHERE vr.session_id = ?
+            ORDER BY vr.created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (session_id, limit, offset),
+        )
+        rows = await cursor.fetchall()
+        results = []
+        for row in rows:
+            corrections = None
+            contradictions = None
+            try:
+                import json as _json
+                if row["corrections_made"]:
+                    corrections = _json.loads(row["corrections_made"])
+                if row["contradictions"]:
+                    contradictions = _json.loads(row["contradictions"])
+            except Exception:
+                pass
+            results.append({
+                "id": row["id"],
+                "session_id": row["session_id"],
+                "finding_id": row["finding_id"],
+                "original_confidence": row["original_confidence"],
+                "verified_confidence": row["verified_confidence"],
+                "verification_status": row["verification_status"],
+                "verification_method": row["verification_method"],
+                "consistency_score": row["consistency_score"],
+                "kg_support_score": row["kg_support_score"],
+                "kg_entity_matches": row["kg_entity_matches"],
+                "kg_supporting_relations": row["kg_supporting_relations"],
+                "critic_iterations": row["critic_iterations"],
+                "corrections_made": corrections,
+                "external_verification_used": bool(row["external_verification_used"]),
+                "contradictions": contradictions,
+                "verification_time_ms": row["verification_time_ms"],
+                "created_at": row["created_at"],
+                "error": row["error"],
+                "finding_content": row["finding_content"],
+                "finding_type": row["finding_type"],
+                "source_url": row["source_url"],
+                "current_confidence": row["current_confidence"],
+            })
+        return results
+
+    async def get_verification_stats(self, session_id: str) -> dict:
+        """Get aggregate verification stats for a session."""
+        cursor = await self._connection.execute(
+            """
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN verification_status = 'verified' THEN 1 ELSE 0 END) as verified,
+                SUM(CASE WHEN verification_status = 'flagged' THEN 1 ELSE 0 END) as flagged,
+                SUM(CASE WHEN verification_status = 'rejected' THEN 1 ELSE 0 END) as rejected,
+                SUM(CASE WHEN verification_status = 'pending' THEN 1 ELSE 0 END) as pending,
+                AVG(verified_confidence) as avg_confidence,
+                AVG(verification_time_ms) as avg_time_ms
+            FROM verification_results
+            WHERE session_id = ?
+            """,
+            (session_id,),
+        )
+        row = await cursor.fetchone()
+        if not row or row["total"] == 0:
+            return {
+                "total": 0, "verified": 0, "flagged": 0,
+                "rejected": 0, "pending": 0,
+                "avg_confidence": None, "avg_time_ms": None,
+            }
+        return {
+            "total": row["total"],
+            "verified": row["verified"],
+            "flagged": row["flagged"],
+            "rejected": row["rejected"],
+            "pending": row["pending"],
+            "avg_confidence": row["avg_confidence"],
+            "avg_time_ms": row["avg_time_ms"],
+        }
+
+    async def list_agent_decisions(
+        self,
+        session_id: str,
+        limit: int = 200,
+        offset: int = 0,
+    ):
+        """List agent decision logs for a session."""
+        cursor = await self._connection.execute(
+            """
+            SELECT
+                id, session_id, agent_role, decision_type,
+                decision_outcome, reasoning, inputs_json,
+                metrics_json, iteration, created_at
+            FROM agent_decisions
+            WHERE session_id = ?
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (session_id, limit, offset),
+        )
+        rows = await cursor.fetchall()
+        results = []
+        for row in rows:
+            inputs = None
+            metrics = None
+            try:
+                import json as _json
+                if row["inputs_json"]:
+                    inputs = _json.loads(row["inputs_json"])
+                if row["metrics_json"]:
+                    metrics = _json.loads(row["metrics_json"])
+            except Exception:
+                pass
+            results.append({
+                "id": row["id"],
+                "session_id": row["session_id"],
+                "agent_role": row["agent_role"],
+                "decision_type": row["decision_type"],
+                "decision_outcome": row["decision_outcome"],
+                "reasoning": row["reasoning"],
+                "inputs": inputs,
+                "metrics": metrics,
+                "iteration": row["iteration"],
+                "created_at": row["created_at"],
+            })
+        return results
+
+    async def list_topics(
+        self,
+        session_id: str,
+        limit: int = 200,
+    ):
+        """List topic tree for a session."""
+        cursor = await self._connection.execute(
+            """
+            SELECT
+                id, session_id, topic, parent_topic_id, depth,
+                status, priority, assigned_at, completed_at, findings_count
+            FROM topics
+            WHERE session_id = ?
+            ORDER BY depth ASC, priority DESC
+            LIMIT ?
+            """,
+            (session_id, limit),
+        )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "id": row["id"],
+                "session_id": row["session_id"],
+                "topic": row["topic"],
+                "parent_topic_id": row["parent_topic_id"],
+                "depth": row["depth"],
+                "status": row["status"],
+                "priority": row["priority"],
+                "assigned_at": row["assigned_at"],
+                "completed_at": row["completed_at"],
+                "findings_count": row["findings_count"],
+            }
+            for row in rows
+        ]
+
     async def get_session_slug(self, session_id: str) -> str | None:
         """Get the slug for a session ID."""
         cursor = await self._connection.execute(
