@@ -28,6 +28,45 @@ class StartResearchRequest(BaseModel):
     autonomous: bool = True
 
 
+class ClarifyRequest(BaseModel):
+    """Request to generate clarification questions."""
+    goal: str
+    max_questions: int = 4
+
+
+class EnrichRequest(BaseModel):
+    """Request to enrich a goal using clarifications."""
+    goal: str
+    questions: list[dict]
+    answers: dict[str, str]
+
+
+async def _haiku_callback(prompt: str) -> str:
+    from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
+
+    options = ClaudeAgentOptions(
+        model="haiku",
+        max_turns=1,
+        allowed_tools=[],
+    )
+
+    response_text = ""
+    async for message in query(prompt=prompt, options=options):
+        if isinstance(message, AssistantMessage):
+            for block in message.content:
+                if isinstance(block, TextBlock):
+                    response_text += block.text
+    return response_text
+
+
+def _build_interaction(max_questions: int):
+    from src.interaction import InteractionConfig, UserInteraction
+
+    config = InteractionConfig.interactive()
+    config.max_clarification_questions = max(1, min(6, max_questions))
+    return UserInteraction(config=config, llm_callback=_haiku_callback)
+
+
 class ResearchStatusResponse(BaseModel):
     """Response with research status."""
     session_id: str
@@ -128,6 +167,37 @@ async def start_research(
         status="running",
         message=f"Research started. Connect to WebSocket /ws/{session_id} for live updates."
     )
+
+
+@router.post("/clarify")
+async def clarify_goal(request: ClarifyRequest):
+    """Generate clarification questions for a research goal."""
+    interaction = _build_interaction(request.max_questions)
+
+    questions = await interaction._generate_clarification_questions(request.goal)
+    questions = questions[: interaction.config.max_clarification_questions]
+
+    return {"questions": [q.model_dump() for q in questions]}
+
+
+@router.post("/enrich")
+async def enrich_goal(request: EnrichRequest):
+    """Enrich a research goal with user clarifications."""
+    from src.interaction import UserInteraction
+    from src.interaction.models import ClarificationQuestion
+
+    interaction = UserInteraction(config=None, llm_callback=_haiku_callback)
+
+    questions = [ClarificationQuestion(**q) for q in request.questions]
+    answers: dict[int, str] = {}
+    for key, value in request.answers.items():
+        try:
+            answers[int(key)] = value
+        except Exception:
+            continue
+
+    enriched = await interaction._enrich_goal(request.goal, questions, answers)
+    return {"enriched_goal": enriched}
 
 
 @router.get("/{session_id}/status", response_model=ResearchStatusResponse)

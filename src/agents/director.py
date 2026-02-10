@@ -503,6 +503,15 @@ When presenting results:
 
         writer = DeepReportWriter(model="opus")
 
+        async def report_progress(message: str, progress: int) -> None:
+            if self.session_id:
+                await emit_synthesis(
+                    session_id=self.session_id,
+                    agent="director",
+                    message=message,
+                    progress=progress
+                )
+
         topics_explored = [t.topic for t in self.manager.completed_topics] if self.manager.completed_topics else []
         topics_remaining = [t.topic for t in self.manager.topics_queue] if self.manager.topics_queue else []
 
@@ -512,6 +521,7 @@ When presenting results:
             topics_explored=topics_explored,
             topics_remaining=topics_remaining,
             kg_exports=kg_exports,
+            progress_callback=report_progress,
         )
 
         # Emit synthesis complete event

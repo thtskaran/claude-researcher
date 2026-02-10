@@ -34,10 +34,18 @@ export default function SessionDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<"activity" | "findings" | "report" | "graph">("activity");
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   useEffect(() => {
     fetchSession();
   }, [sessionId]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowTick(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const fetchSession = async () => {
     try {
@@ -215,7 +223,7 @@ export default function SessionDetail() {
                   <StatRow label="Findings" value="--" />
                   <StatRow label="Sources" value="--" />
                   <StatRow label="Topics" value="--" />
-                  <StatRow label="Elapsed" value={getElapsedTime(session.created_at)} />
+                  <StatRow label="Elapsed" value={getElapsedTime(session.created_at, nowTick)} />
                 </div>
               </div>
             </div>
@@ -309,13 +317,20 @@ function formatDate(dateString: string): string {
   });
 }
 
-function getElapsedTime(startDate: string): string {
+function getElapsedTime(startDate: string, nowMs: number): string {
   const start = new Date(startDate);
-  const now = new Date();
-  const diffMs = now.getTime() - start.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
+  const diffMs = nowMs - start.getTime();
+  const diffSecs = Math.max(0, Math.floor(diffMs / 1000));
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const secs = diffSecs % 60;
+  const mins = diffMins % 60;
 
-  if (diffMins < 60) return `${diffMins}m`;
-  return `${diffHours}h ${diffMins % 60}m`;
+  if (diffHours > 0) {
+    return `${diffHours}h ${mins}m ${secs}s`;
+  }
+  if (diffMins > 0) {
+    return `${diffMins}m ${secs}s`;
+  }
+  return `${secs}s`;
 }
