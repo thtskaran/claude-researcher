@@ -552,17 +552,29 @@ Format your response as JSON:
                     )
 
                     # Run streaming verification if pipeline is available
+                    verification_result = None
                     if self.verification_pipeline:
                         try:
-                            result = await self.verification_pipeline.verify_intern_finding(
+                            verification_result = await self.verification_pipeline.verify_intern_finding(
                                 finding, session_id
                             )
                             # Update finding with verification results
                             finding.original_confidence = finding.confidence
-                            finding.confidence = result.verified_confidence
-                            finding.verification_status = result.verification_status.value
-                            finding.verification_method = result.verification_method.value
-                            finding.kg_support_score = result.kg_support_score
+                            finding.confidence = verification_result.verified_confidence
+                            finding.verification_status = verification_result.verification_status.value
+                            finding.verification_method = verification_result.verification_method.value
+                            finding.kg_support_score = verification_result.kg_support_score
+
+                            # Save detailed verification result to verification_results table for UI
+                            if finding.id:
+                                try:
+                                    await self.db.save_verification_result(
+                                        session_id=session_id,
+                                        finding_id=finding.id,
+                                        result_dict=verification_result.to_dict(),
+                                    )
+                                except Exception:
+                                    pass  # Don't let verification result saving block research
                         except Exception as e:
                             self._log(f"[VERIFY] Error: {e}", style="dim")
 
@@ -637,16 +649,28 @@ Format your response as JSON:
                     )
 
                     # Run streaming verification if pipeline is available
+                    verification_result = None
                     if self.verification_pipeline:
                         try:
-                            result = await self.verification_pipeline.verify_intern_finding(
+                            verification_result = await self.verification_pipeline.verify_intern_finding(
                                 finding, session_id
                             )
                             finding.original_confidence = finding.confidence
-                            finding.confidence = result.verified_confidence
-                            finding.verification_status = result.verification_status.value
-                            finding.verification_method = result.verification_method.value
-                            finding.kg_support_score = result.kg_support_score
+                            finding.confidence = verification_result.verified_confidence
+                            finding.verification_status = verification_result.verification_status.value
+                            finding.verification_method = verification_result.verification_method.value
+                            finding.kg_support_score = verification_result.kg_support_score
+
+                            # Save detailed verification result to verification_results table for UI
+                            if finding.id:
+                                try:
+                                    await self.db.save_verification_result(
+                                        session_id=session_id,
+                                        finding_id=finding.id,
+                                        result_dict=verification_result.to_dict(),
+                                    )
+                                except Exception:
+                                    pass  # Don't let verification result saving block research
                         except Exception:
                             pass
 
