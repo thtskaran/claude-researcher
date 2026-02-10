@@ -92,6 +92,7 @@ class ManagerAgent(BaseAgent):
             llm_callback=self._kg_llm_callback,
             store=self.kg_store,
             credibility_audit_callback=self._save_credibility_audit,
+            session_id=self.session_id,
         )
         self.kg_query = ManagerQueryInterface(self.kg_store)
         self.credibility_scorer = CredibilityScorer()

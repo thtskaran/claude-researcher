@@ -161,7 +161,7 @@ class HybridKnowledgeGraphStore:
 
         conn.close()
 
-    def add_entity(self, entity: Entity) -> str:
+    def add_entity(self, entity: Entity, session_id: str | None = None) -> str:
         """Add entity to both NetworkX and SQLite."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -176,9 +176,9 @@ class HybridKnowledgeGraphStore:
         })
 
         cursor.execute("""
-            INSERT OR REPLACE INTO kg_entities (id, name, entity_type, properties, embedding, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (entity.id, entity.name, entity.entity_type, properties, embedding_blob, datetime.now().isoformat()))
+            INSERT OR REPLACE INTO kg_entities (id, name, entity_type, properties, embedding, session_id, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (entity.id, entity.name, entity.entity_type, properties, embedding_blob, session_id, datetime.now().isoformat()))
 
         conn.commit()
         conn.close()
@@ -192,12 +192,13 @@ class HybridKnowledgeGraphStore:
                 aliases=entity.aliases,
                 sources=entity.sources,
                 confidence=entity.confidence,
+                session_id=session_id,
                 **entity.properties
             )
 
         return entity.id
 
-    def add_relation(self, relation: Relation) -> str:
+    def add_relation(self, relation: Relation, session_id: str | None = None) -> str:
         """Add relation to both NetworkX and SQLite."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -209,12 +210,12 @@ class HybridKnowledgeGraphStore:
 
         cursor.execute("""
             INSERT INTO kg_relations
-            (id, subject_id, predicate, object_id, source_id, confidence, properties)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (id, subject_id, predicate, object_id, source_id, confidence, properties, session_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             relation.id, relation.subject_id, relation.predicate,
             relation.object_id, relation.source_id, relation.confidence,
-            properties
+            properties, session_id
         ))
 
         conn.commit()
@@ -228,7 +229,8 @@ class HybridKnowledgeGraphStore:
                 relation_id=relation.id,
                 predicate=relation.predicate,
                 confidence=relation.confidence,
-                source_id=relation.source_id
+                source_id=relation.source_id,
+                session_id=session_id
             )
 
         return relation.id

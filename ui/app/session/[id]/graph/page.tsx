@@ -1,19 +1,16 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 
-/* ── types ──────────────────────────────────────────────── */
+/* ── Types ──────────────────────────────────────────────── */
 interface KGEntity {
     id: string;
     name: string;
     entity_type: string;
     properties: Record<string, unknown>;
     created_at: string;
-    // Computed on the frontend for layout
-    x?: number;
-    y?: number;
 }
 
 interface KGRelation {
@@ -37,123 +34,341 @@ interface KGContradiction {
     severity: string;
 }
 
-/* ── style maps ────────────────────────────────────────── */
-const entityTypeConfig: Record<string, { color: string; icon: string }> = {
-    CLAIM: { color: "#2b7cee", icon: "lightbulb" },
-    CONCEPT: { color: "#10b981", icon: "category" },
-    SOURCE: { color: "#d29922", icon: "article" },
-    EVIDENCE: { color: "#a78bfa", icon: "labs" },
-    TECHNOLOGY: { color: "#06b6d4", icon: "memory" },
-    METHOD: { color: "#f97316", icon: "build" },
-    METRIC: { color: "#ec4899", icon: "monitoring" },
-    PERSON: { color: "#8b5cf6", icon: "person" },
-    ORGANIZATION: { color: "#14b8a6", icon: "corporate_fare" },
-    QUOTE: { color: "#f59e0b", icon: "format_quote" },
+/* ── Entity style map ──────────────────────────────────── */
+const entityTypeConfig: Record<string, { color: string; icon: string; label: string }> = {
+    CLAIM: { color: "#f59e0b", icon: "💡", label: "Claim" },
+    CONCEPT: { color: "#6366f1", icon: "🏷️", label: "Concept" },
+    SOURCE: { color: "#6b7280", icon: "📄", label: "Source" },
+    EVIDENCE: { color: "#10b981", icon: "🔬", label: "Evidence" },
+    TECHNOLOGY: { color: "#3b82f6", icon: "⚙️", label: "Technology" },
+    METHOD: { color: "#8b5cf6", icon: "🔧", label: "Method" },
+    METRIC: { color: "#ef4444", icon: "📊", label: "Metric" },
+    PERSON: { color: "#ec4899", icon: "👤", label: "Person" },
+    ORGANIZATION: { color: "#14b8a6", icon: "🏢", label: "Organization" },
+    QUOTE: { color: "#f97316", icon: "💬", label: "Quote" },
 };
-const defaultEntityCfg = { color: "#6b7280", icon: "circle" };
+const defaultEntityCfg = { color: "#9ca3af", icon: "●", label: "Other" };
 
-const predicateConfig: Record<string, { color: string; label: string }> = {
-    supports: { color: "#3fb950", label: "Supports" },
-    contradicts: { color: "#f85149", label: "Contradicts" },
-    related: { color: "#58a6ff", label: "Related" },
-    is_a: { color: "#58a6ff", label: "Is A" },
-    part_of: { color: "#58a6ff", label: "Part Of" },
-    causes: { color: "#d29922", label: "Causes" },
-    cites: { color: "#d29922", label: "Cites" },
-    implements: { color: "#a78bfa", label: "Implements" },
-    outperforms: { color: "#3fb950", label: "Outperforms" },
-    similar_to: { color: "#58a6ff", label: "Similar To" },
-    alternative_to: { color: "#ec4899", label: "Alternative" },
-    authored_by: { color: "#6b7280", label: "Authored By" },
-    mentioned_in: { color: "#6b7280", label: "Mentioned In" },
+const predicateColors: Record<string, string> = {
+    supports: "#10b981",
+    contradicts: "#ef4444",
+    related: "#3b82f6",
+    related_to: "#3b82f6",
+    is_a: "#6366f1",
+    part_of: "#8b5cf6",
+    causes: "#f59e0b",
+    cites: "#6b7280",
+    implements: "#a78bfa",
+    outperforms: "#10b981",
+    similar_to: "#3b82f6",
+    alternative_to: "#ec4899",
+    authored_by: "#6b7280",
+    mentioned_in: "#6b7280",
 };
-const defaultEdgeCfg = { color: "#484f58", label: "Link" };
+const defaultEdgeColor = "#484f58";
 
-/* ── force-directed positions ───────────────────────────── */
-function assignPositions(entities: KGEntity[]): KGEntity[] {
-    if (entities.length === 0) return [];
-    const n = entities.length;
-    // Place nodes in expanding spiral to avoid overlap
-    return entities.map((e, i) => {
-        const angle = i * 2.39996; // golden angle in radians
-        const radius = 15 + Math.sqrt(i / n) * 32;
-        return {
-            ...e,
-            x: Math.max(5, Math.min(95, 50 + radius * Math.cos(angle))),
-            y: Math.max(5, Math.min(95, 50 + radius * Math.sin(angle))),
-        };
-    });
-}
-
+/* ── Main Component ────────────────────────────────────── */
 export default function KnowledgeGraphPage() {
     const params = useParams();
     const sessionId = params.id as string;
+
     const [entities, setEntities] = useState<KGEntity[]>([]);
     const [relations, setRelations] = useState<KGRelation[]>([]);
     const [contradictions, setContradictions] = useState<KGContradiction[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    const [selectedNode, setSelectedNode] = useState<string | null>(null);
-    const [confidenceFilter, setConfidenceFilter] = useState(0);
+    const [selectedId, setSelectedId] = useState<string | null>(null);
     const [nodeTypeFilter, setNodeTypeFilter] = useState<string>("all");
+    const [confidenceFilter, setConfidenceFilter] = useState(0);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchActive, setSearchActive] = useState(false);
+    const [zoomLevel, setZoomLevel] = useState(100);
 
-    /* ── fetch graph data ─────────────────────────────── */
-    const fetchGraph = useCallback(async () => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const networkRef = useRef<any>(null);
+
+    /* ── Fetch data ─────────────────────────────────────── */
+    const fetchGraph = async () => {
         setLoading(true);
         setError("");
         try {
-            const res = await fetch(
-                `/api/sessions/${sessionId}/knowledge/graph?limit=500`
-            );
+            const res = await fetch(`/api/sessions/${sessionId}/knowledge/graph?limit=500`);
             if (!res.ok) throw new Error("Failed to load knowledge graph");
             const data = await res.json();
-            const positioned = assignPositions(data.entities || []);
-            setEntities(positioned);
-            setRelations(data.relations || []);
+            const ents: KGEntity[] = data.entities || [];
+            const rels: KGRelation[] = data.relations || [];
+            setEntities(ents);
+            setRelations(rels);
             setContradictions(data.contradictions || []);
         } catch {
             setError("Unable to load knowledge graph data");
         } finally {
             setLoading(false);
         }
-    }, [sessionId]);
+    };
 
-    useEffect(() => { fetchGraph(); }, [fetchGraph]);
+    useEffect(() => { fetchGraph(); }, [sessionId]);
 
-    /* ── filtering ─────────────────────────────────────── */
-    const filteredNodes = useMemo(() => {
-        return entities.filter((n) => {
+    /* ── Filtering ──────────────────────────────────────── */
+    const filteredEntities = useMemo(() => {
+        return entities.filter(e => {
+            if (nodeTypeFilter !== "all" && e.entity_type !== nodeTypeFilter) return false;
             if (confidenceFilter > 0) {
-                const conf = (n.properties as Record<string, number>)?.confidence ?? 1;
+                const conf = (e.properties as Record<string, number>)?.confidence ?? 1;
                 if (conf < confidenceFilter / 100) return false;
             }
-            if (nodeTypeFilter !== "all" && n.entity_type !== nodeTypeFilter) return false;
             return true;
         });
-    }, [entities, confidenceFilter, nodeTypeFilter]);
-
-    const filteredNodeIds = new Set(filteredNodes.map((n) => n.id));
-    const filteredEdges = relations.filter(
-        (e) => filteredNodeIds.has(e.subject_id) && filteredNodeIds.has(e.object_id)
-    );
-
-    const selected = entities.find((n) => n.id === selectedNode);
-    const connectedEdges = selected
-        ? relations.filter((e) => e.subject_id === selected.id || e.object_id === selected.id)
-        : [];
+    }, [entities, nodeTypeFilter, confidenceFilter]);
 
     const entityTypes = useMemo(() => {
-        const types = new Set(entities.map((e) => e.entity_type));
+        const types = new Set(entities.map(e => e.entity_type));
         return Array.from(types).sort();
     }, [entities]);
 
-    /* ── render ─────────────────────────────────────────── */
+    const selectedNode = useMemo(() => {
+        if (!selectedId) return null;
+        return entities.find(e => e.id === selectedId) || null;
+    }, [selectedId, entities]);
+
+    const connectedEdges = useMemo(() => {
+        if (!selectedId) return [];
+        return relations.filter(e => e.subject_id === selectedId || e.object_id === selectedId);
+    }, [selectedId, relations]);
+
+    /* ── Search ─────────────────────────────────────────── */
+    const searchResults = useMemo(() => {
+        if (!searchQuery.trim()) return [];
+        const q = searchQuery.toLowerCase();
+        return filteredEntities
+            .filter(n => n.name.toLowerCase().includes(q))
+            .slice(0, 8);
+    }, [searchQuery, filteredEntities]);
+
+    const centerOnNode = (nodeId: string) => {
+        if (networkRef.current) {
+            networkRef.current.selectNodes([nodeId], true);
+            networkRef.current.moveTo({
+                position: { x: 0, y: 0 },
+                scale: 1.5,
+                animation: { duration: 500, easingFunction: "easeInOutQuad" as any }
+            });
+            setSelectedId(nodeId);
+            setSearchActive(false);
+            setSearchQuery("");
+        }
+    };
+
+    const fitToView = () => {
+        if (networkRef.current) {
+            networkRef.current.fit({ animation: { duration: 500, easingFunction: "easeInOutQuad" as any } });
+        }
+    };
+
+    /* ── Initialize vis-network ─────────────────────────── */
+    useEffect(() => {
+        if (!containerRef.current || loading || entities.length === 0) return;
+
+        // Dynamically import vis-network (client-side only)
+        import("vis-network").then(({ Network }) => {
+            import("vis-data").then(({ DataSet }) => {
+                if (!containerRef.current) return;
+
+                // Create filtered node IDs set
+                const filteredIds = new Set(filteredEntities.map(e => e.id));
+
+                // Prepare nodes
+                const nodes = filteredEntities.map(e => {
+                    const cfg = entityTypeConfig[e.entity_type] || defaultEntityCfg;
+                    const edgeCount = relations.filter(r =>
+                        r.subject_id === e.id || r.object_id === e.id
+                    ).length;
+                    const size = Math.max(20, Math.min(50, 20 + edgeCount * 3));
+
+                    return {
+                        id: e.id,
+                        label: e.name.length > 25 ? e.name.slice(0, 22) + "..." : e.name,
+                        title: `<b>${e.name}</b><br/>Type: ${e.entity_type}<br/>Connections: ${edgeCount}`,
+                        color: {
+                            background: cfg.color,
+                            border: cfg.color,
+                            highlight: { background: cfg.color, border: "#ffffff" }
+                        },
+                        shape: e.entity_type === "CLAIM" ? "diamond" : "dot",
+                        size: size,
+                        font: {
+                            color: "#e5e7eb",
+                            size: 14,
+                            face: "Inter, system-ui, sans-serif",
+                            background: "rgba(13, 17, 23, 0.85)",
+                            strokeWidth: 0
+                        }
+                    };
+                });
+
+                // Prepare edges
+                const edges = relations
+                    .filter(r => filteredIds.has(r.subject_id) && filteredIds.has(r.object_id))
+                    .map(r => {
+                        const color = predicateColors[r.predicate] || defaultEdgeColor;
+                        return {
+                            id: r.id,
+                            from: r.subject_id,
+                            to: r.object_id,
+                            label: "",  // Hide edge labels for cleaner look
+                            title: r.predicate.replace(/_/g, " "),
+                            color: {
+                                color: color + "80",  // 50% opacity
+                                highlight: color,
+                                hover: color
+                            },
+                            width: 1.5 + (r.confidence * 1.5),
+                            arrows: {
+                                to: {
+                                    enabled: true,
+                                    scaleFactor: 0.8,
+                                    type: "arrow"
+                                }
+                            },
+                            arrowStrikethrough: false,
+                            smooth: { enabled: true, type: "curvedCW", roundness: 0.2 },
+                            dashes: r.predicate === "contradicts" ? [5, 5] : false
+                        };
+                    });
+
+                const data = {
+                    nodes: new DataSet(nodes),
+                    edges: new DataSet(edges)
+                };
+
+                const options: any = {
+                    nodes: {
+                        borderWidth: 2,
+                        borderWidthSelected: 4
+                    },
+                    edges: {
+                        font: {
+                            size: 11,
+                            color: "#9ca3af",
+                            strokeWidth: 0,
+                            align: "middle"
+                        },
+                        chosen: true,
+                        hoverWidth: 0.5
+                    },
+                    physics: {
+                        enabled: true,
+                        barnesHut: {
+                            gravitationalConstant: -80000,
+                            centralGravity: 0.3,
+                            springLength: 250,
+                            springConstant: 0.001,
+                            damping: 0.09,
+                            avoidOverlap: 0.8
+                        },
+                        stabilization: {
+                            enabled: true,
+                            iterations: 400,
+                            updateInterval: 25
+                        }
+                    },
+                    interaction: {
+                        hover: true,
+                        tooltipDelay: 100,
+                        hideEdgesOnDrag: false,  // Keep edges visible during drag
+                        hideEdgesOnZoom: false,
+                        dragNodes: true,
+                        dragView: true,
+                        zoomView: true
+                    },
+                    layout: {
+                        improvedLayout: true,
+                        randomSeed: 42
+                    }
+                };
+
+                // Destroy existing network
+                if (networkRef.current) {
+                    networkRef.current.destroy();
+                }
+
+                // Create new network
+                const network = new Network(containerRef.current, data, options);
+                networkRef.current = network;
+
+                // Event listeners
+                network.on("selectNode", (params: any) => {
+                    if (params.nodes.length > 0) {
+                        setSelectedId(params.nodes[0]);
+                    }
+                });
+
+                network.on("deselectNode", () => {
+                    setSelectedId(null);
+                });
+
+                network.on("zoom", () => {
+                    if (networkRef.current) {
+                        const scale = networkRef.current.getScale();
+                        setZoomLevel(Math.round(scale * 100));
+                    }
+                });
+
+                // Drag events for elastic physics
+                let dragTimeout: NodeJS.Timeout;
+                network.on("dragStart", () => {
+                    // Enable physics when dragging starts with natural parameters
+                    network.setOptions({
+                        physics: {
+                            enabled: true,
+                            barnesHut: {
+                                gravitationalConstant: -8000,  // Natural repulsion force
+                                centralGravity: 0.05,
+                                springLength: 150,
+                                springConstant: 0.01,  // Responsive springs
+                                damping: 0.4,  // Smooth, natural damping
+                                avoidOverlap: 0.3
+                            },
+                            maxVelocity: 50,
+                            minVelocity: 0.1,
+                            solver: 'barnesHut',
+                            timestep: 0.35
+                        }
+                    });
+                });
+
+                network.on("dragEnd", () => {
+                    // Disable physics after settling
+                    clearTimeout(dragTimeout);
+                    dragTimeout = setTimeout(() => {
+                        network.setOptions({ physics: { enabled: false } });
+                    }, 800);  // 0.8 seconds to settle naturally
+                });
+
+                // Disable physics after stabilization (stop movement)
+                network.on("stabilizationIterationsDone", () => {
+                    network.fit({ animation: { duration: 500, easingFunction: "easeInOutQuad" as any } });
+                    // Stop physics to prevent nodes from moving
+                    network.setOptions({ physics: { enabled: false } });
+                });
+            });
+        });
+
+        return () => {
+            if (networkRef.current) {
+                networkRef.current.destroy();
+                networkRef.current = null;
+            }
+        };
+    }, [filteredEntities, relations, loading]);
+
+    /* ── Render ─────────────────────────────────────────── */
     return (
-        <div className="min-h-screen flex flex-col">
+        <div className="min-h-screen flex flex-col bg-[#0d1117]">
             {/* Header */}
             <header className="border-b border-dark-border bg-dark-surface/50 backdrop-blur-sm sticky top-0 z-20">
-                <div className="max-w-7xl mx-auto px-6 py-4">
-                    <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+                <div className="max-w-full mx-auto px-6 py-3">
+                    <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
                         <Link href="/" className="hover:text-primary transition-colors">Sessions</Link>
                         <span className="material-symbols-outlined text-[12px]">chevron_right</span>
                         <Link href={`/session/${sessionId}`} className="hover:text-primary transition-colors">Session</Link>
@@ -165,22 +380,72 @@ export default function KnowledgeGraphPage() {
                             <Link href={`/session/${sessionId}`} className="text-gray-400 hover:text-primary transition-colors">
                                 <span className="material-symbols-outlined">arrow_back</span>
                             </Link>
-                            <h1 className="text-xl font-bold">Knowledge Graph</h1>
-                            <span className="badge badge-system">{filteredNodes.length} nodes</span>
-                            <span className="badge badge-system">{filteredEdges.length} edges</span>
+                            <h1 className="text-lg font-bold">Knowledge Graph</h1>
+                            <span className="badge badge-system">{filteredEntities.length} nodes</span>
+                            <span className="badge badge-system">{relations.length} edges</span>
                             {contradictions.length > 0 && (
-                                <span className="badge badge-error">{contradictions.length} contradictions</span>
+                                <span className="badge badge-error">{contradictions.length} ⚡</span>
                             )}
                         </div>
-                        <button onClick={fetchGraph} className="btn btn-ghost text-xs gap-1">
-                            <span className="material-symbols-outlined text-sm">refresh</span>
-                            Refresh
-                        </button>
+                        <div className="flex items-center gap-2">
+                            {/* Search */}
+                            <div className="relative">
+                                <div className="flex items-center">
+                                    <button
+                                        onClick={() => setSearchActive(a => !a)}
+                                        className="btn btn-ghost text-xs px-2 py-1"
+                                        title="Search entities"
+                                    >
+                                        <span className="material-symbols-outlined text-sm">search</span>
+                                    </button>
+                                </div>
+                                {searchActive && (
+                                    <div className="absolute right-0 top-full mt-1 w-72 z-50">
+                                        <input
+                                            autoFocus
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            placeholder="Search entities..."
+                                            className="input h-9 w-full text-sm"
+                                            onKeyDown={(e) => {
+                                                if (e.key === "Escape") { setSearchActive(false); setSearchQuery(""); }
+                                                if (e.key === "Enter" && searchResults.length > 0) centerOnNode(searchResults[0].id);
+                                            }}
+                                        />
+                                        {searchResults.length > 0 && (
+                                            <div className="mt-1 bg-dark-surface border border-dark-border rounded-lg shadow-xl max-h-64 overflow-y-auto">
+                                                {searchResults.map(n => {
+                                                    const cfg = entityTypeConfig[n.entity_type] || defaultEntityCfg;
+                                                    return (
+                                                        <button
+                                                            key={n.id}
+                                                            onClick={() => centerOnNode(n.id)}
+                                                            className="w-full text-left px-3 py-2 hover:bg-card-hover transition-colors flex items-center gap-2 text-sm"
+                                                        >
+                                                            <span style={{ color: cfg.color }}>{cfg.icon}</span>
+                                                            <span className="text-gray-200 truncate">{n.name}</span>
+                                                            <span className="text-xs text-gray-500 ml-auto">{n.entity_type}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            <button onClick={fitToView} className="btn btn-ghost text-xs gap-1" title="Fit to view">
+                                <span className="material-symbols-outlined text-sm">fit_screen</span>
+                            </button>
+                            <button onClick={fetchGraph} className="btn btn-ghost text-xs gap-1">
+                                <span className="material-symbols-outlined text-sm">refresh</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </header>
 
-            {/* Loading / Error */}
+            {/* Main Area */}
             {loading ? (
                 <div className="flex-1 flex items-center justify-center">
                     <div className="flex items-center gap-3 text-gray-400">
@@ -205,162 +470,115 @@ export default function KnowledgeGraphPage() {
                     </div>
                 </div>
             ) : (
-                // Graph Area
-                <div className="flex-1 flex relative overflow-hidden bg-grid-pattern">
-                    {/* SVG edges */}
-                    <div className="flex-1 relative" style={{ minHeight: "600px" }}>
-                        <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                            {filteredEdges.map((edge, i) => {
-                                const fromNode = entities.find((n) => n.id === edge.subject_id);
-                                const toNode = entities.find((n) => n.id === edge.object_id);
-                                if (!fromNode?.x || !toNode?.x) return null;
-                                const cfg = predicateConfig[edge.predicate] || defaultEdgeCfg;
-                                return (
-                                    <line
-                                        key={i}
-                                        x1={`${fromNode.x}%`}
-                                        y1={`${fromNode.y}%`}
-                                        x2={`${toNode.x}%`}
-                                        y2={`${toNode.y}%`}
-                                        stroke={cfg.color}
-                                        strokeWidth="1.5"
-                                        opacity="0.4"
-                                        strokeDasharray={edge.predicate === "contradicts" ? "6,4" : undefined}
-                                    />
-                                );
-                            })}
-                        </svg>
-
-                        {/* Nodes */}
-                        {filteredNodes.map((node) => {
-                            const cfg = entityTypeConfig[node.entity_type] || defaultEntityCfg;
-                            const isSelected = selectedNode === node.id;
-                            return (
-                                <button
-                                    key={node.id}
-                                    onClick={() => setSelectedNode(isSelected ? null : node.id)}
-                                    className={`absolute flex flex-col items-center gap-1.5 group cursor-pointer z-10 transition-transform hover:scale-110 ${isSelected ? "scale-110" : ""}`}
-                                    style={{
-                                        left: `${node.x}%`,
-                                        top: `${node.y}%`,
-                                        transform: `translate(-50%, -50%) ${isSelected ? "scale(1.1)" : ""}`,
-                                    }}
-                                >
-                                    <div
-                                        className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? "ring-2 ring-white/30" : ""}`}
-                                        style={{ backgroundColor: cfg.color, borderColor: `${cfg.color}66` }}
-                                    >
-                                        <span className="material-symbols-outlined text-white text-base">{cfg.icon}</span>
-                                    </div>
-                                    <span className="font-mono text-[10px] text-gray-300 bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm whitespace-nowrap max-w-24 truncate">
-                                        {node.name}
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
+                <div className="flex-1 relative overflow-hidden">
+                    {/* Vis-Network Container */}
+                    <div ref={containerRef} className="absolute inset-0 bg-[#0d1117]" />
 
                     {/* Detail Panel */}
-                    {selected && (
-                        <div className="absolute right-4 top-4 w-80 glass-panel rounded-xl p-6 z-20 max-h-[calc(100%-2rem)] overflow-y-auto">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="font-semibold text-sm">{selected.name}</h3>
-                                <button onClick={() => setSelectedNode(null)} className="text-gray-500 hover:text-white transition-colors">
+                    {selectedNode && (
+                        <div className="absolute right-4 top-4 w-80 bg-dark-surface/95 backdrop-blur-xl border border-dark-border rounded-xl p-5 z-20 max-h-[calc(100%-6rem)] overflow-y-auto shadow-2xl">
+                            <div className="flex items-start justify-between mb-3">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-xl shrink-0">{(entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).icon}</span>
+                                    <h3 className="font-semibold text-sm truncate">{selectedNode.name}</h3>
+                                </div>
+                                <button onClick={() => setSelectedId(null)} className="text-gray-500 hover:text-white transition-colors shrink-0">
                                     <span className="material-symbols-outlined text-lg">close</span>
                                 </button>
                             </div>
-                            <div className="space-y-4">
-                                <div className="flex items-center gap-2">
-                                    <span
-                                        className="badge"
-                                        style={{
-                                            backgroundColor: `${(entityTypeConfig[selected.entity_type] || defaultEntityCfg).color}20`,
-                                            color: (entityTypeConfig[selected.entity_type] || defaultEntityCfg).color,
-                                            borderColor: `${(entityTypeConfig[selected.entity_type] || defaultEntityCfg).color}40`,
-                                        }}
-                                    >
-                                        {selected.entity_type}
-                                    </span>
+
+                            <span
+                                className="badge text-xs mb-4 inline-block"
+                                style={{
+                                    backgroundColor: `${(entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).color}20`,
+                                    color: (entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).color,
+                                    borderColor: `${(entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).color}40`,
+                                }}
+                            >
+                                {selectedNode.entity_type}
+                            </span>
+
+                            {/* Properties */}
+                            {selectedNode.properties && Object.keys(selectedNode.properties).length > 0 && (
+                                <div className="mb-4">
+                                    <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold block mb-2">Properties</label>
+                                    <div className="space-y-1">
+                                        {Object.entries(selectedNode.properties).map(([k, v]) => (
+                                            <div key={k} className="text-xs flex justify-between gap-2">
+                                                <span className="text-gray-500 font-mono shrink-0">{k}</span>
+                                                <span className="text-gray-300 truncate">{String(v)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
+                            )}
 
-                                {/* Properties */}
-                                {selected.properties && Object.keys(selected.properties).length > 0 && (
-                                    <div>
-                                        <label className="text-xs text-gray-500 uppercase tracking-wider">Properties</label>
-                                        <div className="mt-1 space-y-1">
-                                            {Object.entries(selected.properties).map(([k, v]) => (
-                                                <div key={k} className="text-xs flex justify-between">
-                                                    <span className="text-gray-500 font-mono">{k}</span>
-                                                    <span className="text-gray-300 truncate ml-2">{String(v)}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Connections */}
-                                <div>
-                                    <label className="text-xs text-gray-500 uppercase tracking-wider">Connections ({connectedEdges.length})</label>
-                                    <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
-                                        {connectedEdges.map((edge, i) => {
-                                            const isSubject = edge.subject_id === selected.id;
-                                            const otherName = isSubject ? edge.object_name : edge.subject_name;
-                                            const eCfg = predicateConfig[edge.predicate] || defaultEdgeCfg;
-                                            return (
-                                                <div key={i} className="flex items-center gap-2 text-xs">
-                                                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: eCfg.color }} />
-                                                    <span className="text-gray-400">{eCfg.label}</span>
-                                                    <span className="text-gray-300 truncate">{otherName || "Unknown"}</span>
-                                                </div>
-                                            );
-                                        })}
-                                        {connectedEdges.length === 0 && (
-                                            <p className="text-xs text-gray-600">No connections</p>
-                                        )}
-                                    </div>
+                            {/* Connections */}
+                            <div>
+                                <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold block mb-2">Connections ({connectedEdges.length})</label>
+                                <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                                    {connectedEdges.map((edge, i) => {
+                                        const isSubject = edge.subject_id === selectedId;
+                                        const otherName = isSubject ? edge.object_name : edge.subject_name;
+                                        const color = predicateColors[edge.predicate] || defaultEdgeColor;
+                                        return (
+                                            <button
+                                                key={i}
+                                                onClick={() => {
+                                                    const otherId = isSubject ? edge.object_id : edge.subject_id;
+                                                    centerOnNode(otherId);
+                                                }}
+                                                className="flex items-center gap-2 text-xs w-full text-left hover:bg-card-hover p-1.5 rounded-md transition-colors"
+                                            >
+                                                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                                                <span className="text-gray-500 font-mono shrink-0">{edge.predicate.replace(/_/g, " ")}</span>
+                                                <span className="text-gray-300 truncate">{otherName || "Unknown"}</span>
+                                                <span className="material-symbols-outlined text-gray-600 text-[12px] ml-auto shrink-0">arrow_forward</span>
+                                            </button>
+                                        );
+                                    })}
+                                    {connectedEdges.length === 0 && (
+                                        <p className="text-xs text-gray-600">No connections</p>
+                                    )}
                                 </div>
                             </div>
                         </div>
                     )}
 
                     {/* Bottom Controls Bar */}
-                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 glass-panel rounded-xl px-6 py-3 z-20 flex items-center gap-6 max-w-[90vw] overflow-x-auto">
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-dark-surface/90 backdrop-blur-xl border border-dark-border rounded-xl px-5 py-2.5 z-20 flex items-center gap-4 max-w-[92vw] overflow-x-auto shadow-2xl">
                         {/* Legend */}
-                        <div className="flex items-center gap-4 text-xs shrink-0">
-                            {Object.entries(predicateConfig).slice(0, 4).map(([key, cfg]) => (
-                                <span key={key} className="flex items-center gap-1.5 text-gray-400">
-                                    <span className="w-3 h-0.5 rounded" style={{ backgroundColor: cfg.color, display: "inline-block" }} />
-                                    {cfg.label}
+                        <div className="flex items-center gap-3 text-[11px] shrink-0 border-r border-dark-border pr-4">
+                            {Object.entries(entityTypeConfig).slice(0, 6).map(([key, cfg]) => (
+                                <span key={key} className="flex items-center gap-1 text-gray-400">
+                                    <span className="text-xs">{cfg.icon}</span>
+                                    <span>{cfg.label}</span>
                                 </span>
                             ))}
                         </div>
 
-                        <div className="w-px h-6 bg-dark-border shrink-0" />
-
                         {/* Node Type Filter */}
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0 border-r border-dark-border pr-4">
                             <button
                                 onClick={() => setNodeTypeFilter("all")}
-                                className={`chip ${nodeTypeFilter === "all" ? "chip-active" : ""}`}
+                                className={`chip text-[11px] ${nodeTypeFilter === "all" ? "chip-active" : ""}`}
                             >
                                 All
                             </button>
-                            {entityTypes.map((t) => (
+                            {entityTypes.map(t => (
                                 <button
                                     key={t}
-                                    onClick={() => setNodeTypeFilter(t)}
-                                    className={`chip ${nodeTypeFilter === t ? "chip-active" : ""}`}
+                                    onClick={() => setNodeTypeFilter(prev => prev === t ? "all" : t)}
+                                    className={`chip text-[11px] ${nodeTypeFilter === t ? "chip-active" : ""}`}
                                 >
-                                    {t.toLowerCase()}
+                                    {(entityTypeConfig[t] || defaultEntityCfg).icon} {t.toLowerCase()}
                                 </button>
                             ))}
                         </div>
 
-                        <div className="w-px h-6 bg-dark-border shrink-0" />
-
                         {/* Confidence Slider */}
-                        <div className="flex items-center gap-2 text-xs text-gray-400 shrink-0">
-                            <span>Min</span>
+                        <div className="flex items-center gap-2 text-[11px] text-gray-400 shrink-0">
+                            <span>Confidence</span>
                             <input
                                 type="range"
                                 min="0"
@@ -371,6 +589,11 @@ export default function KnowledgeGraphPage() {
                                 className="w-16 accent-primary"
                             />
                             <span className="font-mono w-8">{confidenceFilter}%</span>
+                        </div>
+
+                        {/* Zoom Level Indicator */}
+                        <div className="text-[10px] text-gray-400 font-mono shrink-0 border-l border-dark-border pl-4">
+                            {zoomLevel}%
                         </div>
                     </div>
                 </div>

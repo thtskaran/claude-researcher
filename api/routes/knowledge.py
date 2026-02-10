@@ -18,9 +18,9 @@ async def get_knowledge_graph(
 ):
     """Get entities and relations for graph visualization."""
     kg = get_kg()
-    entities = await kg.get_entities(entity_type=entity_type, limit=limit)
-    relations = await kg.get_relations(limit=limit * 2)
-    contradictions = await kg.get_contradictions()
+    entities = await kg.get_entities(session_id=session_id, entity_type=entity_type, limit=limit)
+    relations = await kg.get_relations(session_id=session_id, limit=limit * 2)
+    contradictions = await kg.get_contradictions(session_id=session_id)
 
     return {
         "session_id": session_id,

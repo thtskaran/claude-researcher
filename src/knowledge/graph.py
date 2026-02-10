@@ -52,6 +52,7 @@ class IncrementalKnowledgeGraph:
         use_fast_ner: bool = True,
         credibility_audit_callback: Callable[[dict], Any] | None = None,
     ):
+        session_id: str | None = None,
         """Initialize the incremental knowledge graph.
 
         Args:
@@ -62,6 +63,7 @@ class IncrementalKnowledgeGraph:
             credibility_audit_callback: Optional async callback to persist credibility audits
         """
         self.llm_callback = llm_callback
+        self.session_id = session_id
         self.store = store or HybridKnowledgeGraphStore()
         self.similarity_threshold = similarity_threshold
         self.credibility_scorer = CredibilityScorer()
@@ -157,7 +159,7 @@ class IncrementalKnowledgeGraph:
                         result['contradictions_found'] += 1
 
                     # Add relation to store
-                    self.store.add_relation(relation)
+                    self.store.add_relation(relation, self.session_id)
                     result['relations'].append(relation)
 
             return result
@@ -211,7 +213,7 @@ class IncrementalKnowledgeGraph:
                     self.store.add_contradiction(contradiction)
                     result['contradictions_found'] += 1
 
-                self.store.add_relation(relation)
+                self.store.add_relation(relation, self.session_id)
                 result['relations'].append(relation)
 
         return result
@@ -290,7 +292,7 @@ Keep it concise: max 5 entities, max 3 relations. Focus on the most important fa
                                 self.store.add_contradiction(contradiction)
                                 result['contradictions_found'] += 1
 
-                            self.store.add_relation(relation)
+                            self.store.add_relation(relation, self.session_id)
                             result['relations'].append(relation)
 
         except Exception:
@@ -494,7 +496,7 @@ Keep concise: max 3 entities and 2 relations per finding."""
                                     self.store.add_contradiction(contradiction)
                                     result['contradictions'] += 1
 
-                                self.store.add_relation(relation)
+                                self.store.add_relation(relation, self.session_id)
                                 result['relations_count'] += 1
 
         except Exception:
@@ -573,7 +575,7 @@ Return as JSON array:
                 if entity.sources:
                     existing.sources = list(set(existing.sources + entity.sources))
                 existing.aliases = list(set(existing.aliases + entity.aliases + [entity.name]))
-                self.store.add_entity(existing)  # Update
+                self.store.add_entity(existing, self.session_id)  # Update
                 return existing
 
         # Check aliases
@@ -583,11 +585,11 @@ Return as JSON array:
                 # Found via alias
                 if entity.sources:
                     existing.sources = list(set(existing.sources + entity.sources))
-                self.store.add_entity(existing)
+                self.store.add_entity(existing, self.session_id)
                 return existing
 
         # No match found - add as new entity
-        self.store.add_entity(entity)
+        self.store.add_entity(entity, self.session_id)
         self.entity_by_name[name_key] = entity.id
         self.entity_by_type.setdefault(entity.entity_type, []).append(entity.id)
 

@@ -53,33 +53,39 @@ class KnowledgeGraphAPI:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, partial(fn, self.db_path, *args))
 
-    async def get_entities(self, entity_type: str | None = None, limit: int = 500) -> list[dict]:
-        """Get all KG entities, optionally filtered by type."""
+    async def get_entities(self, session_id: str | None = None, entity_type: str | None = None, limit: int = 500) -> list[dict]:
+        """Get all KG entities, optionally filtered by session and type."""
         if not self._db_exists():
             return []
+
+        # Build query based on filters
+        conditions = []
+        params = []
+
+        if session_id:
+            # Include both session-specific data AND legacy data without session_id
+            conditions.append("(session_id = ? OR session_id IS NULL)")
+            params.append(session_id)
+
         if entity_type:
-            rows = await self._run(
-                _query_sync,
-                """
-                SELECT id, name, entity_type, properties, created_at
-                FROM kg_entities
-                WHERE entity_type = ?
-                ORDER BY created_at DESC
-                LIMIT ?
-                """,
-                (entity_type, limit),
-            )
-        else:
-            rows = await self._run(
-                _query_sync,
-                """
-                SELECT id, name, entity_type, properties, created_at
-                FROM kg_entities
-                ORDER BY created_at DESC
-                LIMIT ?
-                """,
-                (limit,),
-            )
+            conditions.append("entity_type = ?")
+            params.append(entity_type)
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.append(limit)
+
+        rows = await self._run(
+            _query_sync,
+            f"""
+            SELECT id, name, entity_type, properties, session_id, created_at
+            FROM kg_entities
+            {where_clause}
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            tuple(params),
+        )
+
         # Parse properties JSON
         for row in rows:
             try:
@@ -91,25 +97,31 @@ class KnowledgeGraphAPI:
                 row["properties"] = {}
         return rows
 
-    async def get_relations(self, limit: int = 1000) -> list[dict]:
-        """Get all KG relations."""
+    async def get_relations(self, session_id: str | None = None, limit: int = 1000) -> list[dict]:
+        """Get all KG relations, optionally filtered by session."""
         if not self._db_exists():
             return []
+
+        # Include both session-specific data AND legacy data without session_id
+        where_clause = "WHERE (r.session_id = ? OR r.session_id IS NULL)" if session_id else ""
+        params = (session_id, limit) if session_id else (limit,)
+
         rows = await self._run(
             _query_sync,
-            """
+            f"""
             SELECT
                 r.id, r.subject_id, r.predicate, r.object_id,
-                r.source_id, r.confidence, r.properties, r.created_at,
+                r.source_id, r.confidence, r.properties, r.session_id, r.created_at,
                 s.name AS subject_name, s.entity_type AS subject_type,
                 o.name AS object_name, o.entity_type AS object_type
             FROM kg_relations r
             LEFT JOIN kg_entities s ON s.id = r.subject_id
             LEFT JOIN kg_entities o ON o.id = r.object_id
+            {where_clause}
             ORDER BY r.created_at DESC
             LIMIT ?
             """,
-            (limit,),
+            params,
         )
         for row in rows:
             try:
@@ -121,20 +133,26 @@ class KnowledgeGraphAPI:
                 row["properties"] = {}
         return rows
 
-    async def get_contradictions(self, limit: int = 100) -> list[dict]:
-        """Get KG contradictions."""
+    async def get_contradictions(self, session_id: str | None = None, limit: int = 100) -> list[dict]:
+        """Get KG contradictions, optionally filtered by session."""
         if not self._db_exists():
             return []
+
+        # Include both session-specific data AND legacy data without session_id
+        where_clause = "WHERE (session_id = ? OR session_id IS NULL)" if session_id else ""
+        params = (session_id, limit) if session_id else (limit,)
+
         return await self._run(
             _query_sync,
-            """
+            f"""
             SELECT id, relation1_id, relation2_id, contradiction_type,
-                   description, severity, resolution, resolved_at, created_at
+                   description, severity, resolution, resolved_at, session_id, created_at
             FROM kg_contradictions
+            {where_clause}
             ORDER BY created_at DESC
             LIMIT ?
             """,
-            (limit,),
+            params,
         )
 
     async def get_stats(self) -> dict:
