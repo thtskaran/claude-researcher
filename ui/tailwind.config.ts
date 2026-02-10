@@ -9,48 +9,80 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Primary brand color from design system
-        primary: {
-          DEFAULT: "#2b7cee",
-          light: "#5ca3ff",
-          dark: "#1a5fc9",
+        // Theme-adaptive neutrals (CSS variable RGB triplets)
+        page: "rgb(var(--page) / <alpha-value>)",
+        card: {
+          DEFAULT: "rgb(var(--card) / <alpha-value>)",
+          hover: "rgb(var(--card-hover) / <alpha-value>)",
+          inset: "rgb(var(--card-inset) / <alpha-value>)",
         },
-        // Dark theme colors
-        dark: {
-          bg: "#101822",
-          surface: "#1a2332",
-          border: "#2a3544",
+        edge: {
+          DEFAULT: "rgb(var(--edge) / <alpha-value>)",
+          light: "rgb(var(--edge-light) / <alpha-value>)",
         },
-        // Surface variants from mockups
-        "surface-highlight": "#252a33",
-        "card-dark": "#161e2a",
-        "card-hover": "#1c2635",
-        // Terminal / logs palette
-        "terminal-black": "#0d1117",
-        "terminal-border": "#30363d",
-        // Accent colors
-        "accent-success": "#10b981",
-        "accent-blue": "#58a6ff",
-        "accent-green": "#3fb950",
-        "accent-yellow": "#d29922",
-        "accent-red": "#f85149",
-        "accent-neutral": "#64748b",
-        // Status colors
-        success: "#10b981",
-        warning: "#f59e0b",
-        error: "#ef4444",
-        info: "#3b82f6",
+        ink: {
+          DEFAULT: "rgb(var(--ink) / <alpha-value>)",
+          secondary: "rgb(var(--ink-secondary) / <alpha-value>)",
+          muted: "rgb(var(--ink-muted) / <alpha-value>)",
+        },
+        // Primary: deep sage green
+        sage: {
+          DEFAULT: "rgb(var(--sage) / <alpha-value>)",
+          hover: "rgb(var(--sage-hover) / <alpha-value>)",
+          soft: "rgb(var(--sage-soft) / <alpha-value>)",
+          softer: "rgb(var(--sage-softer) / <alpha-value>)",
+        },
+        // Secondary: warm terracotta
+        terra: {
+          DEFAULT: "rgb(var(--terra) / <alpha-value>)",
+          soft: "rgb(var(--terra-soft) / <alpha-value>)",
+        },
+        // Tertiary: dusty iris purple
+        iris: {
+          DEFAULT: "rgb(var(--iris) / <alpha-value>)",
+          soft: "rgb(var(--iris-soft) / <alpha-value>)",
+        },
+        // Success: olive green
+        olive: {
+          DEFAULT: "rgb(var(--olive) / <alpha-value>)",
+          soft: "rgb(var(--olive-soft) / <alpha-value>)",
+        },
+        // Warning: golden
+        gold: {
+          DEFAULT: "rgb(var(--gold) / <alpha-value>)",
+          soft: "rgb(var(--gold-soft) / <alpha-value>)",
+        },
+        // Error: warm coral
+        coral: {
+          DEFAULT: "rgb(var(--coral) / <alpha-value>)",
+          soft: "rgb(var(--coral-soft) / <alpha-value>)",
+        },
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
-        display: ["Inter", "sans-serif"],
-        mono: ["JetBrains Mono", "monospace"],
+        sans: ["Figtree", "system-ui", "sans-serif"],
+        display: ["Newsreader", "Georgia", "serif"],
+        mono: ["IBM Plex Mono", "monospace"],
       },
       keyframes: {
-        "pulse-glow": {
-          "0%": { transform: "scale(1)", opacity: "0.9" },
-          "50%": { transform: "scale(1.05)", opacity: "1" },
-          "100%": { transform: "scale(1)", opacity: "0.9" },
+        "soft-pulse": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.5" },
+        },
+        "fade-up-in": {
+          "0%": { transform: "translateY(12px)", opacity: "0" },
+          "100%": { transform: "translateY(0)", opacity: "1" },
+        },
+        "slide-in-left": {
+          "0%": { transform: "translateX(-16px)", opacity: "0" },
+          "100%": { transform: "translateX(0)", opacity: "1" },
+        },
+        "scale-in": {
+          "0%": { transform: "scale(0.95)", opacity: "0" },
+          "100%": { transform: "scale(1)", opacity: "1" },
+        },
+        "glow-pulse": {
+          "0%, 100%": { boxShadow: "0 0 8px rgb(var(--sage) / 0.3)" },
+          "50%": { boxShadow: "0 0 20px rgb(var(--sage) / 0.5)" },
         },
         "flow-pulse": {
           "0%": { opacity: "0.3" },
@@ -59,13 +91,16 @@ const config: Config = {
         },
       },
       animation: {
-        "pulse-glow": "pulse-glow 3s infinite ease-in-out",
+        "soft-pulse": "soft-pulse 2s ease-in-out infinite",
+        "fade-up-in": "fade-up-in 0.4s ease-out",
+        "slide-in-left": "slide-in-left 0.3s ease-out",
+        "scale-in": "scale-in 0.25s ease-out",
+        "glow-pulse": "glow-pulse 3s ease-in-out infinite",
         "flow-pulse": "flow-pulse 2s infinite ease-in-out",
       },
     },
   },
   plugins: [],
-  darkMode: "class",
 };
 
 export default config;

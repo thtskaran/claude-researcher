@@ -18,3 +18,4 @@ todo.md
 /tmp
 ui/tsconfig.tsbuildinfo
 ui/package-lock.json
+/.claude

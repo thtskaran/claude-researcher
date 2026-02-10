@@ -28,10 +28,8 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
   const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    // Create WebSocket connection
     const ws = new ResearchWebSocket(sessionId);
 
-    // Load historical events for this session
     let cancelled = false;
     const cacheKey = `activity_cache_${sessionId}`;
     try {
@@ -72,11 +70,9 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
         setHistorySource("api");
       } catch {
         setHistoryStatus("error");
-        // Ignore history load failures (live updates still work)
       }
     })();
 
-    // Subscribe to events
     ws.onEvent((event) => {
       console.log("Received event:", event);
       const key = getEventKey(event);
@@ -84,19 +80,16 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
         return;
       }
       seenKeysRef.current.add(key);
-      setEvents((prev) => [event, ...prev].slice(0, 2000)); // Keep last 2000 events
+      setEvents((prev) => [event, ...prev].slice(0, 2000));
     });
 
-    // Connect
     ws.connect();
     wsRef.current = ws;
 
-    // Check connection status
     const checkConnection = setInterval(() => {
       setConnected(ws.isConnected());
     }, 1000);
 
-    // Cleanup
     return () => {
       cancelled = true;
       clearInterval(checkConnection);
@@ -144,7 +137,7 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
   const displayItems = useMemo(() => {
     const ordered = [...filteredEvents].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    ); // newest -> oldest
+    );
     const items: DisplayItem[] = [];
     let currentBlock: LogBlock | null = null;
     let lastEventKey: string | null = null;
@@ -198,7 +191,7 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
     }
 
     flushBlock();
-    return items; // newest -> oldest
+    return items;
   }, [filteredEvents, groupSystemLogs]);
 
   useEffect(() => {
@@ -272,19 +265,19 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h3 className="text-lg font-semibold">Live Activity Feed</h3>
-            <div className="flex items-center gap-2 text-xs text-gray-400">
+            <div className="flex items-center gap-2 text-xs text-ink-secondary">
               <span>{filteredEvents.length} events</span>
-              <span>•</span>
+              <span>&middot;</span>
               <span>{Object.keys(stats).length} types</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <div
               className={`w-2 h-2 rounded-full ${
-                connected ? "bg-success" : "bg-gray-500"
-              } ${connected ? "animate-pulse" : ""}`}
+                connected ? "bg-olive" : "bg-ink-muted"
+              } ${connected ? "animate-soft-pulse" : ""}`}
             />
-            <span className="text-sm text-gray-400">
+            <span className="text-sm text-ink-secondary">
               {connected ? "Connected" : "Disconnected"}
             </span>
           </div>
@@ -329,7 +322,7 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
               onClick={() => toggleType(type)}
             >
               {type}
-              {stats[type] ? <span className="ml-1 text-xs text-gray-400">({stats[type]})</span> : null}
+              {stats[type] ? <span className="ml-1 text-xs text-ink-muted">({stats[type]})</span> : null}
             </button>
           ))}
         </div>
@@ -352,7 +345,7 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
       {unseenCount > 0 ? (
         <button
           type="button"
-          className="mb-3 w-full text-xs bg-primary/10 border border-primary/30 text-primary rounded-lg py-2 hover:bg-primary/20 transition-colors"
+          className="mb-3 w-full text-xs bg-sage-soft border border-sage/30 text-sage rounded-lg py-2 hover:bg-sage/15 transition-colors"
           onClick={() => {
             if (feedRef.current) {
               feedRef.current.scrollTop = 0;
@@ -360,16 +353,16 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
             setUnseenCount(0);
           }}
         >
-          {unseenCount} new update{unseenCount > 1 ? "s" : ""} — Jump to latest
+          {unseenCount} new update{unseenCount > 1 ? "s" : ""} &mdash; Jump to latest
         </button>
       ) : null}
       {historyStatus === "loading" ? (
-        <div className="mb-3 text-xs text-gray-500 flex items-center gap-2">
-          <span className="animate-pulse">Loading history…</span>
+        <div className="mb-3 text-xs text-ink-muted flex items-center gap-2">
+          <span className="animate-soft-pulse">Loading history&hellip;</span>
         </div>
       ) : null}
       {historyStatus === "loaded" && historyLoadedAt ? (
-        <div className="mb-3 text-xs text-gray-500 flex items-center gap-2">
+        <div className="mb-3 text-xs text-ink-muted flex items-center gap-2">
           <span className="badge badge-system">History loaded</span>
           <span>{formatTimestamp(historyLoadedAt)}</span>
           {historySource === "cache" ? (
@@ -378,7 +371,7 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
         </div>
       ) : null}
       {historyStatus === "error" ? (
-        <div className="mb-3 text-xs text-error">
+        <div className="mb-3 text-xs text-coral">
           Failed to load history. Live updates will continue.
         </div>
       ) : null}
@@ -388,7 +381,7 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
         className="space-y-2 max-h-[36rem] overflow-y-auto"
       >
         {displayItems.length === 0 ? (
-          <div className="text-center py-8 text-gray-400">
+          <div className="text-center py-8 text-ink-secondary">
             <svg
               className="w-12 h-12 mx-auto mb-3 opacity-50"
               fill="none"
@@ -419,7 +412,7 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
               return (
                 <div
                   key={block.id}
-                  className={`bg-dark-bg border border-dark-border rounded-lg p-3 ${
+                  className={`bg-card-inset border border-edge rounded-lg p-3 ${
                     compactView ? "text-xs" : "text-sm"
                   }`}
                 >
@@ -429,10 +422,10 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
                       <span className={`badge ${phaseBadgeClass[phase]}`}>
                         {phase}
                       </span>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-ink-muted">
                         {block.agent}
                       </span>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-ink-muted">
                         {block.lines.length} lines
                       </span>
                     </div>
@@ -445,7 +438,7 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
                     </button>
                   </div>
 
-                  <div className="text-xs text-gray-500 mb-2">
+                  <div className="text-xs text-ink-muted mb-2">
                     {formatTimestamp(block.start)}
                   </div>
 
@@ -456,12 +449,12 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
                       ))}
                     </div>
                   ) : (
-                    <div className="space-y-1 text-xs text-gray-300">
+                    <div className="space-y-1 text-xs text-ink-secondary">
                       {previewLines.map((line, idx) => (
                         <LogLineRow key={`${block.id}-preview-${idx}`} line={line} />
                       ))}
                       {block.lines.length > previewLines.length ? (
-                        <div className="text-gray-500">
+                        <div className="text-ink-muted">
                           +{block.lines.length - previewLines.length} more lines
                         </div>
                       ) : null}
@@ -478,11 +471,10 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
             return (
               <div
                 key={`${event.timestamp}-${event.event_type}-${event.agent}`}
-                className={`bg-dark-bg border border-dark-border rounded-lg ${
+                className={`bg-card-inset border border-edge rounded-lg ${
                   compactView ? "p-2" : "p-3"
-                } hover:border-primary/30 transition-colors`}
+                } hover:border-sage/30 transition-colors`}
               >
-                {/* Event Header */}
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`badge ${getBadgeClass(event.event_type)}`}>
@@ -491,20 +483,19 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
                     <span className={`badge ${phaseBadgeClass[phase]}`}>
                       {phase}
                     </span>
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-ink-muted">
                       {event.agent}
                     </span>
                     {item.repeat > 1 ? (
                       <span className="badge badge-system">x{item.repeat}</span>
                     ) : null}
                   </div>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-ink-muted">
                     {formatTimestamp(event.timestamp)}
                   </span>
                 </div>
 
-                {/* Event Data */}
-                <div className="text-sm text-gray-300">
+                <div className="text-sm text-ink-secondary">
                   {renderEventData(event, {
                     expanded: isExpanded,
                     onToggle: () => toggleEvent(eventId),
@@ -528,7 +519,7 @@ function getBadgeClass(eventType: string): string {
     case "finding":
       return "badge-finding";
     case "synthesis":
-      return "badge-synthesis";
+      return "badge-thinking";
     case "error":
       return "badge-error";
     case "system":
@@ -558,13 +549,13 @@ function renderEventData(
     return (
       <div className="space-y-2">
         {data.content ? <p>{data.content}</p> : null}
-        <div className="flex flex-wrap gap-2 text-xs text-gray-400">
+        <div className="flex flex-wrap gap-2 text-xs text-ink-muted">
           {data.source ? (
             <a
               href={data.source}
               target="_blank"
               rel="noreferrer"
-              className="text-info hover:underline"
+              className="text-sage hover:underline"
             >
               {truncateUrl(String(data.source))}
             </a>
@@ -588,7 +579,7 @@ function renderEventData(
       <div className="space-y-1">
         <p className="font-medium">{data.action}</p>
         {data.iteration ? (
-          <p className="text-xs text-gray-400">Iteration {data.iteration}</p>
+          <p className="text-xs text-ink-muted">Iteration {data.iteration}</p>
         ) : null}
       </div>
     );
@@ -599,14 +590,14 @@ function renderEventData(
       <div className="space-y-1">
         <p>{data.message}</p>
         {typeof data.progress === "number" ? (
-          <p className="text-xs text-gray-400">Progress {data.progress}%</p>
+          <p className="text-xs text-ink-muted">Progress {data.progress}%</p>
         ) : null}
       </div>
     );
   }
 
   if (event.event_type === "error" && data.error) {
-    return <p className="text-error">{data.error}</p>;
+    return <p className="text-coral">{data.error}</p>;
   }
 
   if (data.message) {
@@ -617,7 +608,6 @@ function renderEventData(
     return renderExpandableText(maybeLongText, expanded, onToggle);
   }
 
-  // Render as JSON for debugging (any other structure)
   return (
     <pre className="text-xs font-mono overflow-x-auto">
       {JSON.stringify(data, null, 2)}
@@ -637,15 +627,15 @@ type Phase =
   | "system";
 
 const phaseBadgeClass: Record<Phase, string> = {
-  reasoning: "bg-info/20 text-info",
-  action: "bg-primary/20 text-primary",
-  search: "bg-primary-light/20 text-primary-light",
-  finding: "bg-success/20 text-success",
-  observe: "bg-warning/20 text-warning",
-  knowledge: "bg-info/20 text-info",
-  synthesis: "bg-primary-dark/20 text-primary-light",
-  error: "bg-error/20 text-error",
-  system: "bg-gray-500/20 text-gray-300",
+  reasoning: "bg-iris/20 text-iris",
+  action: "bg-sage/20 text-sage",
+  search: "bg-sage/15 text-sage",
+  finding: "bg-olive/20 text-olive",
+  observe: "bg-gold/20 text-gold",
+  knowledge: "bg-sage/15 text-sage",
+  synthesis: "bg-iris/20 text-iris",
+  error: "bg-coral/20 text-coral",
+  system: "bg-edge/50 text-ink-secondary",
 };
 
 type DisplayItem =
@@ -801,19 +791,19 @@ function getPhaseForLogBlock(block: LogBlock): Phase {
 
 function LogLineRow({ line }: { line: LogLine }) {
   if (line.tone === "divider") {
-    return <div className="h-px bg-dark-border my-2" />;
+    return <div className="h-px bg-edge my-2" />;
   }
 
   const base =
     line.tone === "label"
-      ? "text-primary-light"
+      ? "text-sage"
       : line.tone === "url"
-      ? "text-info"
+      ? "text-sage"
       : line.tone === "meta"
-      ? "text-gray-400"
+      ? "text-ink-secondary"
       : line.tone === "list"
-      ? "text-gray-300"
-      : "text-gray-200";
+      ? "text-ink-secondary"
+      : "text-ink/80";
 
   return (
     <div className={`flex items-start gap-2 ${base}`}>

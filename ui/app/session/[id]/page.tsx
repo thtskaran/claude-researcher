@@ -70,7 +70,6 @@ export default function SessionDetail() {
   }, [session?.status]);
 
   useEffect(() => {
-    // Set up WebSocket listener for mid-research questions
     const ws = new ResearchWebSocket(sessionId);
 
     ws.onEvent((event) => {
@@ -136,8 +135,8 @@ export default function SessionDetail() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <span className="material-symbols-outlined text-4xl text-primary animate-spin mb-4 block">progress_activity</span>
-          <p className="text-gray-400">Loading session...</p>
+          <span className="material-symbols-outlined text-4xl text-sage animate-spin mb-4 block">progress_activity</span>
+          <p className="text-ink-secondary">Loading session...</p>
         </div>
       </div>
     );
@@ -147,9 +146,9 @@ export default function SessionDetail() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <span className="material-symbols-outlined text-5xl text-error mb-4 block">error</span>
-          <h2 className="text-2xl font-bold mb-2">{error || "Session not found"}</h2>
-          <Link href="/" className="text-primary hover:underline text-sm">← Back to Dashboard</Link>
+          <span className="material-symbols-outlined text-5xl text-coral mb-4 block">error</span>
+          <h2 className="text-2xl font-display mb-2">{error || "Session not found"}</h2>
+          <Link href="/" className="text-sage hover:underline text-sm">&larr; Back to Dashboard</Link>
         </div>
       </div>
     );
@@ -164,25 +163,24 @@ export default function SessionDetail() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="border-b border-dark-border bg-dark-surface/50 backdrop-blur-sm sticky top-0 z-20">
+      <header className="border-b border-edge bg-card/50 backdrop-blur-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
-            <Link href="/" className="hover:text-primary transition-colors">Sessions</Link>
+          <div className="flex items-center gap-2 text-xs text-ink-muted mb-3">
+            <Link href="/" className="hover:text-sage transition-colors">Sessions</Link>
             <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-            <span className={isRunning ? "text-accent-success" : "text-gray-400"}>
+            <span className={isRunning ? "text-olive" : "text-ink-secondary"}>
               {isRunning ? "Running" : session.status}
             </span>
           </div>
 
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-4 min-w-0">
-              <Link href="/" className="text-gray-400 hover:text-primary transition-colors mt-1 shrink-0">
+              <Link href="/" className="text-ink-secondary hover:text-sage transition-colors mt-1 shrink-0">
                 <span className="material-symbols-outlined">arrow_back</span>
               </Link>
               <div className="min-w-0">
-                <h1 className="text-xl font-bold line-clamp-2 leading-tight">{session.goal}</h1>
-                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                <h1 className="text-xl font-display line-clamp-2 leading-tight">{session.goal}</h1>
+                <div className="flex items-center gap-4 mt-2 text-xs text-ink-muted">
                   <span className="font-mono">#{session.session_id.slice(0, 8)}</span>
                   <span className="flex items-center gap-1">
                     <span className="material-symbols-outlined text-[14px]">schedule</span>
@@ -196,7 +194,7 @@ export default function SessionDetail() {
               <span className={`badge ${getStatusBadgeClass(session.status)}`}>
                 {isRunning && (
                   <span className="relative flex h-1.5 w-1.5 mr-1">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75" />
+                    <span className="animate-soft-pulse absolute inline-flex h-full w-full rounded-full bg-current opacity-75" />
                     <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-current" />
                   </span>
                 )}
@@ -208,40 +206,19 @@ export default function SessionDetail() {
       </header>
 
       {/* Stats Cards */}
-      <div className="border-b border-dark-border bg-dark-surface/20">
+      <div className="border-b border-edge bg-card/20">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard
-              icon="travel_explore"
-              label="Sources Found"
-              value={stats ? String(stats.sources) : "--"}
-              color="text-accent-blue"
-            />
-            <StatCard
-              icon="description"
-              label="Findings"
-              value={stats ? String(stats.findings) : "--"}
-              color="text-accent-green"
-            />
-            <StatCard
-              icon="topic"
-              label="Topics"
-              value={stats ? String(stats.topics) : "--"}
-              color="text-accent-yellow"
-            />
-            <StatCard
-              icon="timer"
-              label={isRunning ? "Time Remaining" : "Duration"}
-              value={isRunning ? remaining : elapsed}
-              color={isRunning ? "text-primary" : "text-gray-400"}
-              animate={isRunning}
-            />
+            <StatCard icon="travel_explore" label="Sources Found" value={stats ? String(stats.sources) : "--"} color="text-sage" />
+            <StatCard icon="description" label="Findings" value={stats ? String(stats.findings) : "--"} color="text-olive" />
+            <StatCard icon="topic" label="Topics" value={stats ? String(stats.topics) : "--"} color="text-gold" />
+            <StatCard icon="timer" label={isRunning ? "Time Remaining" : "Duration"} value={isRunning ? remaining : elapsed} color={isRunning ? "text-sage" : "text-ink-secondary"} animate={isRunning} />
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-dark-border bg-dark-surface/10 sticky top-[89px] z-10 backdrop-blur-sm">
+      <div className="border-b border-edge bg-card/10 sticky top-[89px] z-10 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-6">
           <div className="tab-bar overflow-x-auto scrollbar-hide">
             {tabs.map((tab) => (
@@ -266,27 +243,25 @@ export default function SessionDetail() {
               <ActivityFeed sessionId={sessionId} />
             </div>
             <div className="space-y-6">
-              {/* Agent Status */}
               <div className="card">
-                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Agent Status</h3>
+                <h3 className="text-sm font-semibold text-ink-secondary uppercase tracking-wider mb-4">Agent Status</h3>
                 <div className="space-y-3">
-                  <AgentStatusCard name="Director" role="Level 0" status="active" icon="military_tech" />
-                  <AgentStatusCard name="Manager" role="Level 1" status="thinking" icon="psychology" />
-                  <AgentStatusCard name="Intern Pool" role="Level 2" status="active" icon="group" count={3} />
+                  <AgentStatusCard name="Director" role="Level 0" status="active" icon="military_tech" variant="iris" />
+                  <AgentStatusCard name="Manager" role="Level 1" status="thinking" icon="psychology" variant="sage" />
+                  <AgentStatusCard name="Intern Pool" role="Level 2" status="active" icon="group" count={3} variant="olive" />
                 </div>
               </div>
 
-              {/* System Logs */}
-              <div className="card bg-terminal-black border-terminal-border">
+              <div className="card bg-card-inset border-edge">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">System Logs</h3>
+                  <h3 className="text-sm font-semibold text-ink-secondary uppercase tracking-wider">System Logs</h3>
                   <span className="status-dot status-dot-active" />
                 </div>
-                <div className="space-y-1.5 font-mono text-xs text-gray-400 max-h-48 overflow-y-auto scrollbar-hide">
-                  <p><span className="text-primary">[{new Date().toLocaleTimeString()}]</span> Monitoring research session...</p>
-                  <p><span className="text-primary">[{new Date().toLocaleTimeString()}]</span> WebSocket connection established</p>
-                  <p className="text-white bg-white/5 p-1 -mx-1 rounded">
-                    <span className="text-primary animate-pulse">›</span> Awaiting agent events...
+                <div className="space-y-1.5 font-mono text-xs text-ink-secondary max-h-48 overflow-y-auto scrollbar-hide">
+                  <p><span className="text-sage">[{new Date().toLocaleTimeString()}]</span> Monitoring research session...</p>
+                  <p><span className="text-sage">[{new Date().toLocaleTimeString()}]</span> WebSocket connection established</p>
+                  <p className="text-ink bg-ink/5 p-1 -mx-1 rounded">
+                    <span className="text-sage animate-soft-pulse">&rsaquo;</span> Awaiting agent events...
                   </p>
                 </div>
               </div>
@@ -313,7 +288,7 @@ export default function SessionDetail() {
           <div className="w-full h-[calc(100vh-320px)] min-h-[600px]">
             <iframe
               src={`/session/${sessionId}/agents`}
-              className="w-full h-full border-0 rounded-xl bg-dark-surface"
+              className="w-full h-full border-0 rounded-xl bg-card"
               title="Agent Transparency"
             />
           </div>
@@ -323,14 +298,13 @@ export default function SessionDetail() {
           <div className="w-full h-[calc(100vh-320px)] min-h-[600px]">
             <iframe
               src={`/session/${sessionId}/verify`}
-              className="w-full h-full border-0 rounded-xl bg-dark-surface"
+              className="w-full h-full border-0 rounded-xl bg-card"
               title="CoVe Verification Pipeline"
             />
           </div>
         )}
       </main>
 
-      {/* Mid-Research Question Modal */}
       {pendingQuestion && (
         <QuestionModal
           sessionId={sessionId}
@@ -347,91 +321,60 @@ export default function SessionDetail() {
   );
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-  color,
-  animate,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-  color: string;
-  animate?: boolean;
-}) {
+function StatCard({ icon, label, value, color, animate }: { icon: string; label: string; value: string; color: string; animate?: boolean }) {
   return (
-    <div className="bg-dark-surface border border-dark-border rounded-xl p-4 hover:border-primary/30 transition-colors group">
+    <div className="bg-card border border-edge rounded-xl p-4 hover:border-sage/30 transition-colors group">
       <div className="flex justify-between items-start mb-2">
-        <p className="text-xs font-medium text-gray-500">{label}</p>
-        <span className={`material-symbols-outlined text-lg transition-colors group-hover:text-primary ${color}`}>
-          {icon}
-        </span>
+        <p className="text-xs font-medium text-ink-muted">{label}</p>
+        <span className={`material-symbols-outlined text-lg transition-colors group-hover:text-sage ${color}`}>{icon}</span>
       </div>
-      <p className={`font-mono text-2xl font-bold tracking-tighter ${animate ? "animate-pulse" : ""}`}>{value}</p>
+      <p className={`font-mono text-2xl font-bold tracking-tighter ${animate ? "animate-soft-pulse" : ""}`}>{value}</p>
     </div>
   );
 }
 
-function AgentStatusCard({
-  name,
-  role,
-  status,
-  icon,
-  count,
-}: {
-  name: string;
-  role: string;
-  status: string;
-  icon: string;
-  count?: number;
-}) {
+function AgentStatusCard({ name, role, status, icon, count, variant }: { name: string; role: string; status: string; icon: string; count?: number; variant?: "iris" | "sage" | "olive" }) {
   const statusConfig: Record<string, { dot: string; label: string }> = {
     active: { dot: "status-dot-active", label: "Active" },
-    thinking: { dot: "bg-primary animate-pulse", label: "Thinking" },
+    thinking: { dot: "bg-iris animate-soft-pulse", label: "Thinking" },
     idle: { dot: "status-dot-idle", label: "Idle" },
   };
   const cfg = statusConfig[status] || statusConfig.idle;
 
+  const variantConfig = {
+    iris: { bg: "bg-iris-soft", text: "text-iris" },
+    sage: { bg: "bg-sage-soft", text: "text-sage" },
+    olive: { bg: "bg-olive-soft", text: "text-olive" },
+  };
+  const vc = variantConfig[variant || "sage"];
+
   return (
-    <div className="flex items-center justify-between p-3 bg-dark-bg rounded-lg border border-dark-border hover:border-primary/20 transition-colors">
+    <div className="flex items-center justify-between p-3 bg-card-inset rounded-lg border border-edge hover:border-sage/20 transition-colors">
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-          <span className="material-symbols-outlined text-primary text-base">{icon}</span>
+        <div className={`w-8 h-8 rounded-lg ${vc.bg} flex items-center justify-center`}>
+          <span className={`material-symbols-outlined ${vc.text} text-base`}>{icon}</span>
         </div>
         <div>
           <span className="text-sm font-medium block">{name}</span>
-          <span className="text-xs text-gray-500">{role}{count ? ` (${count})` : ""}</span>
+          <span className="text-xs text-ink-muted">{role}{count ? ` (${count})` : ""}</span>
         </div>
       </div>
       <div className="flex items-center gap-2">
         <span className={`status-dot ${cfg.dot}`} />
-        <span className="text-xs text-gray-400">{cfg.label}</span>
+        <span className="text-xs text-ink-secondary">{cfg.label}</span>
       </div>
     </div>
   );
 }
 
-function SubPagePlaceholder({
-  icon,
-  title,
-  description,
-  linkHref,
-  linkText,
-}: {
-  icon: string;
-  title: string;
-  description: string;
-  linkHref: string;
-  linkText: string;
-}) {
+function SubPagePlaceholder({ icon, title, description, linkHref, linkText }: { icon: string; title: string; description: string; linkHref: string; linkText: string }) {
   return (
     <div className="card flex flex-col items-center justify-center py-16 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-        <span className="material-symbols-outlined text-primary text-3xl">{icon}</span>
+      <div className="w-16 h-16 rounded-2xl bg-sage-soft flex items-center justify-center mb-4">
+        <span className="material-symbols-outlined text-sage text-3xl">{icon}</span>
       </div>
-      <h2 className="text-xl font-bold mb-2">{title}</h2>
-      <p className="text-sm text-gray-400 max-w-md mb-6">{description}</p>
+      <h2 className="text-xl font-display mb-2">{title}</h2>
+      <p className="text-sm text-ink-secondary max-w-md mb-6">{description}</p>
       <Link href={linkHref} className="btn btn-primary">
         <span className="material-symbols-outlined text-lg">open_in_new</span>
         {linkText}
@@ -456,12 +399,7 @@ function getStatusBadgeClass(status: string): string {
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function getElapsedTime(startDate: string, nowMs: number): string {

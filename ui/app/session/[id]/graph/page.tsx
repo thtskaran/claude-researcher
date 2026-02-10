@@ -36,36 +36,46 @@ interface KGContradiction {
 
 /* ── Entity style map ──────────────────────────────────── */
 const entityTypeConfig: Record<string, { color: string; icon: string; label: string }> = {
-    CLAIM: { color: "#f59e0b", icon: "💡", label: "Claim" },
-    CONCEPT: { color: "#6366f1", icon: "🏷️", label: "Concept" },
-    SOURCE: { color: "#6b7280", icon: "📄", label: "Source" },
-    EVIDENCE: { color: "#10b981", icon: "🔬", label: "Evidence" },
-    TECHNOLOGY: { color: "#3b82f6", icon: "⚙️", label: "Technology" },
-    METHOD: { color: "#8b5cf6", icon: "🔧", label: "Method" },
-    METRIC: { color: "#ef4444", icon: "📊", label: "Metric" },
-    PERSON: { color: "#ec4899", icon: "👤", label: "Person" },
-    ORGANIZATION: { color: "#14b8a6", icon: "🏢", label: "Organization" },
-    QUOTE: { color: "#f97316", icon: "💬", label: "Quote" },
+    CLAIM: { color: "#f59e0b", icon: "\u{1F4A1}", label: "Claim" },
+    CONCEPT: { color: "#6366f1", icon: "\u{1F3F7}\uFE0F", label: "Concept" },
+    SOURCE: { color: "#6b7280", icon: "\u{1F4C4}", label: "Source" },
+    EVIDENCE: { color: "#10b981", icon: "\u{1F52C}", label: "Evidence" },
+    TECHNOLOGY: { color: "#0ea5e9", icon: "\u2699\uFE0F", label: "Technology" },
+    METHOD: { color: "#8b5cf6", icon: "\u{1F527}", label: "Method" },
+    METRIC: { color: "#f43f5e", icon: "\u{1F4CA}", label: "Metric" },
+    PERSON: { color: "#ec4899", icon: "\u{1F464}", label: "Person" },
+    ORGANIZATION: { color: "#14b8a6", icon: "\u{1F3E2}", label: "Organization" },
+    QUOTE: { color: "#f97316", icon: "\u{1F4AC}", label: "Quote" },
 };
-const defaultEntityCfg = { color: "#9ca3af", icon: "●", label: "Other" };
+const defaultEntityCfg = { color: "#9ca3af", icon: "\u25CF", label: "Other" };
 
 const predicateColors: Record<string, string> = {
     supports: "#10b981",
-    contradicts: "#ef4444",
-    related: "#3b82f6",
-    related_to: "#3b82f6",
+    contradicts: "#f43f5e",
+    related: "#0ea5e9",
+    related_to: "#0ea5e9",
     is_a: "#6366f1",
     part_of: "#8b5cf6",
     causes: "#f59e0b",
     cites: "#6b7280",
     implements: "#a78bfa",
     outperforms: "#10b981",
-    similar_to: "#3b82f6",
+    similar_to: "#0ea5e9",
     alternative_to: "#ec4899",
     authored_by: "#6b7280",
     mentioned_in: "#6b7280",
 };
 const defaultEdgeColor = "#484f58";
+
+/* ── Theme-aware colors for vis-network ───────────────── */
+function getGraphTheme() {
+    const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+    return {
+        fontColor: isDark ? "#f0ece4" : "#3a2c22",
+        fontBg: isDark ? "rgba(28, 26, 22, 0.85)" : "rgba(247, 244, 234, 0.85)",
+        edgeFontColor: isDark ? "#b4aa9e" : "#766252",
+    };
+}
 
 /* ── Main Component ────────────────────────────────────── */
 export default function KnowledgeGraphPage() {
@@ -174,6 +184,8 @@ export default function KnowledgeGraphPage() {
             import("vis-data").then(({ DataSet }) => {
                 if (!containerRef.current) return;
 
+                const theme = getGraphTheme();
+
                 // Create filtered node IDs set
                 const filteredIds = new Set(filteredEntities.map(e => e.id));
 
@@ -197,10 +209,10 @@ export default function KnowledgeGraphPage() {
                         shape: e.entity_type === "CLAIM" ? "diamond" : "dot",
                         size: size,
                         font: {
-                            color: "#e5e7eb",
+                            color: theme.fontColor,
                             size: 14,
-                            face: "Inter, system-ui, sans-serif",
-                            background: "rgba(13, 17, 23, 0.85)",
+                            face: "Figtree, system-ui, sans-serif",
+                            background: theme.fontBg,
                             strokeWidth: 0
                         }
                     };
@@ -249,7 +261,7 @@ export default function KnowledgeGraphPage() {
                     edges: {
                         font: {
                             size: 11,
-                            color: "#9ca3af",
+                            color: theme.edgeFontColor,
                             strokeWidth: 0,
                             align: "middle"
                         },
@@ -275,7 +287,7 @@ export default function KnowledgeGraphPage() {
                     interaction: {
                         hover: true,
                         tooltipDelay: 100,
-                        hideEdgesOnDrag: false,  // Keep edges visible during drag
+                        hideEdgesOnDrag: false,
                         hideEdgesOnZoom: false,
                         dragNodes: true,
                         dragView: true,
@@ -317,16 +329,15 @@ export default function KnowledgeGraphPage() {
                 // Drag events for elastic physics
                 let dragTimeout: NodeJS.Timeout;
                 network.on("dragStart", () => {
-                    // Enable physics when dragging starts with natural parameters
                     network.setOptions({
                         physics: {
                             enabled: true,
                             barnesHut: {
-                                gravitationalConstant: -8000,  // Natural repulsion force
+                                gravitationalConstant: -8000,
                                 centralGravity: 0.05,
                                 springLength: 150,
-                                springConstant: 0.01,  // Responsive springs
-                                damping: 0.4,  // Smooth, natural damping
+                                springConstant: 0.01,
+                                damping: 0.4,
                                 avoidOverlap: 0.3
                             },
                             maxVelocity: 50,
@@ -338,17 +349,15 @@ export default function KnowledgeGraphPage() {
                 });
 
                 network.on("dragEnd", () => {
-                    // Disable physics after settling
                     clearTimeout(dragTimeout);
                     dragTimeout = setTimeout(() => {
                         network.setOptions({ physics: { enabled: false } });
-                    }, 800);  // 0.8 seconds to settle naturally
+                    }, 800);
                 });
 
-                // Disable physics after stabilization (stop movement)
+                // Disable physics after stabilization
                 network.on("stabilizationIterationsDone", () => {
                     network.fit({ animation: { duration: 500, easingFunction: "easeInOutQuad" as any } });
-                    // Stop physics to prevent nodes from moving
                     network.setOptions({ physics: { enabled: false } });
                 });
             });
@@ -364,23 +373,23 @@ export default function KnowledgeGraphPage() {
 
     /* ── Render ─────────────────────────────────────────── */
     return (
-        <div className="min-h-screen flex flex-col bg-[#0d1117]">
+        <div className="min-h-screen flex flex-col bg-page">
             {/* Header */}
-            <header className="border-b border-dark-border bg-dark-surface/50 backdrop-blur-sm sticky top-0 z-20">
+            <header className="border-b border-edge bg-card/50 backdrop-blur-sm sticky top-0 z-20">
                 <div className="max-w-full mx-auto px-6 py-3">
-                    <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
-                        <Link href="/" className="hover:text-primary transition-colors">Sessions</Link>
+                    <div className="flex items-center gap-2 text-xs text-ink-muted mb-1">
+                        <Link href="/" className="hover:text-sage transition-colors">Sessions</Link>
                         <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-                        <Link href={`/session/${sessionId}`} className="hover:text-primary transition-colors">Session</Link>
+                        <Link href={`/session/${sessionId}`} className="hover:text-sage transition-colors">Session</Link>
                         <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-                        <span className="text-gray-300">Knowledge Graph</span>
+                        <span className="text-ink-secondary">Knowledge Graph</span>
                     </div>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <Link href={`/session/${sessionId}`} className="text-gray-400 hover:text-primary transition-colors">
+                            <Link href={`/session/${sessionId}`} className="text-ink-secondary hover:text-sage transition-colors">
                                 <span className="material-symbols-outlined">arrow_back</span>
                             </Link>
-                            <h1 className="text-lg font-bold">Knowledge Graph</h1>
+                            <h1 className="text-lg font-display">Knowledge Graph</h1>
                             <span className="badge badge-system">{filteredEntities.length} nodes</span>
                             <span className="badge badge-system">{relations.length} edges</span>
                             {contradictions.length > 0 && (
@@ -413,7 +422,7 @@ export default function KnowledgeGraphPage() {
                                             }}
                                         />
                                         {searchResults.length > 0 && (
-                                            <div className="mt-1 bg-dark-surface border border-dark-border rounded-lg shadow-xl max-h-64 overflow-y-auto">
+                                            <div className="mt-1 bg-card border border-edge rounded-lg max-h-64 overflow-y-auto" style={{ boxShadow: "var(--shadow-lg)" }}>
                                                 {searchResults.map(n => {
                                                     const cfg = entityTypeConfig[n.entity_type] || defaultEntityCfg;
                                                     return (
@@ -423,8 +432,8 @@ export default function KnowledgeGraphPage() {
                                                             className="w-full text-left px-3 py-2 hover:bg-card-hover transition-colors flex items-center gap-2 text-sm"
                                                         >
                                                             <span style={{ color: cfg.color }}>{cfg.icon}</span>
-                                                            <span className="text-gray-200 truncate">{n.name}</span>
-                                                            <span className="text-xs text-gray-500 ml-auto">{n.entity_type}</span>
+                                                            <span className="text-ink truncate">{n.name}</span>
+                                                            <span className="text-xs text-ink-muted ml-auto">{n.entity_type}</span>
                                                         </button>
                                                     );
                                                 })}
@@ -448,7 +457,7 @@ export default function KnowledgeGraphPage() {
             {/* Main Area */}
             {loading ? (
                 <div className="flex-1 flex items-center justify-center">
-                    <div className="flex items-center gap-3 text-gray-400">
+                    <div className="flex items-center gap-3 text-ink-secondary">
                         <span className="material-symbols-outlined animate-spin">progress_activity</span>
                         Loading knowledge graph...
                     </div>
@@ -456,33 +465,33 @@ export default function KnowledgeGraphPage() {
             ) : error ? (
                 <div className="flex-1 flex items-center justify-center">
                     <div className="text-center">
-                        <span className="material-symbols-outlined text-4xl text-gray-600 mb-3 block">error</span>
-                        <p className="text-sm text-gray-400">{error}</p>
+                        <span className="material-symbols-outlined text-4xl text-ink-muted mb-3 block">error</span>
+                        <p className="text-sm text-ink-secondary">{error}</p>
                         <button onClick={fetchGraph} className="btn btn-ghost text-xs mt-4">Retry</button>
                     </div>
                 </div>
             ) : entities.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center">
                     <div className="text-center">
-                        <span className="material-symbols-outlined text-4xl text-gray-600 mb-3 block">hub</span>
-                        <p className="text-sm text-gray-400">No knowledge graph data yet.</p>
-                        <p className="text-xs text-gray-600 mt-1">Entities will appear as the research processes findings.</p>
+                        <span className="material-symbols-outlined text-4xl text-ink-muted mb-3 block">hub</span>
+                        <p className="text-sm text-ink-secondary">No knowledge graph data yet.</p>
+                        <p className="text-xs text-ink-muted mt-1">Entities will appear as the research processes findings.</p>
                     </div>
                 </div>
             ) : (
                 <div className="flex-1 relative overflow-hidden">
                     {/* Vis-Network Container */}
-                    <div ref={containerRef} className="absolute inset-0 bg-[#0d1117]" />
+                    <div ref={containerRef} className="absolute inset-0 bg-page" />
 
                     {/* Detail Panel */}
                     {selectedNode && (
-                        <div className="absolute right-4 top-4 w-80 bg-dark-surface/95 backdrop-blur-xl border border-dark-border rounded-xl p-5 z-20 max-h-[calc(100%-6rem)] overflow-y-auto shadow-2xl">
+                        <div className="absolute right-4 top-4 w-80 bg-card/95 backdrop-blur-xl border border-edge rounded-xl p-5 z-20 max-h-[calc(100%-6rem)] overflow-y-auto" style={{ boxShadow: "var(--shadow-lg)" }}>
                             <div className="flex items-start justify-between mb-3">
                                 <div className="flex items-center gap-2 min-w-0">
                                     <span className="text-xl shrink-0">{(entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).icon}</span>
                                     <h3 className="font-semibold text-sm truncate">{selectedNode.name}</h3>
                                 </div>
-                                <button onClick={() => setSelectedId(null)} className="text-gray-500 hover:text-white transition-colors shrink-0">
+                                <button onClick={() => setSelectedId(null)} className="text-ink-muted hover:text-ink transition-colors shrink-0">
                                     <span className="material-symbols-outlined text-lg">close</span>
                                 </button>
                             </div>
@@ -501,12 +510,12 @@ export default function KnowledgeGraphPage() {
                             {/* Properties */}
                             {selectedNode.properties && Object.keys(selectedNode.properties).length > 0 && (
                                 <div className="mb-4">
-                                    <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold block mb-2">Properties</label>
+                                    <label className="text-[10px] text-ink-muted uppercase tracking-widest font-bold block mb-2">Properties</label>
                                     <div className="space-y-1">
                                         {Object.entries(selectedNode.properties).map(([k, v]) => (
                                             <div key={k} className="text-xs flex justify-between gap-2">
-                                                <span className="text-gray-500 font-mono shrink-0">{k}</span>
-                                                <span className="text-gray-300 truncate">{String(v)}</span>
+                                                <span className="text-ink-muted font-mono shrink-0">{k}</span>
+                                                <span className="text-ink-secondary truncate">{String(v)}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -515,7 +524,7 @@ export default function KnowledgeGraphPage() {
 
                             {/* Connections */}
                             <div>
-                                <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold block mb-2">Connections ({connectedEdges.length})</label>
+                                <label className="text-[10px] text-ink-muted uppercase tracking-widest font-bold block mb-2">Connections ({connectedEdges.length})</label>
                                 <div className="space-y-1.5 max-h-60 overflow-y-auto">
                                     {connectedEdges.map((edge, i) => {
                                         const isSubject = edge.subject_id === selectedId;
@@ -531,14 +540,14 @@ export default function KnowledgeGraphPage() {
                                                 className="flex items-center gap-2 text-xs w-full text-left hover:bg-card-hover p-1.5 rounded-md transition-colors"
                                             >
                                                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                                                <span className="text-gray-500 font-mono shrink-0">{edge.predicate.replace(/_/g, " ")}</span>
-                                                <span className="text-gray-300 truncate">{otherName || "Unknown"}</span>
-                                                <span className="material-symbols-outlined text-gray-600 text-[12px] ml-auto shrink-0">arrow_forward</span>
+                                                <span className="text-ink-muted font-mono shrink-0">{edge.predicate.replace(/_/g, " ")}</span>
+                                                <span className="text-ink-secondary truncate">{otherName || "Unknown"}</span>
+                                                <span className="material-symbols-outlined text-ink-muted text-[12px] ml-auto shrink-0">arrow_forward</span>
                                             </button>
                                         );
                                     })}
                                     {connectedEdges.length === 0 && (
-                                        <p className="text-xs text-gray-600">No connections</p>
+                                        <p className="text-xs text-ink-muted">No connections</p>
                                     )}
                                 </div>
                             </div>
@@ -546,11 +555,11 @@ export default function KnowledgeGraphPage() {
                     )}
 
                     {/* Bottom Controls Bar */}
-                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-dark-surface/90 backdrop-blur-xl border border-dark-border rounded-xl px-5 py-2.5 z-20 flex items-center gap-4 max-w-[92vw] overflow-x-auto shadow-2xl">
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-card/90 backdrop-blur-xl border border-edge rounded-xl px-5 py-2.5 z-20 flex items-center gap-4 max-w-[92vw] overflow-x-auto" style={{ boxShadow: "var(--shadow-lg)" }}>
                         {/* Legend */}
-                        <div className="flex items-center gap-3 text-[11px] shrink-0 border-r border-dark-border pr-4">
+                        <div className="flex items-center gap-3 text-[11px] shrink-0 border-r border-edge pr-4">
                             {Object.entries(entityTypeConfig).slice(0, 6).map(([key, cfg]) => (
-                                <span key={key} className="flex items-center gap-1 text-gray-400">
+                                <span key={key} className="flex items-center gap-1 text-ink-secondary">
                                     <span className="text-xs">{cfg.icon}</span>
                                     <span>{cfg.label}</span>
                                 </span>
@@ -558,7 +567,7 @@ export default function KnowledgeGraphPage() {
                         </div>
 
                         {/* Node Type Filter */}
-                        <div className="flex items-center gap-1.5 shrink-0 border-r border-dark-border pr-4">
+                        <div className="flex items-center gap-1.5 shrink-0 border-r border-edge pr-4">
                             <button
                                 onClick={() => setNodeTypeFilter("all")}
                                 className={`chip text-[11px] ${nodeTypeFilter === "all" ? "chip-active" : ""}`}
@@ -577,7 +586,7 @@ export default function KnowledgeGraphPage() {
                         </div>
 
                         {/* Confidence Slider */}
-                        <div className="flex items-center gap-2 text-[11px] text-gray-400 shrink-0">
+                        <div className="flex items-center gap-2 text-[11px] text-ink-secondary shrink-0">
                             <span>Confidence</span>
                             <input
                                 type="range"
@@ -586,13 +595,13 @@ export default function KnowledgeGraphPage() {
                                 step="5"
                                 value={confidenceFilter}
                                 onChange={(e) => setConfidenceFilter(parseInt(e.target.value))}
-                                className="w-16 accent-primary"
+                                className="w-16 accent-sage"
                             />
                             <span className="font-mono w-8">{confidenceFilter}%</span>
                         </div>
 
                         {/* Zoom Level Indicator */}
-                        <div className="text-[10px] text-gray-400 font-mono shrink-0 border-l border-dark-border pl-4">
+                        <div className="text-[10px] text-ink-secondary font-mono shrink-0 border-l border-edge pl-4">
                             {zoomLevel}%
                         </div>
                     </div>

@@ -18,12 +18,11 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
   const router = useRouter();
   const [goal, setGoal] = useState("");
   const [timeLimit, setTimeLimit] = useState(30);
-  const [autonomous, setAutonomous] = useState(true); // Default to autonomous
+  const [autonomous, setAutonomous] = useState(true);
   const [enableMidQuestions, setEnableMidQuestions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Clarification flow state
   const [showClarification, setShowClarification] = useState(false);
   const [questions, setQuestions] = useState<ClarificationQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -35,13 +34,11 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
       return;
     }
 
-    // If not autonomous, show clarification questions first
     if (!autonomous && !showClarification) {
       await getClarificationQuestions();
       return;
     }
 
-    // If we have clarification questions, enrich the goal first
     if (showClarification && Object.keys(answers).length > 0) {
       await startWithEnrichedGoal();
     } else {
@@ -79,7 +76,6 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
     setError("");
 
     try {
-      // Enrich goal with user answers
       const enrichResponse = await fetch("/api/research/enrich", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -97,7 +93,6 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
       const enrichData = await enrichResponse.json();
       const enrichedGoal = enrichData.enriched_goal;
 
-      // Start research with enriched goal
       await startResearch(enrichedGoal);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start research");
@@ -113,7 +108,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
         body: JSON.stringify({
           goal: researchGoal,
           time_limit: timeLimit,
-          autonomous: !enableMidQuestions, // Set autonomous based on mid-questions setting
+          autonomous: !enableMidQuestions,
           enable_mid_questions: enableMidQuestions,
         }),
       });
@@ -135,17 +130,17 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
   const estimatedCost = timeLimit <= 15 ? "$0.50 - $1.50" : timeLimit <= 45 ? "$2.00 - $4.00" : "$5.00 - $10.00";
 
   return (
-    <div className="bg-card-dark rounded-2xl shadow-xl border border-dark-border overflow-hidden relative">
+    <div className="bg-card rounded-2xl border border-edge overflow-hidden relative" style={{ boxShadow: "var(--shadow-lg)" }}>
       {/* Top accent */}
-      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/60 via-primary to-primary/60" />
+      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sage/40 via-sage to-sage/40" />
 
       <form onSubmit={handleSubmit} className="p-8 md:p-10 space-y-8">
         {/* Header */}
         <div className="text-center space-y-2">
-          <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
+          <h2 className="text-2xl md:text-3xl font-display tracking-tight">
             {showClarification ? "Clarify Your Research" : "New Research Session"}
           </h2>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-ink-secondary">
             {showClarification
               ? "Answer these questions to refine your research goal"
               : "Configure your parameters to start a new analysis task"}
@@ -156,7 +151,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-6 right-6 text-gray-500 hover:text-white transition-colors"
+          className="absolute top-6 right-6 text-ink-muted hover:text-ink transition-colors"
         >
           <span className="material-symbols-outlined">close</span>
         </button>
@@ -165,7 +160,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
           <>
             {/* Goal Input */}
             <div className="space-y-3">
-              <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider">
+              <label className="block text-xs font-medium text-ink-secondary uppercase tracking-wider">
                 Research Goal
               </label>
               <div className="relative">
@@ -176,7 +171,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
                   placeholder="e.g., Analyze the market trends for renewable energy in Southeast Asia, focusing on solar panel adoption rates over the last 5 years..."
                 />
                 <div className="absolute bottom-3 right-3 pointer-events-none">
-                  <span className="material-symbols-outlined text-gray-600 text-lg">edit_note</span>
+                  <span className="material-symbols-outlined text-ink-muted text-lg">edit_note</span>
                 </div>
               </div>
             </div>
@@ -184,10 +179,10 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
             {/* Time Limit Slider */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium uppercase tracking-wider text-gray-400">
+                <label className="text-xs font-medium uppercase tracking-wider text-ink-secondary">
                   Time Limit
                 </label>
-                <span className="text-primary font-mono text-sm bg-primary/10 px-2 py-0.5 rounded">
+                <span className="text-sage font-mono text-sm bg-sage-soft px-2 py-0.5 rounded">
                   {timeLimit} mins
                 </span>
               </div>
@@ -198,19 +193,19 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
                 step="5"
                 value={timeLimit}
                 onChange={(e) => setTimeLimit(parseInt(e.target.value))}
-                className="w-full h-1.5 bg-dark-border rounded-full appearance-none cursor-pointer accent-primary"
+                className="w-full h-1.5 bg-edge rounded-full appearance-none cursor-pointer accent-sage"
               />
-              <div className="flex justify-between text-xs text-gray-500 font-mono">
+              <div className="flex justify-between text-xs text-ink-muted font-mono">
                 <span>5m</span>
                 <span>120m</span>
               </div>
             </div>
 
             {/* Clarification Toggle */}
-            <div className="flex items-center justify-between py-2 border border-dark-border rounded-lg px-4 bg-dark-surface/30">
+            <div className="flex items-center justify-between py-2 border border-edge rounded-lg px-4 bg-card-hover/30">
               <div className="flex flex-col">
-                <span className="text-sm font-medium text-white">Enable Clarification Questions</span>
-                <span className="text-xs text-gray-400">AI will ask questions to refine your research goal</span>
+                <span className="text-sm font-medium text-ink">Enable Clarification Questions</span>
+                <span className="text-xs text-ink-secondary">AI will ask questions to refine your research goal</span>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -219,15 +214,15 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
                   checked={!autonomous}
                   onChange={(e) => setAutonomous(!e.target.checked)}
                 />
-                <div className="w-11 h-6 bg-dark-border peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary" />
+                <div className="w-11 h-6 bg-edge peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sage/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sage" />
               </label>
             </div>
 
             {/* Mid-Research Questions Toggle */}
-            <div className="flex items-center justify-between py-2 border border-dark-border rounded-lg px-4 bg-dark-surface/30">
+            <div className="flex items-center justify-between py-2 border border-edge rounded-lg px-4 bg-card-hover/30">
               <div className="flex flex-col">
-                <span className="text-sm font-medium text-white">Enable Mid-Research Questions</span>
-                <span className="text-xs text-gray-400">AI can ask questions during research to guide the process</span>
+                <span className="text-sm font-medium text-ink">Enable Mid-Research Questions</span>
+                <span className="text-xs text-ink-secondary">AI can ask questions during research to guide the process</span>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -236,7 +231,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
                   checked={enableMidQuestions}
                   onChange={(e) => setEnableMidQuestions(e.target.checked)}
                 />
-                <div className="w-11 h-6 bg-dark-border peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary" />
+                <div className="w-11 h-6 bg-edge peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sage/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sage" />
               </label>
             </div>
           </>
@@ -246,7 +241,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
             <div className="space-y-6">
               {questions.map((q, idx) => (
                 <div key={idx} className="space-y-3">
-                  <label className="block text-sm font-medium text-white">
+                  <label className="block text-sm font-medium text-ink">
                     {idx + 1}. {q.question}
                   </label>
                   <input
@@ -267,30 +262,31 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
                 setQuestions([]);
                 setAnswers({});
               }}
-              className="text-sm text-gray-400 hover:text-white transition-colors"
+              className="text-sm text-ink-secondary hover:text-ink transition-colors"
             >
-              ← Back to edit goal
+              &larr; Back to edit goal
             </button>
           </>
         )}
 
         {/* Error */}
         {error && (
-          <div className="text-sm text-error bg-error/10 border border-error/20 rounded-lg px-4 py-3">
+          <div className="text-sm text-coral bg-coral-soft border border-coral/20 rounded-lg px-4 py-3">
             {error}
           </div>
         )}
 
         {/* Action Footer */}
         <div className="pt-2 flex flex-col items-center gap-6">
-          <div className="font-mono text-sm text-gray-400 flex items-center gap-2">
+          <div className="font-mono text-sm text-ink-secondary flex items-center gap-2">
             <span className="material-symbols-outlined text-base">payments</span>
-            Estimated Cost: <span className="text-white font-bold">{estimatedCost}</span>
+            Estimated Cost: <span className="text-ink font-bold">{estimatedCost}</span>
           </div>
           <button
             type="submit"
             disabled={loading || !goal.trim() || (showClarification && Object.keys(answers).length === 0)}
-            className="w-full py-4 px-6 bg-primary hover:bg-primary-dark text-white font-semibold rounded-xl shadow-[0_0_25px_rgba(43,124,238,0.35)] hover:shadow-[0_0_35px_rgba(43,124,238,0.5)] transition-all duration-300 transform active:scale-[0.98] flex items-center justify-center gap-2 group/btn disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-4 px-6 bg-sage hover:bg-sage-hover text-white font-semibold rounded-xl transition-all duration-300 transform active:scale-[0.98] flex items-center justify-center gap-2 group/btn disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ boxShadow: "0 2px 12px rgb(var(--sage) / 0.3)" }}
           >
             {loading ? (
               <>
@@ -299,7 +295,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
               </>
             ) : (
               <>
-                <span className="material-symbols-outlined group-hover/btn:animate-pulse">
+                <span className="material-symbols-outlined group-hover/btn:animate-soft-pulse">
                   {showClarification ? "rocket_launch" : "psychology"}
                 </span>
                 {showClarification ? "Start Research" : (autonomous ? "Start Research" : "Get Clarification Questions")}

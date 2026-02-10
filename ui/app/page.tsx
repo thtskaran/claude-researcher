@@ -43,15 +43,15 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="border-b border-dark-border bg-dark-surface/50 backdrop-blur-sm sticky top-0 z-20">
+      <header className="border-b border-edge bg-card/50 backdrop-blur-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 text-primary">
+            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-sage-soft text-sage">
               <span className="material-symbols-outlined text-xl">science</span>
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight">Claude Researcher</h1>
-              <p className="text-xs text-gray-500">Deep research with glass-box transparency</p>
+              <h1 className="text-lg font-display tracking-tight">Claude Researcher</h1>
+              <p className="text-xs text-ink-muted">Deep research with glass-box transparency</p>
             </div>
           </div>
           <button
@@ -67,25 +67,25 @@ export default function Home() {
       {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
         {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <div className="card card-hover">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 stagger-children">
+          <div className="card card-hover animate-fade-up-in bg-gradient-to-br from-sage/5 to-transparent">
             <div className="flex justify-between items-start mb-2">
-              <p className="text-sm font-medium text-gray-400">Total Sessions</p>
-              <span className="material-symbols-outlined text-gray-400">folder_open</span>
+              <p className="text-sm font-medium text-ink-secondary">Total Sessions</p>
+              <span className="material-symbols-outlined text-ink-secondary">folder_open</span>
             </div>
             <p className="font-mono text-3xl font-bold tracking-tighter">{sessions.length}</p>
           </div>
-          <div className="card card-hover">
+          <div className="card card-hover animate-fade-up-in bg-gradient-to-br from-olive/5 to-transparent">
             <div className="flex justify-between items-start mb-2">
-              <p className="text-sm font-medium text-gray-400">Active</p>
-              <span className="material-symbols-outlined text-accent-success">play_circle</span>
+              <p className="text-sm font-medium text-ink-secondary">Active</p>
+              <span className="material-symbols-outlined text-olive">play_circle</span>
             </div>
-            <p className="font-mono text-3xl font-bold tracking-tighter text-accent-success">{activeSessions.length}</p>
+            <p className="font-mono text-3xl font-bold tracking-tighter text-olive">{activeSessions.length}</p>
           </div>
-          <div className="card card-hover">
+          <div className="card card-hover animate-fade-up-in bg-gradient-to-br from-iris/5 to-transparent">
             <div className="flex justify-between items-start mb-2">
-              <p className="text-sm font-medium text-gray-400">Completed</p>
-              <span className="material-symbols-outlined text-gray-400">check_circle</span>
+              <p className="text-sm font-medium text-ink-secondary">Completed</p>
+              <span className="material-symbols-outlined text-ink-secondary">check_circle</span>
             </div>
             <p className="font-mono text-3xl font-bold tracking-tighter">{completedSessions.length}</p>
           </div>
@@ -94,7 +94,7 @@ export default function Home() {
         {/* Active Sessions */}
         {activeSessions.length > 0 && (
           <div className="mb-8">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 px-1">
+            <h2 className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-4 px-1">
               Active Sessions
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -107,24 +107,24 @@ export default function Home() {
 
         {/* Session History */}
         <div>
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 px-1">
+          <h2 className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-4 px-1">
             {activeSessions.length > 0 ? "History" : "All Sessions"}
           </h2>
 
           {loading ? (
             <div className="card">
-              <div className="flex items-center gap-3 text-gray-400">
+              <div className="flex items-center gap-3 text-ink-secondary">
                 <span className="material-symbols-outlined animate-spin">progress_activity</span>
                 <span className="text-sm">Loading sessions...</span>
               </div>
             </div>
           ) : completedSessions.length === 0 && activeSessions.length === 0 ? (
             <div className="card flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-                <span className="material-symbols-outlined text-primary text-3xl">science</span>
+              <div className="w-16 h-16 rounded-2xl bg-sage-soft flex items-center justify-center mb-4">
+                <span className="material-symbols-outlined text-sage text-3xl">science</span>
               </div>
-              <h3 className="text-lg font-semibold mb-2">No research sessions yet</h3>
-              <p className="text-sm text-gray-400 max-w-md mb-6">
+              <h3 className="text-lg font-display mb-2">No research sessions yet</h3>
+              <p className="text-sm text-ink-secondary max-w-md mb-6">
                 Start your first research session to explore topics with hierarchical deep research and transparent AI reasoning.
               </p>
               <button
@@ -147,7 +147,7 @@ export default function Home() {
 
       {/* New Session Modal */}
       {showNewSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="w-full max-w-[640px]">
             <NewSessionForm
               onClose={() => setShowNewSession(false)}
@@ -174,35 +174,34 @@ function SessionCard({ session, onClick }: { session: Session; onClick: () => vo
       onClick={onClick}
       className="card card-hover text-left w-full group relative overflow-hidden"
     >
-      {/* Active indicator bar */}
       {isActive && (
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary/60 via-primary to-primary/60" />
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-sage/40 via-sage to-sage/40" />
       )}
 
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-2">
           {isActive ? (
             <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-success opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-accent-success" />
+              <span className="animate-soft-pulse absolute inline-flex h-full w-full rounded-full bg-olive opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-olive" />
             </span>
           ) : (
             <span className="status-dot status-dot-idle" />
           )}
-          <span className={`text-xs font-mono font-medium ${isActive ? "text-accent-success" : "text-gray-500"}`}>
+          <span className={`text-xs font-mono font-medium ${isActive ? "text-olive" : "text-ink-muted"}`}>
             {session.status}
           </span>
         </div>
-        <span className="material-symbols-outlined text-gray-600 group-hover:text-primary transition-colors text-lg">
+        <span className="material-symbols-outlined text-ink-muted group-hover:text-sage transition-colors text-lg">
           arrow_forward
         </span>
       </div>
 
-      <h3 className="text-sm font-medium text-white group-hover:text-primary transition-colors line-clamp-2 mb-3 leading-snug">
+      <h3 className="text-sm font-medium text-ink group-hover:text-sage transition-colors line-clamp-2 mb-3 leading-snug">
         {session.goal}
       </h3>
 
-      <div className="flex items-center justify-between text-xs text-gray-500 font-mono">
+      <div className="flex items-center justify-between text-xs text-ink-muted font-mono">
         <span className="flex items-center gap-1">
           <span className="material-symbols-outlined text-[14px]">{isActive ? "schedule" : "timer"}</span>
           {timeDisplay}
@@ -233,7 +232,6 @@ function getElapsedTime(startDateString: string): string {
 
 function getDuration(startDateString: string, endDateString?: string | null): string {
   if (!endDateString) {
-    // If no end date, show when it was created
     const now = new Date();
     const start = new Date(startDateString);
     const diffMs = now.getTime() - start.getTime();
@@ -247,7 +245,6 @@ function getDuration(startDateString: string, endDateString?: string | null): st
     return start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   }
 
-  // Calculate actual duration
   const start = new Date(startDateString);
   const end = new Date(endDateString);
   const diffMs = end.getTime() - start.getTime();

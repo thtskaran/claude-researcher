@@ -72,27 +72,27 @@ export default function SourcesIndexPage() {
     };
 
     const SortIcon = ({ col }: { col: typeof sortBy }) => {
-        if (sortBy !== col) return <span className="material-symbols-outlined text-[14px] text-gray-600">unfold_more</span>;
-        return <span className="material-symbols-outlined text-[14px] text-primary">{sortDir === "desc" ? "arrow_downward" : "arrow_upward"}</span>;
+        if (sortBy !== col) return <span className="material-symbols-outlined text-[14px] text-ink-muted">unfold_more</span>;
+        return <span className="material-symbols-outlined text-[14px] text-sage">{sortDir === "desc" ? "arrow_downward" : "arrow_upward"}</span>;
     };
 
     return (
         <div className="min-h-screen flex flex-col">
             {/* Header */}
-            <header className="border-b border-dark-border bg-dark-surface/50 backdrop-blur-sm sticky top-0 z-20">
+            <header className="border-b border-edge bg-card/50 backdrop-blur-sm sticky top-0 z-20">
                 <div className="max-w-7xl mx-auto px-6 py-4">
-                    <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
-                        <Link href="/" className="hover:text-primary transition-colors">Sessions</Link>
+                    <div className="flex items-center gap-2 text-xs text-ink-muted mb-2">
+                        <Link href="/" className="hover:text-sage transition-colors">Sessions</Link>
                         <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-                        <Link href={`/session/${sessionId}`} className="hover:text-primary transition-colors">Session</Link>
+                        <Link href={`/session/${sessionId}`} className="hover:text-sage transition-colors">Session</Link>
                         <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-                        <span className="text-gray-300">Sources</span>
+                        <span className="text-ink-secondary">Sources</span>
                     </div>
                     <div className="flex items-center gap-3">
-                        <Link href={`/session/${sessionId}`} className="text-gray-400 hover:text-primary transition-colors">
+                        <Link href={`/session/${sessionId}`} className="text-ink-secondary hover:text-sage transition-colors">
                             <span className="material-symbols-outlined">arrow_back</span>
                         </Link>
-                        <h1 className="text-xl font-bold">Sources Index</h1>
+                        <h1 className="text-xl font-display">Sources Index</h1>
                         <span className="badge badge-system">{filtered.length} sources</span>
                     </div>
                 </div>
@@ -103,7 +103,7 @@ export default function SourcesIndexPage() {
                 <div className="card mb-6 py-4">
                     <div className="flex flex-wrap gap-3 items-center">
                         <div className="relative flex-1 min-w-[200px] max-w-md">
-                            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-lg">search</span>
+                            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted text-lg">search</span>
                             <input
                                 value={search}
                                 onChange={(e) => { setSearch(e.target.value); setPage(0); }}
@@ -117,21 +117,21 @@ export default function SourcesIndexPage() {
                 {/* Table */}
                 <div className="card p-0 overflow-hidden">
                     {loading ? (
-                        <div className="p-8 text-center text-gray-400 flex items-center justify-center gap-2">
+                        <div className="p-8 text-center text-ink-secondary flex items-center justify-center gap-2">
                             <span className="material-symbols-outlined animate-spin">progress_activity</span>
                             Loading sources...
                         </div>
                     ) : filtered.length === 0 ? (
                         <div className="p-12 text-center">
-                            <span className="material-symbols-outlined text-4xl text-gray-600 mb-3 block">travel_explore</span>
-                            <p className="text-sm text-gray-400">No sources found.</p>
+                            <span className="material-symbols-outlined text-4xl text-ink-muted mb-3 block">travel_explore</span>
+                            <p className="text-sm text-ink-secondary">No sources found.</p>
                         </div>
                     ) : (
                         <>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead>
-                                        <tr className="border-b border-dark-border bg-dark-surface/50 text-xs text-gray-500 uppercase tracking-wider">
+                                        <tr className="border-b border-edge bg-card/50 text-xs text-ink-muted uppercase tracking-wider">
                                             <th className="text-left px-4 py-3 font-medium">Source URL</th>
                                             <th className="text-left px-4 py-3 font-medium cursor-pointer select-none" onClick={() => toggleSort("credibility")}>
                                                 <span className="flex items-center gap-1">Credibility <SortIcon col="credibility" /></span>
@@ -149,33 +149,33 @@ export default function SourcesIndexPage() {
                                         {pageData.map((source) => {
                                             const credScore = source.final_score;
                                             const credPct = credScore !== null && credScore !== undefined ? Math.round(credScore * 100) : null;
-                                            const credColor = credPct !== null ? (credPct >= 70 ? "bg-accent-green" : credPct >= 40 ? "bg-accent-yellow" : "bg-accent-red") : "bg-dark-border";
+                                            const credColor = credPct !== null ? (credPct >= 70 ? "bg-olive" : credPct >= 40 ? "bg-gold" : "bg-coral") : "bg-edge";
 
                                             return (
-                                                <tr key={source.source_url} className="border-b border-dark-border hover:bg-card-hover transition-colors">
+                                                <tr key={source.source_url} className="border-b border-edge hover:bg-card-hover transition-colors">
                                                     <td className="px-4 py-3">
                                                         <a
                                                             href={source.source_url}
                                                             target="_blank"
                                                             rel="noreferrer"
-                                                            className="text-info hover:underline break-all line-clamp-1 text-sm"
+                                                            className="text-sage hover:underline break-all line-clamp-1 text-sm"
                                                         >
                                                             {source.source_url}
                                                         </a>
                                                         {source.domain && (
-                                                            <span className="text-xs text-gray-500 block mt-0.5 font-mono">{source.domain}</span>
+                                                            <span className="text-xs text-ink-muted block mt-0.5 font-mono">{source.domain}</span>
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         {credPct !== null ? (
                                                             <div className="flex items-center gap-2 min-w-[120px]">
-                                                                <div className="flex-1 h-1.5 bg-dark-border rounded-full overflow-hidden">
+                                                                <div className="flex-1 h-1.5 bg-edge rounded-full overflow-hidden">
                                                                     <div className={`h-full rounded-full ${credColor}`} style={{ width: `${credPct}%` }} />
                                                                 </div>
-                                                                <span className="text-xs font-mono text-gray-400 w-8 text-right">{credPct}%</span>
+                                                                <span className="text-xs font-mono text-ink-secondary w-8 text-right">{credPct}%</span>
                                                             </div>
                                                         ) : (
-                                                            <span className="text-xs text-gray-600">—</span>
+                                                            <span className="text-xs text-ink-muted">&mdash;</span>
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-3">
@@ -191,7 +191,7 @@ export default function SourcesIndexPage() {
                                                         <span className="font-mono text-sm">{source.findings_count}</span>
                                                     </td>
                                                     <td className="px-4 py-3 text-right">
-                                                        <span className="text-xs text-gray-500 font-mono">{formatDate(source.last_seen)}</span>
+                                                        <span className="text-xs text-ink-muted font-mono">{formatDate(source.last_seen)}</span>
                                                     </td>
                                                 </tr>
                                             );
@@ -202,9 +202,9 @@ export default function SourcesIndexPage() {
 
                             {/* Pagination */}
                             {totalPages > 1 && (
-                                <div className="flex items-center justify-between px-4 py-3 border-t border-dark-border bg-dark-surface/30">
-                                    <span className="text-xs text-gray-500">
-                                        Showing {page * perPage + 1}–{Math.min((page + 1) * perPage, filtered.length)} of {filtered.length}
+                                <div className="flex items-center justify-between px-4 py-3 border-t border-edge bg-card/30">
+                                    <span className="text-xs text-ink-muted">
+                                        Showing {page * perPage + 1}&ndash;{Math.min((page + 1) * perPage, filtered.length)} of {filtered.length}
                                     </span>
                                     <div className="flex gap-1">
                                         <button

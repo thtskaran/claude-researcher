@@ -87,18 +87,18 @@ export default function ReportPreview({ sessionId }: ReportPreviewProps) {
       {tocItems.length > 0 && (
         <aside className="lg:w-64 shrink-0">
           <div className="card sticky top-40">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">
+            <h3 className="text-xs font-display font-normal text-ink-muted uppercase tracking-wider mb-4">
               Table of Contents
             </h3>
             <nav className="space-y-1 max-h-96 overflow-y-auto scrollbar-hide">
               {tocItems.map((item, i) => (
                 <button
                   key={i}
-                  className={`block w-full text-left text-sm truncate py-1 transition-colors hover:text-primary ${item.level === 1
-                      ? "text-gray-200 font-medium"
+                  className={`block w-full text-left text-sm truncate py-1 transition-colors hover:text-sage ${item.level === 1
+                      ? "text-ink font-medium"
                       : item.level === 2
-                        ? "text-gray-400 pl-4"
-                        : "text-gray-500 pl-8 text-xs"
+                        ? "text-ink-secondary pl-4"
+                        : "text-ink-muted pl-8 text-xs"
                     }`}
                 >
                   {item.text}
@@ -112,10 +112,10 @@ export default function ReportPreview({ sessionId }: ReportPreviewProps) {
       {/* Main Report Content */}
       <div className="flex-1 card">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-dark-border">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-edge">
           <div>
-            <h3 className="text-lg font-semibold">Research Report</h3>
-            <p className="text-xs text-gray-500 mt-1">
+            <h3 className="text-lg font-display">Research Report</h3>
+            <p className="text-xs text-ink-muted mt-1">
               {path ? (
                 <>Saved at: <span className="font-mono">{path}</span></>
               ) : (
@@ -125,14 +125,14 @@ export default function ReportPreview({ sessionId }: ReportPreviewProps) {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {/* Format Toggles */}
-            <div className="flex bg-dark-bg rounded-lg p-0.5 border border-dark-border">
+            <div className="flex bg-card-inset rounded-lg p-0.5 border border-edge">
               {(["md", "pdf", "json"] as const).map((f) => (
                 <button
                   key={f}
                   onClick={() => setFormat(f)}
                   className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${format === f
-                      ? "bg-surface-highlight text-primary"
-                      : "text-gray-500 hover:text-white"
+                      ? "bg-card-hover text-sage"
+                      : "text-ink-muted hover:text-ink"
                     }`}
                 >
                   {f.toUpperCase()}
@@ -154,49 +154,49 @@ export default function ReportPreview({ sessionId }: ReportPreviewProps) {
 
         {/* Content */}
         {loading ? (
-          <div className="flex items-center gap-3 text-gray-400">
+          <div className="flex items-center gap-3 text-ink-secondary">
             <span className="material-symbols-outlined animate-spin">progress_activity</span>
             <span className="text-sm">Loading report…</span>
           </div>
         ) : error ? (
           <div className="text-center py-12">
-            <span className="material-symbols-outlined text-4xl text-gray-600 mb-3 block">article</span>
-            <p className="text-sm text-error mb-1">{error}</p>
-            <p className="text-xs text-gray-500">Run a session to completion to generate a report.</p>
+            <span className="material-symbols-outlined text-4xl text-ink-muted mb-3 block">article</span>
+            <p className="text-sm text-coral mb-1">{error}</p>
+            <p className="text-xs text-ink-muted">Run a session to completion to generate a report.</p>
           </div>
         ) : report.trim().length === 0 ? (
           <div className="text-center py-12">
-            <span className="material-symbols-outlined text-4xl text-gray-600 mb-3 block">draft</span>
-            <p className="text-sm text-gray-400">Report is empty.</p>
-            <p className="text-xs text-gray-500 mt-1">Try rerunning research or exporting findings.</p>
+            <span className="material-symbols-outlined text-4xl text-ink-muted mb-3 block">draft</span>
+            <p className="text-sm text-ink-secondary">Report is empty.</p>
+            <p className="text-xs text-ink-muted mt-1">Try rerunning research or exporting findings.</p>
           </div>
         ) : (
           <div className="report-markdown max-h-[42rem] overflow-y-auto pr-2">
             <ReactMarkdown
               components={{
-                h1: ({ children }) => <h1 className="text-2xl font-bold mt-8 mb-4 text-white">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-xl font-semibold mt-6 mb-3 text-white">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-lg font-semibold mt-5 mb-2 text-white">{children}</h3>,
-                p: ({ children }) => <p className="text-sm text-gray-200 leading-relaxed mb-4">{children}</p>,
-                ul: ({ children }) => <ul className="list-disc list-outside ml-6 text-sm text-gray-200 mb-4 space-y-2">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal list-outside ml-6 text-sm text-gray-200 mb-4 space-y-2">{children}</ol>,
+                h1: ({ children }) => <h1 className="text-2xl font-display mt-8 mb-4 text-ink">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-xl font-display font-normal mt-6 mb-3 text-ink">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-lg font-semibold mt-5 mb-2 text-ink">{children}</h3>,
+                p: ({ children }) => <p className="text-sm text-ink leading-relaxed mb-4">{children}</p>,
+                ul: ({ children }) => <ul className="list-disc list-outside ml-6 text-sm text-ink mb-4 space-y-2">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal list-outside ml-6 text-sm text-ink mb-4 space-y-2">{children}</ol>,
                 blockquote: ({ children }) => (
-                  <blockquote className="border-l-4 border-primary/50 pl-6 italic text-gray-400 my-6 bg-primary/5 py-3 pr-4 rounded-r-lg">
+                  <blockquote className="border-l-4 border-sage/50 pl-6 italic text-ink-secondary my-6 bg-sage/5 py-3 pr-4 rounded-r-lg">
                     {children}
                   </blockquote>
                 ),
                 code: ({ children }) => (
-                  <code className="text-xs bg-dark-bg/80 border border-dark-border rounded px-1.5 py-0.5 text-primary-light">
+                  <code className="text-xs bg-card-inset border border-edge rounded px-1.5 py-0.5 text-sage">
                     {children}
                   </code>
                 ),
                 pre: ({ children }) => (
-                  <pre className="text-xs bg-terminal-black border border-terminal-border rounded-lg p-4 overflow-x-auto mb-4">
+                  <pre className="text-xs bg-card-inset border border-edge rounded-lg p-4 overflow-x-auto mb-4">
                     {children}
                   </pre>
                 ),
                 a: ({ children, href }) => (
-                  <a href={href} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                  <a href={href} target="_blank" rel="noreferrer" className="text-sage hover:underline">
                     {children}
                   </a>
                 ),
