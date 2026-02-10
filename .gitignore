@@ -15,5 +15,6 @@ todo.md
 # Development logs and PIDs
 *.log
 *.pid
-/tmpui/tsconfig.tsbuildinfo
+/tmp
+ui/tsconfig.tsbuildinfo
 ui/package-lock.json
