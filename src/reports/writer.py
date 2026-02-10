@@ -1067,19 +1067,6 @@ This report was generated using a hierarchical multi-agent research system:
 """
         return report
 
-
-async def _emit_progress(
-    callback: Optional[Callable[[str, int], Awaitable[None]]],
-    message: str,
-    progress: int,
-) -> None:
-    if callback is None:
-        return
-    try:
-        await callback(message, progress)
-    except Exception:
-        return
-
     def _compile_report(
         self,
         session: ResearchSession,
@@ -1341,3 +1328,16 @@ These findings had conflicting information that may require further investigatio
             sections.append("")
 
         return "\n".join(sections)
+
+
+async def _emit_progress(
+    callback: Optional[Callable[[str, int], Awaitable[None]]],
+    message: str,
+    progress: int,
+) -> None:
+    if callback is None:
+        return
+    try:
+        await callback(message, progress)
+    except Exception:
+        return

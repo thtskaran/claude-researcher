@@ -25,6 +25,7 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
   const [historyStatus, setHistoryStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   const [historySource, setHistorySource] = useState<"api" | "cache" | null>(null);
   const scrollTopBeforeLoadRef = useRef<number | null>(null);
+  const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     // Create WebSocket connection
@@ -260,6 +261,10 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
     setExpandedBlocks((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const toggleEvent = (id: string) => {
+    setExpandedEvents((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
   return (
     <div className="card">
       {/* Header */}
@@ -467,6 +472,8 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
             }
 
             const event = item.event;
+            const eventId = getEventKey(event);
+            const isExpanded = expandedEvents[eventId] ?? false;
             const phase = item.phase;
             return (
               <div
@@ -498,7 +505,10 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
 
                 {/* Event Data */}
                 <div className="text-sm text-gray-300">
-                  {renderEventData(event)}
+                  {renderEventData(event, {
+                    expanded: isExpanded,
+                    onToggle: () => toggleEvent(eventId),
+                  })}
                 </div>
               </div>
             );
@@ -537,8 +547,13 @@ function formatTimestamp(timestamp: string): string {
   });
 }
 
-function renderEventData(event: AgentEvent): React.ReactNode {
+function renderEventData(
+  event: AgentEvent,
+  opts: { expanded: boolean; onToggle: () => void }
+): React.ReactNode {
   const data = event.data || {};
+  const { expanded, onToggle } = opts;
+  const maybeLongText = getEventPrimaryText(event);
   if (event.event_type === "finding") {
     return (
       <div className="space-y-2">
@@ -565,7 +580,7 @@ function renderEventData(event: AgentEvent): React.ReactNode {
   }
 
   if (event.event_type === "thinking" && data.thought) {
-    return <p className="italic">{data.thought}</p>;
+    return renderExpandableText(maybeLongText, expanded, onToggle, "italic");
   }
 
   if (event.event_type === "action" && data.action) {
@@ -595,11 +610,11 @@ function renderEventData(event: AgentEvent): React.ReactNode {
   }
 
   if (data.message) {
-    return <p>{data.message}</p>;
+    return renderExpandableText(maybeLongText, expanded, onToggle);
   }
 
   if (data.content) {
-    return <p>{data.content}</p>;
+    return renderExpandableText(maybeLongText, expanded, onToggle);
   }
 
   // Render as JSON for debugging (any other structure)
@@ -806,6 +821,39 @@ function LogLineRow({ line }: { line: LogLine }) {
       {line.count > 1 ? (
         <span className="badge badge-system">x{line.count}</span>
       ) : null}
+    </div>
+  );
+}
+
+function getEventPrimaryText(event: AgentEvent): string {
+  const data = event.data || {};
+  if (typeof data.thought === "string") return data.thought;
+  if (typeof data.message === "string") return data.message;
+  if (typeof data.content === "string") return data.content;
+  if (typeof data.error === "string") return data.error;
+  if (typeof data.action === "string") return data.action;
+  return JSON.stringify(data);
+}
+
+function renderExpandableText(
+  text: string,
+  expanded: boolean,
+  onToggle: () => void,
+  extraClass: string = ""
+): React.ReactNode {
+  const limit = 220;
+  const shouldTruncate = text.length > limit;
+  if (!shouldTruncate) {
+    return <p className={extraClass}>{text}</p>;
+  }
+  return (
+    <div className="space-y-2">
+      <p className={extraClass}>
+        {expanded ? text : `${text.slice(0, limit)}...`}
+      </p>
+      <button type="button" className="chip" onClick={onToggle}>
+        {expanded ? "Collapse" : "Expand"}
+      </button>
     </div>
   );
 }

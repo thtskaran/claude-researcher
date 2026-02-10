@@ -69,8 +69,14 @@ export class ResearchWebSocket {
         }
       };
 
-      this.ws.onerror = (error) => {
-        console.error("[WebSocket] Error:", error);
+      this.ws.onerror = (event) => {
+        // Avoid noisy empty error objects in Next.js overlay
+        const detail = (event as any)?.message;
+        if (detail) {
+          console.warn("[WebSocket] Error:", detail);
+        } else {
+          console.warn("[WebSocket] Error event");
+        }
       };
 
       this.ws.onclose = () => {
