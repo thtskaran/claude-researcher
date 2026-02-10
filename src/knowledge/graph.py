@@ -380,6 +380,20 @@ Return JSON array (max 3 relations):
             'processed': 0,
         }
 
+        # Score credibility for all findings first
+        for finding in findings:
+            # Score source credibility with full audit trail
+            credibility, audit_data = self.credibility_scorer.score_source_with_audit(
+                finding.source_url,
+                finding.timestamp,
+            )
+            finding.credibility_score = credibility.score
+
+            # Queue async credibility audit write if callback provided
+            if self.credibility_audit_callback:
+                audit_data['finding_id'] = finding.id
+                asyncio.create_task(self._save_credibility_audit(audit_data))
+
         # Process in batches
         for i in range(0, len(findings), batch_size):
             batch = findings[i:i + batch_size]

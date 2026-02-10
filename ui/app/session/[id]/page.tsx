@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import ActivityFeed from "@/components/ActivityFeed";
 import FindingsBrowser from "@/components/FindingsBrowser";
 import ReportPreview from "@/components/ReportPreview";
+import SourcesBrowser from "@/components/SourcesBrowser";
 import Link from "next/link";
 
 interface Session {
@@ -258,15 +259,7 @@ export default function SessionDetail() {
           />
         )}
 
-        {activeTab === "sources" && (
-          <SubPagePlaceholder
-            icon="travel_explore"
-            title="Sources Index"
-            description="Browse all sources discovered during research with credibility scores, citation counts, and extracted findings."
-            linkHref={`/session/${sessionId}/sources`}
-            linkText="Open Sources Index"
-          />
-        )}
+        {activeTab === "sources" && <SourcesBrowser sessionId={sessionId} />}
 
         {activeTab === "agents" && (
           <SubPagePlaceholder

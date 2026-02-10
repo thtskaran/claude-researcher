@@ -446,6 +446,8 @@ class APIDatabase:
         offset: int = 0,
     ):
         """List source index for a session."""
+        from src.knowledge.credibility import CredibilityScorer
+
         cursor = await self._connection.execute(
             """
             WITH source_stats AS (
@@ -486,18 +488,31 @@ class APIDatabase:
             (session_id, session_id, session_id, limit, offset),
         )
         rows = await cursor.fetchall()
-        return [
-            {
+
+        scorer = CredibilityScorer()
+        results = []
+        for row in rows:
+            domain = row["domain"]
+            final_score = row["final_score"]
+            credibility_label = row["credibility_label"]
+
+            # Compute credibility on-the-fly if audit data is missing
+            if final_score is None:
+                score_result = scorer.score_source(row["source_url"])
+                domain = score_result.domain
+                final_score = score_result.score
+                credibility_label = scorer.get_credibility_label(score_result.score)
+
+            results.append({
                 "source_url": row["source_url"],
                 "findings_count": row["findings_count"],
                 "avg_confidence": row["avg_confidence"],
                 "last_seen": row["last_seen"],
-                "domain": row["domain"],
-                "final_score": row["final_score"],
-                "credibility_label": row["credibility_label"],
-            }
-            for row in rows
-        ]
+                "domain": domain,
+                "final_score": final_score,
+                "credibility_label": credibility_label,
+            })
+        return results
 
     async def list_verification_results(
         self,

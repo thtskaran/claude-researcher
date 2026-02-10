@@ -163,9 +163,11 @@ class ManagerAgent(BaseAgent):
                 path_depth_score=audit_data.get("path_depth_score", 0.8),
                 credibility_label=audit_data.get("credibility_label", "Medium"),
             )
-        except Exception:
-            # Don't let audit errors affect main processing
-            pass
+        except Exception as e:
+            # Log error but don't stop processing
+            self._log(f"[Credibility Audit Error] Failed to save audit: {e}", style="bold red")
+            import traceback
+            traceback.print_exc()
 
     async def _memory_llm_callback(self, prompt: str) -> str:
         """LLM callback for memory summarization (uses faster model)."""

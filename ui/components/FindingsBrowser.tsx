@@ -16,25 +16,13 @@ interface Finding {
   kg_support_score?: number | null;
 }
 
-interface SourceIndexItem {
-  source_url: string;
-  findings_count: number;
-  avg_confidence: number | null;
-  last_seen: string;
-  domain?: string | null;
-  final_score?: number | null;
-  credibility_label?: string | null;
-}
-
 interface FindingsBrowserProps {
   sessionId: string;
 }
 
 export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
   const [findings, setFindings] = useState<Finding[]>([]);
-  const [sources, setSources] = useState<SourceIndexItem[]>([]);
   const [loadingFindings, setLoadingFindings] = useState(true);
-  const [loadingSources, setLoadingSources] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [findingType, setFindingType] = useState("all");
@@ -67,37 +55,10 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
     return () => { cancelled = true; };
   }, [sessionId, search, findingType, minConfidence, order]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoadingSources(true);
-      try {
-        const response = await fetch(`/api/sessions/${sessionId}/sources?limit=200`);
-        if (!response.ok) throw new Error("Failed to load sources");
-        const data: SourceIndexItem[] = await response.json();
-        if (!cancelled) setSources(data || []);
-      } catch {
-        if (!cancelled) setSources([]);
-      } finally {
-        if (!cancelled) setLoadingSources(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [sessionId]);
-
   const typeOptions = useMemo(() => {
     const types = new Set(findings.map((f) => f.finding_type?.toLowerCase()));
     return ["all", ...Array.from(types).filter(Boolean)];
   }, [findings]);
-
-  const filteredSources = useMemo(() => {
-    if (!search.trim()) return sources;
-    const q = search.toLowerCase();
-    return sources.filter((s) =>
-      s.source_url.toLowerCase().includes(q) ||
-      (s.domain || "").toLowerCase().includes(q)
-    );
-  }, [sources, search]);
 
   const selectedFinding = useMemo(() => {
     if (selectedId === null) return findings[0] || null;
@@ -211,8 +172,8 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
         <div className="lg:col-span-3 card p-0 flex flex-col overflow-hidden">
           {selectedFinding ? (
             <>
-              <div className="px-6 py-4 border-b border-dark-border bg-dark-surface">
-                <div className="flex items-center gap-2 mb-2">
+              <div className="px-5 py-3 border-b border-dark-border bg-dark-surface">
+                <div className="flex items-center gap-2 mb-1.5">
                   <span className={`badge ${getFindingBadge(selectedFinding.finding_type)}`}>
                     {selectedFinding.finding_type}
                   </span>
@@ -221,32 +182,32 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
                       {Math.round(selectedFinding.confidence * 100)}% confidence
                     </span>
                   )}
+                  <span className="text-xs text-gray-500 font-mono ml-auto">{formatDate(selectedFinding.created_at)}</span>
                 </div>
-                <span className="text-xs text-gray-500 font-mono">{formatDate(selectedFinding.created_at)}</span>
               </div>
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Content</h4>
+                  <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Content</h4>
                   <p className="text-sm text-gray-200 leading-relaxed">{selectedFinding.content}</p>
                 </div>
                 {selectedFinding.source_url && (
                   <div>
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Source</h4>
+                    <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Source</h4>
                     <a
                       href={selectedFinding.source_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-sm text-info hover:underline break-all flex items-center gap-1"
+                      className="text-sm text-info hover:underline break-all flex items-start gap-2 bg-dark-bg/50 p-2 rounded-lg border border-dark-border/50"
                     >
-                      <span className="material-symbols-outlined text-sm">open_in_new</span>
-                      {selectedFinding.source_url}
+                      <span className="material-symbols-outlined text-sm mt-0.5 text-gray-500">open_in_new</span>
+                      <span className="line-clamp-2">{selectedFinding.source_url}</span>
                     </a>
                   </div>
                 )}
                 {selectedFinding.search_query && (
                   <div>
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Search Query</h4>
-                    <p className="text-sm text-gray-400 font-mono bg-dark-bg p-3 rounded-lg border border-dark-border">
+                    <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Search Query</h4>
+                    <p className="text-xs text-gray-400 font-mono bg-dark-bg p-2 rounded-lg border border-dark-border/50">
                       {selectedFinding.search_query}
                     </p>
                   </div>
@@ -262,56 +223,6 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Sources Panel */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Sources Index</h3>
-          <span className="text-xs text-gray-500">
-            {loadingSources ? "Loading…" : `${filteredSources.length} sources`}
-          </span>
-        </div>
-        {loadingSources ? (
-          <div className="text-sm text-gray-400">Loading sources…</div>
-        ) : filteredSources.length === 0 ? (
-          <div className="text-sm text-gray-400">Sources will appear once findings are collected.</div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {filteredSources.slice(0, 10).map((source) => (
-              <div
-                key={source.source_url}
-                className="border border-dark-border rounded-lg p-3 bg-dark-bg/60 hover:border-primary/30 transition-colors"
-              >
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-                  <span className="font-mono">{formatDate(source.last_seen)}</span>
-                  <span className="badge badge-system">{source.findings_count} findings</span>
-                </div>
-                <a
-                  href={source.source_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sm text-info hover:underline break-all line-clamp-1 block"
-                >
-                  {source.source_url}
-                </a>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {source.domain && <span className="badge badge-system">{source.domain}</span>}
-                  {source.credibility_label && (
-                    <span className={`badge ${getCredibilityBadge(source.credibility_label)}`}>
-                      {source.credibility_label}
-                    </span>
-                  )}
-                  {source.final_score !== null && source.final_score !== undefined && (
-                    <span className="badge badge-system">
-                      {Math.round(source.final_score * 100)}% credibility
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -347,11 +258,4 @@ function getFindingBadge(type?: string | null): string {
     case "source": return "badge-system";
     default: return "badge-finding";
   }
-}
-
-function getCredibilityBadge(label: string): string {
-  const normalized = label.toLowerCase();
-  if (normalized.includes("high") || normalized.includes("trusted")) return "badge-success";
-  if (normalized.includes("medium") || normalized.includes("moderate")) return "badge-verify";
-  return "badge-error";
 }

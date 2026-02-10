@@ -11,7 +11,7 @@ import pickle
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import numpy as np
 
@@ -204,7 +204,7 @@ class BM25Index:
         self,
         query: str,
         k: int = 10,
-        filter_fn: callable | None = None,
+        filter_fn: Callable[["IndexedDocument"], bool] | None = None,
     ) -> list[tuple["Document", float]]:
         """Search for documents matching the query.
 
