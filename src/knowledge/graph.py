@@ -51,8 +51,8 @@ class IncrementalKnowledgeGraph:
         similarity_threshold: float = 0.7,
         use_fast_ner: bool = True,
         credibility_audit_callback: Callable[[dict], Any] | None = None,
-    ):
         session_id: str | None = None,
+    ):
         """Initialize the incremental knowledge graph.
 
         Args:
@@ -61,6 +61,7 @@ class IncrementalKnowledgeGraph:
             similarity_threshold: Threshold for entity matching (0.7 = 70% similar)
             use_fast_ner: Use spaCy for fast NER (with LLM fallback for domain types)
             credibility_audit_callback: Optional async callback to persist credibility audits
+            session_id: Session ID to associate with entities/relations
         """
         self.llm_callback = llm_callback
         self.session_id = session_id

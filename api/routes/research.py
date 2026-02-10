@@ -74,7 +74,7 @@ class ResearchStatusResponse(BaseModel):
     message: str | None = None
 
 
-async def run_research_background(session_id: str, goal: str, time_limit: int):
+async def run_research_background(session_id: str, goal: str, time_limit: int, autonomous: bool = True):
     """
     Run research in the background.
 
@@ -85,6 +85,7 @@ async def run_research_background(session_id: str, goal: str, time_limit: int):
     print(f"   Session ID: {session_id}")
     print(f"   Goal: {goal}")
     print(f"   Time Limit: {time_limit} minutes")
+    print(f"   Autonomous Mode: {autonomous}")
     print(f"{'='*60}\n")
 
     try:
@@ -98,13 +99,13 @@ async def run_research_background(session_id: str, goal: str, time_limit: int):
         db = await get_db()
         await db.update_session_status(session_id, "running")
 
-        # Create autonomous interaction config (no user prompts)
+        # Create interaction config based on autonomous mode
         print("⚙️  Creating interaction config...")
         interaction_config = InteractionConfig(
-            enable_clarification=False,
-            autonomous_mode=True,
+            enable_clarification=not autonomous,  # Enable clarification if not autonomous
+            autonomous_mode=autonomous,
         )
-        print("✓ Config created")
+        print(f"✓ Config created (clarification: {not autonomous}, autonomous: {autonomous})")
 
         print("🚀 Starting research harness...")
         async with ResearchHarness(
@@ -176,9 +177,9 @@ async def start_research(
     session = await db.create_session(request.goal, request.time_limit)
     session_id = session.id
 
-    # Start research in background
+    # Start research in background with autonomous flag
     task = asyncio.create_task(
-        run_research_background(session_id, request.goal, request.time_limit)
+        run_research_background(session_id, request.goal, request.time_limit, request.autonomous)
     )
     running_research[session_id] = task
 

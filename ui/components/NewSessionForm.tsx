@@ -31,17 +31,19 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
     setError("");
 
     try {
-      const response = await fetch("/api/sessions/", {
+      // Start research (creates session AND starts research process)
+      const response = await fetch("/api/research/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           goal: goal.trim(),
           time_limit: timeLimit,
+          autonomous: autonomous,
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to create session");
+        throw new Error("Failed to start research");
       }
 
       const data = await response.json();
