@@ -7,10 +7,10 @@ from datetime import datetime
 from typing import Optional
 
 from .models import (
+    BatchVerificationResult,
+    VerificationMethod,
     VerificationResult,
     VerificationStatus,
-    VerificationMethod,
-    BatchVerificationResult,
 )
 
 
@@ -45,7 +45,7 @@ class VerificationMetricsTracker:
     """Track verification metrics across sessions."""
 
     # Session tracking
-    session_id: Optional[str] = None
+    session_id: str | None = None
     started_at: datetime = field(default_factory=datetime.now)
 
     # Counts by status

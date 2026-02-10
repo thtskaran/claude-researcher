@@ -40,7 +40,7 @@ class EmbeddingConfig:
     normalize: bool = True
 
     # Cache directory for models
-    cache_dir: Optional[str] = None
+    cache_dir: str | None = None
 
     # Query prefix for BGE models (improves retrieval quality)
     query_prefix: str = "Represent this sentence for searching relevant passages: "
@@ -55,10 +55,10 @@ class EmbeddingConfig:
 class EmbeddingService:
     """High-quality embedding service with caching and batching."""
 
-    def __init__(self, config: Optional[EmbeddingConfig] = None):
+    def __init__(self, config: EmbeddingConfig | None = None):
         self.config = config or EmbeddingConfig()
         self._model = None
-        self._dimension: Optional[int] = None
+        self._dimension: int | None = None
         self._embedding_cache: dict[str, np.ndarray] = {}
 
     def _get_device(self) -> str:
@@ -242,10 +242,10 @@ class EmbeddingService:
 
 
 # Global singleton for shared embedding service
-_global_embedding_service: Optional[EmbeddingService] = None
+_global_embedding_service: EmbeddingService | None = None
 
 
-def get_embedding_service(config: Optional[EmbeddingConfig] = None) -> EmbeddingService:
+def get_embedding_service(config: EmbeddingConfig | None = None) -> EmbeddingService:
     """Get or create the global embedding service."""
     global _global_embedding_service
     if _global_embedding_service is None:

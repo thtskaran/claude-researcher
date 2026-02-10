@@ -2,37 +2,38 @@
 
 import asyncio
 import json
-from typing import Any, Optional, TYPE_CHECKING
 from datetime import datetime
+from typing import TYPE_CHECKING, Any, Optional
 
-from .base import BaseAgent, AgentConfig, DecisionType
-from .intern import InternAgent
-from .parallel import ParallelInternPool
+from rich.console import Console
+
 from ..audit import init_decision_logger
+from ..knowledge import (
+    CredibilityScorer,
+    HybridKnowledgeGraphStore,
+    IncrementalKnowledgeGraph,
+    KGFinding,
+    ManagerQueryInterface,
+)
+from ..memory import ExternalMemoryStore, HybridMemory
 from ..models.findings import (
     AgentRole,
     Finding,
-    ManagerDirective,
     InternReport,
+    ManagerDirective,
     ManagerReport,
     ResearchTopic,
 )
-from ..storage.database import ResearchDatabase
-from ..knowledge import (
-    IncrementalKnowledgeGraph,
-    HybridKnowledgeGraphStore,
-    ManagerQueryInterface,
-    KGFinding,
-    CredibilityScorer,
-)
-from ..memory import HybridMemory, ExternalMemoryStore
 from ..retrieval import get_findings_retriever
+from ..storage.database import ResearchDatabase
 from ..verification import (
-    VerificationPipeline,
-    VerificationConfig,
     BatchVerificationResult,
+    VerificationConfig,
+    VerificationPipeline,
 )
-from rich.console import Console
+from .base import AgentConfig, BaseAgent, DecisionType
+from .intern import InternAgent
+from .parallel import ParallelInternPool
 
 if TYPE_CHECKING:
     from ..interaction import UserInteraction
@@ -56,8 +57,8 @@ class ManagerAgent(BaseAgent):
         self,
         db: ResearchDatabase,
         intern: InternAgent,
-        config: Optional[AgentConfig] = None,
-        console: Optional[Console] = None,
+        config: AgentConfig | None = None,
+        console: Console | None = None,
         pool_size: int = 3,
         use_parallel: bool = True,
         interaction: Optional["UserInteraction"] = None,
@@ -76,7 +77,7 @@ class ManagerAgent(BaseAgent):
         self.all_reports: list[InternReport] = []
         self.current_depth: int = 0
         self.max_depth: int = 5
-        self.start_time: Optional[datetime] = None
+        self.start_time: datetime | None = None
         self.time_limit_minutes: int = 60
 
         # Locks for thread-safe state access (prevents race conditions in parallel execution)
@@ -134,7 +135,7 @@ class ManagerAgent(BaseAgent):
             self.intern_pool.set_verification_pipeline(self.verification_pipeline)
 
         # Track batch verification results for reports
-        self.last_batch_verification: Optional[BatchVerificationResult] = None
+        self.last_batch_verification: BatchVerificationResult | None = None
 
     async def _kg_llm_callback(self, prompt: str) -> str:
         """LLM callback for knowledge graph extraction (uses faster model)."""
@@ -582,8 +583,8 @@ Think step by step about the best next action."""
         self,
         question: str,
         context: str = "",
-        options: Optional[list[str]] = None,
-    ) -> Optional[str]:
+        options: list[str] | None = None,
+    ) -> str | None:
         """Ask the user a question during research if interaction is enabled.
 
         This is non-blocking with a timeout - if the user doesn't respond,
@@ -761,7 +762,7 @@ Think step by step about the best next action."""
         ]
         return any(signal in thought_lower for signal in directive_signals)
 
-    async def _create_directive(self, thought: str) -> Optional[ManagerDirective]:
+    async def _create_directive(self, thought: str) -> ManagerDirective | None:
         """Create a directive for the Intern based on reasoning."""
         prompt = f"""Based on this reasoning:
 {thought}
@@ -900,7 +901,7 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
         self,
         report: InternReport,
         directive: ManagerDirective,
-        parent_topic: Optional[ResearchTopic] = None,
+        parent_topic: ResearchTopic | None = None,
     ) -> None:
         """Process follow-up suggestions and add worthy ones to the queue."""
         if self.current_depth >= self.max_depth:
@@ -1337,8 +1338,9 @@ Be thorough and insightful. Note where findings have lower confidence."""
         Returns:
             Dict with visualization paths and summary data
         """
-        from ..knowledge import KnowledgeGraphVisualizer
         from pathlib import Path
+
+        from ..knowledge import KnowledgeGraphVisualizer
 
         visualizer = KnowledgeGraphVisualizer(self.kg_store)
         output_path = Path(output_dir)

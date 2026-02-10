@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -10,7 +11,7 @@ class ClarificationQuestion(BaseModel):
     id: int
     question: str
     options: list[str] = Field(default_factory=list)
-    default: Optional[str] = None
+    default: str | None = None
     category: str = "general"
 
 

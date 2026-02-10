@@ -3,11 +3,11 @@ Database service for API.
 
 Direct SQLite wrapper to avoid import issues with src/ modules.
 """
-import aiosqlite
 import secrets
-from pathlib import Path
-from typing import List, Optional, Dict, Any
 from datetime import datetime
+from pathlib import Path
+
+import aiosqlite
 from pydantic import BaseModel
 
 
@@ -18,7 +18,7 @@ class SessionRecord(BaseModel):
     slug: str
     time_limit_minutes: int
     started_at: datetime
-    ended_at: Optional[datetime] = None
+    ended_at: datetime | None = None
     status: str = "active"
     total_findings: int = 0
     total_searches: int = 0
@@ -30,7 +30,7 @@ class APIDatabase:
 
     def __init__(self, db_path: str = "research.db"):
         self.db_path = Path(db_path)
-        self._connection: Optional[aiosqlite.Connection] = None
+        self._connection: aiosqlite.Connection | None = None
 
     async def connect(self):
         """Connect to database."""
@@ -185,7 +185,7 @@ class APIDatabase:
             await self._connection.close()
             self._connection = None
 
-    async def list_sessions(self, limit: int = 100) -> List[SessionRecord]:
+    async def list_sessions(self, limit: int = 100) -> list[SessionRecord]:
         """List all research sessions, most recent first."""
         cursor = await self._connection.execute(
             """
@@ -214,7 +214,7 @@ class APIDatabase:
 
         return sessions
 
-    async def get_session(self, session_id: str) -> Optional[SessionRecord]:
+    async def get_session(self, session_id: str) -> SessionRecord | None:
         """Get a specific session."""
         cursor = await self._connection.execute(
             "SELECT * FROM sessions WHERE id = ?", (session_id,)
@@ -267,6 +267,27 @@ class APIDatabase:
             started_at=now,
             status="created",
         )
+
+    async def update_session_status(
+        self, session_id: str, status: str, ended_at: datetime | None = None
+    ) -> bool:
+        """Update session status and optionally set ended_at."""
+        try:
+            if ended_at:
+                cursor = await self._connection.execute(
+                    "UPDATE sessions SET status = ?, ended_at = ? WHERE id = ?",
+                    (status, ended_at.isoformat(), session_id),
+                )
+            else:
+                cursor = await self._connection.execute(
+                    "UPDATE sessions SET status = ? WHERE id = ?",
+                    (status, session_id),
+                )
+            await self._connection.commit()
+            return cursor.rowcount > 0
+        except Exception:
+            await self._connection.rollback()
+            raise
 
     async def delete_session(self, session_id: str) -> bool:
         """Delete a session and all related data."""
@@ -350,10 +371,10 @@ class APIDatabase:
         limit: int = 200,
         offset: int = 0,
         order: str = "desc",
-        search: Optional[str] = None,
-        finding_type: Optional[str] = None,
-        min_confidence: Optional[float] = None,
-        max_confidence: Optional[float] = None,
+        search: str | None = None,
+        finding_type: str | None = None,
+        min_confidence: float | None = None,
+        max_confidence: float | None = None,
     ):
         """List findings with optional filters."""
         order_sql = "DESC" if order.lower() == "desc" else "ASC"
@@ -478,7 +499,7 @@ class APIDatabase:
             for row in rows
         ]
 
-    async def get_session_slug(self, session_id: str) -> Optional[str]:
+    async def get_session_slug(self, session_id: str) -> str | None:
         """Get the slug for a session ID."""
         cursor = await self._connection.execute(
             "SELECT slug FROM sessions WHERE id = ?", (session_id,)
@@ -488,9 +509,39 @@ class APIDatabase:
             return None
         return row["slug"]
 
+    async def get_session_stats(self, session_id: str) -> dict:
+        """Get aggregate stats for a session (findings, sources, topics)."""
+        findings_cursor = await self._connection.execute(
+            "SELECT COUNT(*) as count FROM findings WHERE session_id = ?",
+            (session_id,),
+        )
+        findings_row = await findings_cursor.fetchone()
+
+        sources_cursor = await self._connection.execute(
+            """
+            SELECT COUNT(DISTINCT source_url) as count
+            FROM findings
+            WHERE session_id = ? AND source_url IS NOT NULL AND source_url != ''
+            """,
+            (session_id,),
+        )
+        sources_row = await sources_cursor.fetchone()
+
+        topics_cursor = await self._connection.execute(
+            "SELECT COUNT(*) as count FROM topics WHERE session_id = ?",
+            (session_id,),
+        )
+        topics_row = await topics_cursor.fetchone()
+
+        return {
+            "findings": findings_row["count"] if findings_row else 0,
+            "sources": sources_row["count"] if sources_row else 0,
+            "topics": topics_row["count"] if topics_row else 0,
+        }
+
 
 # Global database instance
-_db_instance: Optional[APIDatabase] = None
+_db_instance: APIDatabase | None = None
 
 
 async def get_db() -> APIDatabase:

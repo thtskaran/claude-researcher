@@ -2,11 +2,11 @@
 
 
 import json
-from typing import Any, Optional, TYPE_CHECKING
 from datetime import datetime
+from typing import TYPE_CHECKING, Any, Optional
 
-from .base import BaseAgent, AgentConfig, DecisionType
 from ..events import emit_finding
+from .base import AgentConfig, BaseAgent, DecisionType
 
 
 def _get_current_year() -> int:
@@ -14,17 +14,17 @@ def _get_current_year() -> int:
     return datetime.now().year
 
 
+import asyncio
+
+from rich.console import Console
+
 from ..models.findings import (
     AgentRole,
     Finding,
     FindingType,
-    ManagerDirective,
     InternReport,
+    ManagerDirective,
 )
-import asyncio
-
-from ..tools.web_search import WebSearchTool, SearchResult
-from ..storage.database import ResearchDatabase
 from ..retrieval.deduplication import FindingDeduplicator, get_deduplicator
 from ..retrieval.query_expansion import (
     QueryExpander,
@@ -32,7 +32,8 @@ from ..retrieval.query_expansion import (
     QueryExpansionResult,
     merge_search_results,
 )
-from rich.console import Console
+from ..storage.database import ResearchDatabase
+from ..tools.web_search import SearchResult, WebSearchTool
 
 if TYPE_CHECKING:
     from ..verification import VerificationPipeline
@@ -52,14 +53,14 @@ class InternAgent(BaseAgent):
     def __init__(
         self,
         db: ResearchDatabase,
-        config: Optional[AgentConfig] = None,
-        console: Optional[Console] = None,
+        config: AgentConfig | None = None,
+        console: Console | None = None,
         verification_pipeline: Optional["VerificationPipeline"] = None,
-        query_expansion_config: Optional[QueryExpansionConfig] = None,
+        query_expansion_config: QueryExpansionConfig | None = None,
     ):
         super().__init__(AgentRole.INTERN, db, config, console)
         self.search_tool = WebSearchTool(max_results=10)
-        self.current_directive: Optional[ManagerDirective] = None
+        self.current_directive: ManagerDirective | None = None
         self.findings: list[Finding] = []
         self.searches_performed: int = 0
         self.suggested_followups: list[str] = []
@@ -90,8 +91,8 @@ class InternAgent(BaseAgent):
         decision_type: str,
         decision_outcome: str,
         reasoning: str = "",
-        inputs: Optional[dict] = None,
-        metrics: Optional[dict] = None,
+        inputs: dict | None = None,
+        metrics: dict | None = None,
     ) -> None:
         """Log query expansion decisions."""
         type_map = {
@@ -366,7 +367,7 @@ Be brief - just state your decision and reason."""
 
     async def _extract_search_query(
         self, thought: str, directive: ManagerDirective, session_id: str = ""
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract a search query from the agent's thought."""
         # Check if thought indicates we should stop
         if self._should_stop_searching(thought, directive):

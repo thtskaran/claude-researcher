@@ -1,5 +1,5 @@
 """Data models for research findings and state."""
 
-from .findings import Finding, ResearchSession, ResearchTopic, AgentMessage
+from .findings import AgentMessage, Finding, ResearchSession, ResearchTopic
 
 __all__ = ["Finding", "ResearchSession", "ResearchTopic", "AgentMessage"]

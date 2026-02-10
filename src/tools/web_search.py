@@ -21,7 +21,7 @@ class SearchResult:
     title: str
     url: str
     snippet: str
-    content: Optional[str] = None
+    content: str | None = None
 
 
 class WebSearchTool:
@@ -39,8 +39,8 @@ class WebSearchTool:
 
     def __init__(
         self,
-        api_token: Optional[str] = None,
-        zone: Optional[str] = None,
+        api_token: str | None = None,
+        zone: str | None = None,
         max_results: int = 10,
     ):
         self.api_token = api_token or os.environ.get("BRIGHT_DATA_API_TOKEN", "")
@@ -104,7 +104,7 @@ class WebSearchTool:
         _, summary = await self.search(query_text)
         return summary
 
-    async def fetch_page(self, url: str, extract_prompt: str = "") -> Optional[str]:
+    async def fetch_page(self, url: str, extract_prompt: str = "") -> str | None:
         """Scrape a page via Bright Data Web Unlocker (bypasses bot detection).
 
         Returns full page content as markdown, or None on error.

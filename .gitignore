@@ -16,3 +16,5 @@ todo.md
 *.log
 *.pid
 /tmp
+ui/tsconfig.tsbuildinfo
+ui/package-lock.json

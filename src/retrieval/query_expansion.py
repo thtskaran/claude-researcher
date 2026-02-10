@@ -6,8 +6,9 @@ knowledge graph gaps, and FAIR-RAG sufficiency evaluation.
 
 import asyncio
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Optional, Callable, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from ..knowledge.query import ManagerQueryInterface
@@ -55,11 +56,11 @@ class QueryExpander:
 
     def __init__(
         self,
-        config: Optional[QueryExpansionConfig] = None,
-        llm_callback: Optional[Callable] = None,
+        config: QueryExpansionConfig | None = None,
+        llm_callback: Callable | None = None,
         kg_query: Optional["ManagerQueryInterface"] = None,
         deduplicator: Optional["FindingDeduplicator"] = None,
-        decision_logger_callback: Optional[Callable] = None,
+        decision_logger_callback: Callable | None = None,
     ):
         """Initialize the QueryExpander.
 
@@ -84,9 +85,9 @@ class QueryExpander:
         self,
         query: str,
         session_id: str,
-        previous_findings: Optional[list] = None,
+        previous_findings: list | None = None,
         search_iteration: int = 0,
-        year: Optional[int] = None,
+        year: int | None = None,
     ) -> QueryExpansionResult:
         """Expand a query using multiple strategies.
 
@@ -274,7 +275,7 @@ class QueryExpander:
                 await self.decision_logger_callback(
                     session_id=session_id,
                     decision_type="contextual_expand",
-                    decision_outcome=f"_contextual_queries",
+                    decision_outcome="_contextual_queries",
                     reasoning=f"Gaps used: {len(top_gaps)}",
                     inputs={"gap_count": len(top_gaps)},
                     metrics={"contextual_query_count": len(expanded)},

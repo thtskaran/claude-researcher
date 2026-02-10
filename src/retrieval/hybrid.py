@@ -28,9 +28,9 @@ class RetrievalResult:
 
     document: Document
     score: float
-    bm25_rank: Optional[int] = None
-    semantic_rank: Optional[int] = None
-    reranker_score: Optional[float] = None
+    bm25_rank: int | None = None
+    semantic_rank: int | None = None
+    reranker_score: float | None = None
 
     @property
     def id(self) -> str:
@@ -62,7 +62,7 @@ class HybridConfig:
     bm25: BM25Config = field(default_factory=BM25Config)
 
     # Reranker configuration (None to disable)
-    reranker: Optional[RerankerConfig] = field(default_factory=RerankerConfig)
+    reranker: RerankerConfig | None = field(default_factory=RerankerConfig)
 
     # Fusion parameters
     rrf_k: int = 60  # RRF constant (60 is standard)
@@ -100,7 +100,7 @@ class HybridRetriever:
             print(result.content, result.score)
     """
 
-    def __init__(self, config: Optional[HybridConfig] = None):
+    def __init__(self, config: HybridConfig | None = None):
         """Initialize hybrid retriever.
 
         Args:
@@ -117,9 +117,9 @@ class HybridRetriever:
         self._bm25_index = BM25Index(self.config.bm25)
 
         # Lazy-load reranker
-        self._reranker: Optional[Reranker] = None
+        self._reranker: Reranker | None = None
 
-    def _get_reranker(self) -> Optional[Reranker]:
+    def _get_reranker(self) -> Reranker | None:
         """Get reranker (lazy initialization)."""
         if not self.config.use_reranker or self.config.reranker is None:
             return None
@@ -152,8 +152,8 @@ class HybridRetriever:
     def add_texts(
         self,
         texts: list[str],
-        metadatas: Optional[list[dict[str, Any]]] = None,
-        ids: Optional[list[str]] = None,
+        metadatas: list[dict[str, Any]] | None = None,
+        ids: list[str] | None = None,
     ) -> list[str]:
         """Add texts to both indices.
 
@@ -180,9 +180,9 @@ class HybridRetriever:
     def search(
         self,
         query: str,
-        k: Optional[int] = None,
-        filter: Optional[dict[str, Any]] = None,
-        use_reranker: Optional[bool] = None,
+        k: int | None = None,
+        filter: dict[str, Any] | None = None,
+        use_reranker: bool | None = None,
     ) -> list[RetrievalResult]:
         """Search using hybrid retrieval.
 
@@ -324,7 +324,7 @@ class HybridRetriever:
         self,
         query: str,
         k: int = 10,
-        filter: Optional[dict[str, Any]] = None,
+        filter: dict[str, Any] | None = None,
     ) -> list[RetrievalResult]:
         """Search using only semantic similarity.
 

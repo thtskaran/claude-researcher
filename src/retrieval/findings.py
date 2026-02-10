@@ -22,8 +22,8 @@ class FindingSearchResult:
 
     finding: Finding
     score: float
-    bm25_rank: Optional[int] = None
-    semantic_rank: Optional[int] = None
+    bm25_rank: int | None = None
+    semantic_rank: int | None = None
     reranked: bool = False
 
 
@@ -85,7 +85,7 @@ class FindingsRetriever:
         self,
         finding: Finding,
         session_id: str,
-        topic_id: Optional[str] = None,
+        topic_id: str | None = None,
     ) -> str:
         """Add a finding to the index.
 
@@ -140,7 +140,7 @@ class FindingsRetriever:
         self,
         findings: list[Finding],
         session_id: str,
-        topic_id: Optional[str] = None,
+        topic_id: str | None = None,
     ) -> list[str]:
         """Add multiple findings efficiently.
 
@@ -203,10 +203,10 @@ class FindingsRetriever:
         self,
         query: str,
         limit: int = 10,
-        session_id: Optional[str] = None,
-        finding_types: Optional[list[FindingType]] = None,
-        min_confidence: Optional[float] = None,
-        use_reranker: Optional[bool] = None,
+        session_id: str | None = None,
+        finding_types: list[FindingType] | None = None,
+        min_confidence: float | None = None,
+        use_reranker: bool | None = None,
     ) -> list[FindingSearchResult]:
         """Search for relevant findings.
 
@@ -304,7 +304,7 @@ class FindingsRetriever:
         finding: Finding,
         limit: int = 5,
         exclude_self: bool = True,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> list[FindingSearchResult]:
         """Find findings similar to a given finding.
 
@@ -449,7 +449,7 @@ class FindingsRetriever:
 
 
 # Singleton instance for global access
-_findings_retriever: Optional[FindingsRetriever] = None
+_findings_retriever: FindingsRetriever | None = None
 
 
 def get_findings_retriever(

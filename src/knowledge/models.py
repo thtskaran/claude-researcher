@@ -1,8 +1,8 @@
 """Data models for the knowledge graph."""
 
 from dataclasses import dataclass, field
-from typing import Optional, Any
 from datetime import datetime
+from typing import Any, Optional
 
 try:
     import numpy as np
@@ -63,7 +63,7 @@ class Entity:
     id: str
     name: str
     entity_type: str
-    embedding: Optional[Any] = None  # np.ndarray if numpy available
+    embedding: Any | None = None  # np.ndarray if numpy available
     aliases: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     confidence: float = 1.0
@@ -107,7 +107,7 @@ class Relation:
     object_id: str
     source_id: str
     confidence: float = 1.0
-    timestamp: Optional[str] = None
+    timestamp: str | None = None
     properties: dict = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.now)
 
@@ -151,7 +151,7 @@ class KGFinding:
     timestamp: str
     credibility_score: float
     finding_type: str = "fact"
-    search_query: Optional[str] = None
+    search_query: str | None = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -176,8 +176,8 @@ class Contradiction:
     contradiction_type: str  # 'direct', 'transitive', 'semantic'
     description: str
     severity: str = 'medium'  # 'low', 'medium', 'high'
-    resolution: Optional[str] = None
-    resolved_at: Optional[datetime] = None
+    resolution: str | None = None
+    resolved_at: datetime | None = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -197,8 +197,8 @@ class Contradiction:
 class KnowledgeGap:
     """An identified gap in knowledge."""
     gap_type: str  # 'insufficient_evidence', 'disconnected_topics', 'bridging_concept', 'missing_entity_type'
-    entity: Optional[str] = None
-    entity_type: Optional[str] = None
+    entity: str | None = None
+    entity_type: str | None = None
     current_count: int = 0
     recommendation: str = ""
     importance: float = 0.5

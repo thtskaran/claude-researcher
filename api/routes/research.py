@@ -6,8 +6,8 @@ Handles starting and managing actual research runs from the UI.
 import asyncio
 import sys
 from pathlib import Path
-from typing import Dict, Optional
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 # Add src to path
@@ -18,7 +18,7 @@ if src_path not in sys.path:
 router = APIRouter(prefix="/api/research", tags=["research"])
 
 # Track running research sessions
-running_research: Dict[str, asyncio.Task] = {}
+running_research: dict[str, asyncio.Task] = {}
 
 
 class StartResearchRequest(BaseModel):
@@ -42,7 +42,7 @@ class EnrichRequest(BaseModel):
 
 
 async def _haiku_callback(prompt: str) -> str:
-    from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
+    from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
 
     options = ClaudeAgentOptions(
         model="haiku",
@@ -71,7 +71,7 @@ class ResearchStatusResponse(BaseModel):
     """Response with research status."""
     session_id: str
     status: str  # 'starting', 'running', 'completed', 'error'
-    message: Optional[str] = None
+    message: str | None = None
 
 
 async def run_research_background(session_id: str, goal: str, time_limit: int):
@@ -81,7 +81,7 @@ async def run_research_background(session_id: str, goal: str, time_limit: int):
     This imports and runs the actual ResearchHarness.
     """
     print(f"\n{'='*60}")
-    print(f"🔬 STARTING BACKGROUND RESEARCH")
+    print("🔬 STARTING BACKGROUND RESEARCH")
     print(f"   Session ID: {session_id}")
     print(f"   Goal: {goal}")
     print(f"   Time Limit: {time_limit} minutes")
@@ -92,6 +92,11 @@ async def run_research_background(session_id: str, goal: str, time_limit: int):
         from src.agents.director import ResearchHarness
         from src.interaction import InteractionConfig
         print("✓ Import successful")
+
+        # Update session status to running
+        from api.db import get_db
+        db = await get_db()
+        await db.update_session_status(session_id, "running")
 
         # Create autonomous interaction config (no user prompts)
         print("⚙️  Creating interaction config...")
@@ -106,7 +111,7 @@ async def run_research_background(session_id: str, goal: str, time_limit: int):
             db_path="research.db",
             interaction_config=interaction_config
         ) as harness:
-            print(f"✓ Harness initialized")
+            print("✓ Harness initialized")
             print(f"🔍 Starting research for: {goal}")
             print(f"   Using existing session ID: {session_id}")
 
@@ -117,8 +122,14 @@ async def run_research_background(session_id: str, goal: str, time_limit: int):
                 existing_session_id=session_id
             )
 
-            print(f"✅ Research completed successfully!")
-            print(f"   Findings: {len(result.key_findings) if hasattr(result, 'key_findings') else 'N/A'}")
+            print("✅ Research completed successfully!")
+            findings_count = len(result.key_findings) if hasattr(result, 'key_findings') else 'N/A'
+            print(f"   Findings: {findings_count}")
+
+            # Update session status to completed
+            from datetime import datetime
+            await db.update_session_status(session_id, "completed", ended_at=datetime.now())
+
             return result
 
     except Exception as e:
@@ -129,13 +140,22 @@ async def run_research_background(session_id: str, goal: str, time_limit: int):
         print(f"{'='*60}\n")
         import traceback
         traceback.print_exc()
+
+        # Update session status to error
+        try:
+            from api.db import get_db
+            db = await get_db()
+            await db.update_session_status(session_id, "error")
+        except Exception:
+            pass
+
         raise
     finally:
         # Clean up
         print(f"🧹 Cleaning up session {session_id}")
         if session_id in running_research:
             del running_research[session_id]
-            print(f"   ✓ Removed from running_research")
+            print("   ✓ Removed from running_research")
 
 
 @router.post("/start", response_model=ResearchStatusResponse)

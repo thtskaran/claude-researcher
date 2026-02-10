@@ -2,24 +2,25 @@
 
 import asyncio
 import time
-from typing import Callable, Optional, Any, TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Optional
 
-from .models import (
-    VerificationResult,
-    VerificationStatus,
-    VerificationMethod,
-    VerificationConfig,
-    BatchVerificationResult,
-    ContradictionDetail,
-)
+from .confidence import ConfidenceCalibrator
 from .cove import ChainOfVerification
 from .critic import CRITICVerifier, HighStakesDetector
-from .confidence import ConfidenceCalibrator
 from .metrics import VerificationMetricsTracker
+from .models import (
+    BatchVerificationResult,
+    ContradictionDetail,
+    VerificationConfig,
+    VerificationMethod,
+    VerificationResult,
+    VerificationStatus,
+)
 
 if TYPE_CHECKING:
-    from ..models.findings import Finding
     from ..knowledge.graph import IncrementalKnowledgeGraph
+    from ..models.findings import Finding
 
 
 class VerificationPipeline:
@@ -36,8 +37,8 @@ class VerificationPipeline:
         self,
         llm_callback: Callable[[str, str], Any],  # (prompt, model) -> response
         knowledge_graph: Optional["IncrementalKnowledgeGraph"] = None,
-        search_callback: Optional[Callable[[str], Any]] = None,
-        config: Optional[VerificationConfig] = None,
+        search_callback: Callable[[str], Any] | None = None,
+        config: VerificationConfig | None = None,
     ):
         """Initialize the verification pipeline.
 
@@ -314,7 +315,7 @@ class VerificationPipeline:
         """Get markdown section for report."""
         return self.metrics.get_report_section()
 
-    def reset_metrics(self, session_id: Optional[str] = None) -> None:
+    def reset_metrics(self, session_id: str | None = None) -> None:
         """Reset metrics for a new session."""
         self.metrics.reset()
         self.metrics.session_id = session_id
@@ -323,8 +324,8 @@ class VerificationPipeline:
 def create_verification_pipeline(
     llm_callback: Callable[[str, str], Any],
     knowledge_graph: Optional["IncrementalKnowledgeGraph"] = None,
-    search_callback: Optional[Callable[[str], Any]] = None,
-    config: Optional[VerificationConfig] = None,
+    search_callback: Callable[[str], Any] | None = None,
+    config: VerificationConfig | None = None,
 ) -> VerificationPipeline:
     """Factory function to create a verification pipeline.
 

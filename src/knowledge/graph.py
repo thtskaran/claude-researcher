@@ -4,8 +4,9 @@ import asyncio
 import json
 import re
 import uuid
-from typing import Optional, Callable, Any
+from collections.abc import Callable
 from datetime import datetime
+from typing import Any, Optional
 
 try:
     import numpy as np
@@ -13,10 +14,10 @@ try:
 except ImportError:
     HAS_NUMPY = False
 
-from .models import Entity, Relation, KGFinding, Contradiction, ENTITY_TYPES
-from .store import HybridKnowledgeGraphStore
 from .credibility import CredibilityScorer
 from .fast_ner import FastNER, get_fast_ner
+from .models import ENTITY_TYPES, Contradiction, Entity, KGFinding, Relation
+from .store import HybridKnowledgeGraphStore
 
 
 class IncrementalKnowledgeGraph:
@@ -46,10 +47,10 @@ class IncrementalKnowledgeGraph:
     def __init__(
         self,
         llm_callback: Callable[[str], Any],
-        store: Optional[HybridKnowledgeGraphStore] = None,
+        store: HybridKnowledgeGraphStore | None = None,
         similarity_threshold: float = 0.7,
         use_fast_ner: bool = True,
-        credibility_audit_callback: Optional[Callable[[dict], Any]] = None,
+        credibility_audit_callback: Callable[[dict], Any] | None = None,
     ):
         """Initialize the incremental knowledge graph.
 
@@ -646,7 +647,7 @@ Return as JSON array:
 
         return relations
 
-    def _check_contradiction(self, new_relation: Relation) -> Optional[Contradiction]:
+    def _check_contradiction(self, new_relation: Relation) -> Contradiction | None:
         """Check if new relation contradicts existing relations."""
         # Look for relations with same subject and object but different predicate
         existing_relations = self.store.get_entity_relations(new_relation.subject_id)
@@ -723,7 +724,7 @@ Return as JSON array:
     async def get_kg_support_score(
         self,
         content: str,
-        source_url: Optional[str] = None,
+        source_url: str | None = None,
     ) -> float:
         """Calculate KG support score for a finding.
 

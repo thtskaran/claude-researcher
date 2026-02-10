@@ -6,15 +6,15 @@ This module provides interactive features during research:
 - User message queue for injecting guidance
 """
 
+from .config import InteractionConfig
+from .handler import UserInteraction
+from .listener import InputListener
 from .models import (
     ClarificationQuestion,
     ClarifiedGoal,
     PendingQuestion,
     UserMessage,
 )
-from .config import InteractionConfig
-from .handler import UserInteraction
-from .listener import InputListener
 
 __all__ = [
     # Models

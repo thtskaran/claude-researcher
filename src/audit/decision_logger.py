@@ -9,7 +9,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from ..storage.database import ResearchDatabase
@@ -47,10 +47,10 @@ class AgentDecisionRecord:
     agent_role: str  # "manager" or "intern"
     decision_type: DecisionType
     decision_outcome: str
-    reasoning: Optional[str] = None
-    inputs: Optional[dict[str, Any]] = None
-    metrics: Optional[dict[str, Any]] = None
-    iteration: Optional[int] = None
+    reasoning: str | None = None
+    inputs: dict[str, Any] | None = None
+    metrics: dict[str, Any] | None = None
+    iteration: int | None = None
     created_at: datetime = field(default_factory=datetime.now)
 
     def to_dict(self) -> dict:
@@ -97,7 +97,7 @@ class DecisionLogger:
 
         self._queue: list[AgentDecisionRecord] = []
         self._queue_lock = asyncio.Lock()
-        self._flush_task: Optional[asyncio.Task] = None
+        self._flush_task: asyncio.Task | None = None
         self._running = False
 
     async def start(self) -> None:
@@ -188,10 +188,10 @@ class DecisionLogger:
         agent_role: str,
         decision_type: DecisionType,
         decision_outcome: str,
-        reasoning: Optional[str] = None,
-        inputs: Optional[dict[str, Any]] = None,
-        metrics: Optional[dict[str, Any]] = None,
-        iteration: Optional[int] = None,
+        reasoning: str | None = None,
+        inputs: dict[str, Any] | None = None,
+        metrics: dict[str, Any] | None = None,
+        iteration: int | None = None,
     ) -> None:
         """Convenience method to log a decision.
 
@@ -223,10 +223,10 @@ class DecisionLogger:
 
 
 # Global instance for shared access
-_decision_logger: Optional[DecisionLogger] = None
+_decision_logger: DecisionLogger | None = None
 
 
-def get_decision_logger(db: Optional["ResearchDatabase"] = None) -> Optional[DecisionLogger]:
+def get_decision_logger(db: Optional["ResearchDatabase"] = None) -> DecisionLogger | None:
     """Get or create the global decision logger.
 
     Args:

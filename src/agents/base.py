@@ -2,24 +2,24 @@
 
 import asyncio
 import os
-import os
 import subprocess
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Optional
+
+from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
 from rich.console import Console
 
-from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
-
-from ..models.findings import AgentRole, AgentMessage
-from ..storage.database import ResearchDatabase
+from ..audit import DecisionLogger, DecisionType, get_decision_logger
 from ..costs.tracker import get_cost_tracker
-from ..audit import DecisionType, DecisionLogger, get_decision_logger
-from ..events import emit_thinking, emit_action, emit_error, emit_agent_event
+from ..events import emit_action, emit_agent_event, emit_error, emit_thinking
+from ..models.findings import AgentMessage, AgentRole
+from ..storage.database import ResearchDatabase
 
 
-def _get_api_key() -> Optional[str]:
+def _get_api_key() -> str | None:
     """Get the API key from Claude Code's config or environment."""
     # First check environment
     if api_key := os.environ.get("ANTHROPIC_API_KEY"):
@@ -122,10 +122,10 @@ class AgentState:
     """Current state of an agent."""
     iteration: int = 0
     total_actions: int = 0
-    last_action: Optional[str] = None
-    last_observation: Optional[str] = None
+    last_action: str | None = None
+    last_observation: str | None = None
     is_complete: bool = False
-    error: Optional[str] = None
+    error: str | None = None
     history: list[dict] = field(default_factory=list)
 
 
@@ -140,9 +140,9 @@ class BaseAgent(ABC):
         self,
         role: AgentRole,
         db: ResearchDatabase,
-        config: Optional[AgentConfig] = None,
-        console: Optional[Console] = None,
-        session_id: Optional[str] = None,
+        config: AgentConfig | None = None,
+        console: Console | None = None,
+        session_id: str | None = None,
     ):
         self.role = role
         self.db = db
@@ -291,7 +291,7 @@ class BaseAgent(ABC):
         message_type: str,
         content: str,
         session_id: str,
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> AgentMessage:
         """Send a message to another agent."""
         message = AgentMessage(
@@ -307,9 +307,9 @@ class BaseAgent(ABC):
     async def call_claude(
         self,
         prompt: str,
-        tools: Optional[list[str]] = None,
+        tools: list[str] | None = None,
         use_thinking: bool = False,
-        task_type: Optional[str] = None,
+        task_type: str | None = None,
     ) -> str:
         """Call Claude via the Agent SDK.
 
@@ -380,7 +380,7 @@ class BaseAgent(ABC):
         Returns:
             Tuple of (text_response, tool_results)
         """
-        from claude_agent_sdk import ToolUseBlock, ToolResultBlock
+        from claude_agent_sdk import ToolResultBlock, ToolUseBlock
 
         # Build environment with API key
         env = {}
@@ -439,7 +439,7 @@ class BaseAgent(ABC):
 
         return response_text, tool_results
 
-    def _log(self, message: str, style: Optional[str] = None) -> None:
+    def _log(self, message: str, style: str | None = None) -> None:
         """Log a message to the console."""
         prefix = f"[{self.role.value.upper()}]"
         if style:
@@ -470,9 +470,9 @@ class BaseAgent(ABC):
         session_id: str,
         decision_type: DecisionType,
         decision_outcome: str,
-        reasoning: Optional[str] = None,
-        inputs: Optional[dict] = None,
-        metrics: Optional[dict] = None,
+        reasoning: str | None = None,
+        inputs: dict | None = None,
+        metrics: dict | None = None,
     ) -> None:
         """Log an agent decision for audit trail.
 

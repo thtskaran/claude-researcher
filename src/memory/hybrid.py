@@ -1,10 +1,11 @@
 """Hybrid memory management with buffer + summary pattern."""
 
 import asyncio
+import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, Callable, Any
-import json
+from typing import Any, Optional
 
 
 @dataclass
@@ -53,7 +54,7 @@ class HybridMemory:
         self,
         max_recent_tokens: int = 8000,
         summary_threshold: float = 0.8,
-        llm_callback: Optional[Callable[[str], Any]] = None,
+        llm_callback: Callable[[str], Any] | None = None,
     ):
         """Initialize hybrid memory.
 
@@ -69,7 +70,7 @@ class HybridMemory:
         # Memory tiers
         self.recent_buffer: list[MemoryMessage] = []
         self.summary: str = ""
-        self.summary_updated_at: Optional[datetime] = None
+        self.summary_updated_at: datetime | None = None
 
         # Statistics
         self.total_messages_processed: int = 0
@@ -83,7 +84,7 @@ class HybridMemory:
         self,
         role: str,
         content: str,
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> None:
         """Add a message to memory.
 
@@ -132,7 +133,6 @@ class HybridMemory:
             # Split buffer: keep recent 25%, compress the rest
             split_point = max(2, len(self.recent_buffer) // 4)
             to_compress = list(self.recent_buffer[:-split_point])  # Copy
-            to_keep = list(self.recent_buffer[-split_point:])  # Copy
             current_summary = self.summary
 
         # Format messages for summarization (outside lock)

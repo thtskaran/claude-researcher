@@ -95,8 +95,8 @@ class CostSummary:
     web_fetches: int = 0
 
     # Timing
-    started_at: Optional[datetime] = None
-    ended_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
 
     @property
     def total_input_tokens(self) -> int:
@@ -296,7 +296,7 @@ class CostTracker:
 
 
 # Global tracker instance
-_global_tracker: Optional[CostTracker] = None
+_global_tracker: CostTracker | None = None
 
 
 def get_cost_tracker() -> CostTracker:

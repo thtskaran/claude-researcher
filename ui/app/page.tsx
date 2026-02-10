@@ -26,7 +26,7 @@ export default function Home() {
   const fetchSessions = async () => {
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:8080/api/sessions/");
+      const response = await fetch("/api/sessions/");
       const data = await response.json();
       setSessions(data);
     } catch (error) {

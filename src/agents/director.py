@@ -1,23 +1,24 @@
 """Director agent - top-level interface for user interaction."""
 
 import asyncio
-from typing import Any, Optional
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Optional
 
-from .base import BaseAgent, AgentConfig
-from .manager import ManagerAgent
-from .intern import InternAgent
-from ..models.findings import AgentRole, ManagerReport, ResearchSession
-from ..storage.database import ResearchDatabase
-from ..reports.writer import DeepReportWriter
-from ..events import emit_synthesis
-from ..interaction import InteractionConfig, UserInteraction
-from ..costs.tracker import get_cost_tracker, reset_cost_tracker, CostSummary
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.table import Table
+
+from ..costs.tracker import CostSummary, get_cost_tracker, reset_cost_tracker
+from ..events import emit_synthesis
+from ..interaction import InteractionConfig, UserInteraction
+from ..models.findings import AgentRole, ManagerReport, ResearchSession
+from ..reports.writer import DeepReportWriter
+from ..storage.database import ResearchDatabase
+from .base import AgentConfig, BaseAgent
+from .intern import InternAgent
+from .manager import ManagerAgent
 
 
 class DirectorAgent(BaseAgent):
@@ -34,9 +35,9 @@ class DirectorAgent(BaseAgent):
     def __init__(
         self,
         db: ResearchDatabase,
-        config: Optional[AgentConfig] = None,
-        console: Optional[Console] = None,
-        interaction_config: Optional[InteractionConfig] = None,
+        config: AgentConfig | None = None,
+        console: Console | None = None,
+        interaction_config: InteractionConfig | None = None,
         owns_db: bool = False,
     ):
         super().__init__(AgentRole.DIRECTOR, db, config, console)
@@ -56,9 +57,9 @@ class DirectorAgent(BaseAgent):
             db, self.intern, config, console,
             interaction=self.interaction,
         )
-        self.current_session: Optional[ResearchSession] = None
+        self.current_session: ResearchSession | None = None
         self._progress_task = None
-        self._progress: Optional[Progress] = None  # For pause/resume support
+        self._progress: Progress | None = None  # For pause/resume support
 
         # Wire up progress callbacks to interaction handler
         self.interaction.set_progress_callbacks(
@@ -164,7 +165,7 @@ When presenting results:
         goal: str,
         time_limit_minutes: int = 60,
         skip_clarification: bool = False,
-        existing_session_id: Optional[str] = None,
+        existing_session_id: str | None = None,
     ) -> ManagerReport:
         """Start a new research session.
 
@@ -478,7 +479,7 @@ When presenting results:
         }
         json_file = output_dir / "findings.json"
         json_file.write_text(json.dumps(json_output, indent=2))
-        self.console.print(f"  [dim]Saved findings.json[/dim]")
+        self.console.print("  [dim]Saved findings.json[/dim]")
 
         # 2. Export knowledge graph
         try:
@@ -535,7 +536,7 @@ When presenting results:
 
         md_file = output_dir / "report.md"
         md_file.write_text(report)
-        self.console.print(f"  [dim]Saved report.md[/dim]")
+        self.console.print("  [dim]Saved report.md[/dim]")
 
         return str(output_dir)
 
@@ -555,11 +556,11 @@ class ResearchHarness:
     def __init__(
         self,
         db_path: str = "research.db",
-        interaction_config: Optional[InteractionConfig] = None,
+        interaction_config: InteractionConfig | None = None,
     ):
         self.db_path = db_path
-        self.db: Optional[ResearchDatabase] = None
-        self.director: Optional[DirectorAgent] = None
+        self.db: ResearchDatabase | None = None
+        self.director: DirectorAgent | None = None
         self.console = Console()
         self.interaction_config = interaction_config
 
@@ -583,7 +584,7 @@ class ResearchHarness:
         self,
         goal: str,
         time_limit_minutes: int = 60,
-        existing_session_id: Optional[str] = None,
+        existing_session_id: str | None = None,
     ) -> ManagerReport:
         """Run a research session.
 

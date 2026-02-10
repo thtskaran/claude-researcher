@@ -3,12 +3,10 @@ Research session routes.
 
 Handles CRUD operations for research sessions.
 """
-from typing import List, Optional
 from fastapi import APIRouter, HTTPException
-from datetime import datetime
 
-from api.models import ResearchSessionCreate, ResearchSessionResponse
 from api.db import get_db
+from api.models import ResearchSessionCreate, ResearchSessionResponse
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -33,7 +31,7 @@ async def create_session(session: ResearchSessionCreate):
     )
 
 
-@router.get("/", response_model=List[ResearchSessionResponse])
+@router.get("/", response_model=list[ResearchSessionResponse])
 async def list_sessions(limit: int = 100):
     """List all research sessions from the database."""
     db = await get_db()
@@ -79,3 +77,14 @@ async def delete_session(session_id: str):
 
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+
+
+@router.get("/{session_id}/stats")
+async def get_session_stats(session_id: str):
+    """Get aggregate stats for a session (findings, sources, topics)."""
+    db = await get_db()
+    session = await db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return await db.get_session_stats(session_id)
