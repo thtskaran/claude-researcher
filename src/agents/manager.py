@@ -851,6 +851,28 @@ Return ONLY the JSON."""
                                 original_confidence=f.original_confidence,
                                 new_confidence=f.confidence,
                             )
+
+                            # Save detailed verification result for UI
+                            await self.db.save_verification_result(
+                                session_id=self.session_id,
+                                finding_id=f.id,
+                                result_dict={
+                                    "original_confidence": result.original_confidence,
+                                    "verified_confidence": result.verified_confidence,
+                                    "verification_status": result.verification_status.value,
+                                    "verification_method": result.verification_method.value,
+                                    "consistency_score": result.consistency_score,
+                                    "kg_support_score": result.kg_support_score,
+                                    "kg_entity_matches": result.kg_entity_matches,
+                                    "kg_supporting_relations": result.kg_supporting_relations,
+                                    "critic_iterations": result.critic_iterations,
+                                    "corrections_made": result.corrections_made,
+                                    "external_verification_used": result.external_verification_used,
+                                    "contradictions": result.contradictions,
+                                    "verification_time_ms": result.verification_time_ms,
+                                    "error": result.error,
+                                },
+                            )
                         break
 
             # Log verification summary
@@ -952,7 +974,7 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
             )
             self.last_batch_verification = batch_result
 
-            # Update findings with verification results
+            # Update findings with verification results and save to verification_results table
             for result in batch_result.results:
                 for f in self.all_findings:
                     if str(f.id or hash(f.content)) == result.finding_id:
@@ -961,6 +983,39 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
                         f.verification_status = result.verification_status.value
                         f.verification_method = result.verification_method.value
                         f.kg_support_score = result.kg_support_score
+
+                        # Update in database
+                        if f.id:
+                            await self.db.update_finding_verification(
+                                finding_id=f.id,
+                                verification_status=f.verification_status,
+                                verification_method=f.verification_method,
+                                kg_support_score=f.kg_support_score,
+                                original_confidence=f.original_confidence,
+                                new_confidence=f.confidence,
+                            )
+
+                            # Save detailed verification result for UI
+                            await self.db.save_verification_result(
+                                session_id=self.session_id,
+                                finding_id=f.id,
+                                result_dict={
+                                    "original_confidence": result.original_confidence,
+                                    "verified_confidence": result.verified_confidence,
+                                    "verification_status": result.verification_status.value,
+                                    "verification_method": result.verification_method.value,
+                                    "consistency_score": result.consistency_score,
+                                    "kg_support_score": result.kg_support_score,
+                                    "kg_entity_matches": result.kg_entity_matches,
+                                    "kg_supporting_relations": result.kg_supporting_relations,
+                                    "critic_iterations": result.critic_iterations,
+                                    "corrections_made": result.corrections_made,
+                                    "external_verification_used": result.external_verification_used,
+                                    "contradictions": result.contradictions,
+                                    "verification_time_ms": result.verification_time_ms,
+                                    "error": result.error,
+                                },
+                            )
                         break
 
         # Separate findings by verification status

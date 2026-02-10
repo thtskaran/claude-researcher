@@ -156,7 +156,9 @@ export default function SessionDetail() {
   }
 
   const isRunning = session.status === "running" || session.status === "pending";
-  const elapsed = getElapsedTime(session.created_at, nowTick);
+  const elapsed = isRunning
+    ? getElapsedTime(session.created_at, nowTick)
+    : getDuration(session.created_at, session.completed_at || null);
   const remaining = getRemainingTime(session.created_at, session.time_limit, nowTick);
 
   return (
@@ -308,23 +310,23 @@ export default function SessionDetail() {
         {activeTab === "sources" && <SourcesBrowser sessionId={sessionId} />}
 
         {activeTab === "agents" && (
-          <SubPagePlaceholder
-            icon="psychology"
-            title="Agent Transparency"
-            description="See the hierarchical agent structure, their current goals, reasoning traces, and real-time decision-making process."
-            linkHref={`/session/${sessionId}/agents`}
-            linkText="Open Agent View"
-          />
+          <div className="w-full h-[calc(100vh-320px)] min-h-[600px]">
+            <iframe
+              src={`/session/${sessionId}/agents`}
+              className="w-full h-full border-0 rounded-xl bg-dark-surface"
+              title="Agent Transparency"
+            />
+          </div>
         )}
 
         {activeTab === "verify" && (
-          <SubPagePlaceholder
-            icon="verified"
-            title="CoVe Verification Pipeline"
-            description="Track how findings are verified through the Chain-of-Verification pipeline with confidence scoring."
-            linkHref={`/session/${sessionId}/verify`}
-            linkText="Open Verification Pipeline"
-          />
+          <div className="w-full h-[calc(100vh-320px)] min-h-[600px]">
+            <iframe
+              src={`/session/${sessionId}/verify`}
+              className="w-full h-full border-0 rounded-xl bg-dark-surface"
+              title="CoVe Verification Pipeline"
+            />
+          </div>
         )}
       </main>
 
@@ -484,4 +486,21 @@ function getRemainingTime(startDate: string, limitMins: number, nowMs: number): 
   const mins = Math.floor(remainSecs / 60);
   const secs = remainSecs % 60;
   return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+function getDuration(startDateString: string, endDateString: string | null): string {
+  if (!endDateString) {
+    return "N/A";
+  }
+
+  const start = new Date(startDateString);
+  const end = new Date(endDateString);
+  const diffMs = end.getTime() - start.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+
+  if (diffSecs < 60) return `${diffSecs}s`;
+  if (diffMins < 60) return `${diffMins}m ${diffSecs % 60}s`;
+  return `${diffHours}h ${diffMins % 60}m`;
 }

@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ResearchWebSocket, AgentEvent } from "@/lib/websocket";
 
 /* ── types ─────────────────────────────────────────────── */
 interface AgentDecision {
@@ -18,67 +17,69 @@ interface AgentDecision {
     created_at: string;
 }
 
-interface TopicItem {
-    id: number;
-    topic: string;
-    parent_topic_id: number | null;
-    depth: number;
-    status: string;
-    priority: number;
-    findings_count: number;
-    assigned_at: string | null;
-    completed_at: string | null;
-}
-
-interface HierarchyData {
-    roles: Record<string, {
-        role: string;
-        decision_count: number;
-        last_action: string | null;
-        last_action_at: string | null;
-        recent_decisions: AgentDecision[];
-    }>;
-    topics: TopicItem[];
-    progress: {
-        total_topics: number;
-        completed: number;
-        in_progress: number;
-        pending: number;
-    };
-}
-
 /* ── role config ───────────────────────────────────────── */
-const roleConfig: Record<string, { icon: string; label: string; sublabel: string; level: number }> = {
-    director: { icon: "military_tech", label: "Director", sublabel: "Level 0 — Strategic Planning", level: 0 },
-    manager: { icon: "psychology", label: "Manager", sublabel: "Level 1 — Tactical Coordination", level: 1 },
-    intern: { icon: "person_search", label: "Intern", sublabel: "Level 2 — Research Worker", level: 2 },
-    researcher: { icon: "person_search", label: "Researcher", sublabel: "Level 2 — Research Worker", level: 2 },
-    research_intern: { icon: "person_search", label: "Research Intern", sublabel: "Level 2 — Research Worker", level: 2 },
+const roleConfig: Record<string, { icon: string; color: string; bgColor: string; label: string; description: string }> = {
+    director: {
+        icon: "military_tech",
+        color: "text-purple-400",
+        bgColor: "bg-purple-400/10",
+        label: "Director",
+        description: "Strategic planning and goal decomposition"
+    },
+    manager: {
+        icon: "psychology",
+        color: "text-primary",
+        bgColor: "bg-primary/10",
+        label: "Manager",
+        description: "Tactical coordination and synthesis"
+    },
+    intern: {
+        icon: "person_search",
+        color: "text-accent-green",
+        bgColor: "bg-accent-green/10",
+        label: "Research Intern",
+        description: "Web search and finding extraction"
+    },
+    researcher: {
+        icon: "person_search",
+        color: "text-accent-green",
+        bgColor: "bg-accent-green/10",
+        label: "Research Intern",
+        description: "Web search and finding extraction"
+    },
+    research_intern: {
+        icon: "person_search",
+        color: "text-accent-green",
+        bgColor: "bg-accent-green/10",
+        label: "Research Intern",
+        description: "Web search and finding extraction"
+    },
 };
-const defaultRoleCfg = { icon: "smart_toy", label: "Agent", sublabel: "Unknown Role", level: 3 };
+const defaultRoleCfg = {
+    icon: "smart_toy",
+    color: "text-gray-400",
+    bgColor: "bg-gray-400/10",
+    label: "Agent",
+    description: "System agent"
+};
 
 export default function AgentTransparencyPage() {
     const params = useParams();
     const sessionId = params.id as string;
-    const [events, setEvents] = useState<AgentEvent[]>([]);
-    const [connected, setConnected] = useState(false);
-    const wsRef = useRef<ResearchWebSocket | null>(null);
-    const [hierarchy, setHierarchy] = useState<HierarchyData | null>(null);
     const [decisions, setDecisions] = useState<AgentDecision[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
 
-    /* ── fetch data ────────────────────────────────────── */
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [hierRes, decRes] = await Promise.all([
-                fetch(`/api/sessions/${sessionId}/agents/hierarchy`),
-                fetch(`/api/sessions/${sessionId}/agents/decisions?limit=100`),
-            ]);
-            if (hierRes.ok) setHierarchy(await hierRes.json());
-            if (decRes.ok) setDecisions(await decRes.json());
-        } catch {
-            // silently fall back to empty state
+            const response = await fetch(`/api/sessions/${sessionId}/agents/decisions?limit=500`);
+            if (response.ok) {
+                const data = await response.json();
+                setDecisions(data);
+            }
+        } catch (err) {
+            console.error("Failed to fetch agent data:", err);
         } finally {
             setLoading(false);
         }
@@ -86,52 +87,31 @@ export default function AgentTransparencyPage() {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    /* ── WebSocket ─────────────────────────────────────── */
-    useEffect(() => {
-        const ws = new ResearchWebSocket(sessionId);
-
-        ws.onEvent((event) => {
-            setEvents((prev) => [event, ...prev].slice(0, 500));
-        });
-
-        ws.connect();
-        wsRef.current = ws;
-
-        const checkConnection = setInterval(() => setConnected(ws.isConnected()), 1000);
-        return () => { clearInterval(checkConnection); ws.disconnect(); };
-    }, [sessionId]);
-
-    /* ── derived data ──────────────────────────────────── */
-    const roles = hierarchy?.roles || {};
-    const progress = hierarchy?.progress || { total_topics: 0, completed: 0, in_progress: 0, pending: 0 };
-    const topics = hierarchy?.topics || [];
-    const progressPct = progress.total_topics > 0 ? Math.round((progress.completed / progress.total_topics) * 100) : 0;
-
-    // Sort roles by level for display
-    const sortedRoles = Object.entries(roles).sort(([a], [b]) => {
-        const la = (roleConfig[a.toLowerCase()] || defaultRoleCfg).level;
-        const lb = (roleConfig[b.toLowerCase()] || defaultRoleCfg).level;
-        return la - lb;
+    // Group decisions by agent role
+    const agentGroups: Record<string, AgentDecision[]> = {};
+    decisions.forEach((d) => {
+        const role = d.agent_role;
+        if (!agentGroups[role]) agentGroups[role] = [];
+        agentGroups[role].push(d);
     });
 
-    const directorRole = sortedRoles.find(([k]) => k.toLowerCase() === "director");
-    const managerRole = sortedRoles.find(([k]) => k.toLowerCase() === "manager");
-    const workerRoles = sortedRoles.filter(([k]) => {
-        const l = k.toLowerCase();
-        return l !== "director" && l !== "manager";
+    // Get agent roles in hierarchy order
+    const orderedAgents = Object.keys(agentGroups).sort((a, b) => {
+        const levels: Record<string, number> = { director: 0, manager: 1, intern: 2, researcher: 2, research_intern: 2 };
+        return (levels[a.toLowerCase()] || 3) - (levels[b.toLowerCase()] || 3);
     });
 
-    const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
-        active: { color: "text-accent-green", bg: "bg-accent-green", label: "Active" },
-        thinking: { color: "text-primary", bg: "bg-primary", label: "Thinking" },
-        searching: { color: "text-accent-blue", bg: "bg-accent-blue", label: "Searching" },
-        reading: { color: "text-accent-yellow", bg: "bg-accent-yellow", label: "Reading" },
-        idle: { color: "text-gray-500", bg: "bg-gray-500", label: "Idle" },
-    };
+    // Stats
+    const totalActions = decisions.length;
+    const uniqueActionTypes = new Set(decisions.map(d => d.decision_type)).size;
 
-    /* ── render ─────────────────────────────────────────── */
+    // Get timeline for selected agent or all
+    const filteredDecisions = selectedAgent
+        ? decisions.filter(d => d.agent_role === selectedAgent)
+        : decisions;
+
     return (
-        <div className="min-h-screen flex flex-col">
+        <div className="min-h-screen flex flex-col bg-dark-bg">
             {/* Header */}
             <header className="border-b border-dark-border bg-dark-surface/50 backdrop-blur-sm sticky top-0 z-20">
                 <div className="max-w-7xl mx-auto px-6 py-4">
@@ -140,25 +120,22 @@ export default function AgentTransparencyPage() {
                         <span className="material-symbols-outlined text-[12px]">chevron_right</span>
                         <Link href={`/session/${sessionId}`} className="hover:text-primary transition-colors">Session</Link>
                         <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-                        <span className="text-gray-300">Agents</span>
+                        <span className="text-gray-300">Agent Activity</span>
                     </div>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <Link href={`/session/${sessionId}`} className="text-gray-400 hover:text-primary transition-colors">
                                 <span className="material-symbols-outlined">arrow_back</span>
                             </Link>
-                            <h1 className="text-xl font-bold">Agent Transparency</h1>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <button onClick={fetchData} className="btn btn-ghost text-xs gap-1">
-                                <span className="material-symbols-outlined text-sm">refresh</span>
-                                Refresh
-                            </button>
-                            <div className="flex items-center gap-2">
-                                <span className={`status-dot ${connected ? "status-dot-active" : "status-dot-idle"}`} />
-                                <span className="text-xs text-gray-400">{connected ? "Live" : "Disconnected"}</span>
+                            <div>
+                                <h1 className="text-xl font-bold">Agent Transparency</h1>
+                                <p className="text-xs text-gray-500">See what each agent did and why</p>
                             </div>
                         </div>
+                        <button onClick={fetchData} className="btn btn-ghost text-xs gap-1">
+                            <span className="material-symbols-outlined text-sm">refresh</span>
+                            Refresh
+                        </button>
                     </div>
                 </div>
             </header>
@@ -167,283 +144,296 @@ export default function AgentTransparencyPage() {
                 <div className="flex-1 flex items-center justify-center">
                     <div className="flex items-center gap-3 text-gray-400">
                         <span className="material-symbols-outlined animate-spin">progress_activity</span>
-                        Loading agent data...
+                        Loading agent activity...
+                    </div>
+                </div>
+            ) : decisions.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center">
+                        <span className="material-symbols-outlined text-5xl text-gray-600 mb-3 block">groups</span>
+                        <p className="text-gray-400">No agent activity yet</p>
+                        <p className="text-xs text-gray-600 mt-1">Actions will appear as research progresses</p>
                     </div>
                 </div>
             ) : (
-                <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8 space-y-8">
-                    {/* Progress Overview */}
-                    {progress.total_topics > 0 && (
-                        <div className="card">
-                            <div className="flex justify-between text-xs text-gray-500 mb-1">
-                                <span>Topic Progress</span>
-                                <span className="font-mono">{progress.completed}/{progress.total_topics} completed ({progressPct}%)</span>
+                <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
+                    {/* Overview Stats */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                        <div className="card bg-gradient-to-br from-primary/5 to-transparent border-primary/20">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs text-gray-400 uppercase tracking-wider">Total Actions</span>
+                                <span className="material-symbols-outlined text-primary">analytics</span>
                             </div>
-                            <div className="h-2 bg-dark-border rounded-full overflow-hidden">
-                                <div className="h-full bg-gradient-to-r from-primary to-primary-light rounded-full transition-all" style={{ width: `${progressPct}%` }} />
-                            </div>
-                            <div className="flex items-center gap-4 text-xs text-gray-500 mt-2">
-                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-accent-green" />{progress.completed} completed</span>
-                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-primary" />{progress.in_progress} in progress</span>
-                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-500" />{progress.pending} pending</span>
-                            </div>
+                            <p className="text-3xl font-bold font-mono text-white">{totalActions}</p>
+                            <p className="text-xs text-gray-500 mt-1">Actions taken by all agents</p>
                         </div>
-                    )}
 
-                    {/* Director */}
-                    {directorRole && (
-                        <RoleSection
-                            roleName={directorRole[0]}
-                            roleData={directorRole[1]}
-                            level="director"
-                            statusConfig={statusConfig}
-                            topicCount={progress.total_topics}
-                            workerCount={workerRoles.length}
-                        />
-                    )}
+                        <div className="card bg-gradient-to-br from-accent-green/5 to-transparent border-accent-green/20">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs text-gray-400 uppercase tracking-wider">Active Agents</span>
+                                <span className="material-symbols-outlined text-accent-green">groups</span>
+                            </div>
+                            <p className="text-3xl font-bold font-mono text-white">{orderedAgents.length}</p>
+                            <p className="text-xs text-gray-500 mt-1">Agents participating in research</p>
+                        </div>
 
-                    {(directorRole || managerRole) && (
-                        <div className="flex justify-center"><div className="w-px h-8 bg-dark-border" /></div>
-                    )}
+                        <div className="card bg-gradient-to-br from-accent-yellow/5 to-transparent border-accent-yellow/20">
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs text-gray-400 uppercase tracking-wider">Action Types</span>
+                                <span className="material-symbols-outlined text-accent-yellow">category</span>
+                            </div>
+                            <p className="text-3xl font-bold font-mono text-white">{uniqueActionTypes}</p>
+                            <p className="text-xs text-gray-500 mt-1">Different types of actions performed</p>
+                        </div>
+                    </div>
 
-                    {/* Manager */}
-                    {managerRole && (
-                        <RoleSection
-                            roleName={managerRole[0]}
-                            roleData={managerRole[1]}
-                            level="manager"
-                            statusConfig={statusConfig}
-                        />
-                    )}
+                    {/* Agent Cards */}
+                    <div className="mb-8">
+                        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
+                            Research Team
+                        </h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {orderedAgents.map((agentRole) => {
+                                const cfg = roleConfig[agentRole.toLowerCase()] || defaultRoleCfg;
+                                const agentDecisions = agentGroups[agentRole];
+                                const isSelected = selectedAgent === agentRole;
 
-                    {managerRole && workerRoles.length > 0 && (
-                        <div className="flex justify-center"><div className="w-px h-8 bg-dark-border" /></div>
-                    )}
-
-                    {/* Workers Grid */}
-                    {workerRoles.length > 0 && (
-                        <div>
-                            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 flex items-center gap-2">
-                                <span className="material-symbols-outlined text-sm">group</span>
-                                Worker Pool ({workerRoles.length})
-                            </h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {workerRoles.map(([name, data]) => {
-                                    const cfg = roleConfig[name.toLowerCase()] || defaultRoleCfg;
-                                    return (
-                                        <div key={name} className="card card-hover">
-                                            <div className="flex items-center justify-between mb-3">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                                                        <span className="material-symbols-outlined text-primary text-base">{cfg.icon}</span>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-sm font-medium">{name}</p>
-                                                        <p className="text-xs text-gray-500">{data.decision_count} decisions</p>
-                                                    </div>
-                                                </div>
+                                return (
+                                    <button
+                                        key={agentRole}
+                                        onClick={() => setSelectedAgent(isSelected ? null : agentRole)}
+                                        className={`card text-left transition-all hover:shadow-lg ${
+                                            isSelected ? `ring-2 ${cfg.color.replace("text-", "ring-")} ${cfg.bgColor}` : ""
+                                        }`}
+                                    >
+                                        <div className="flex items-start gap-3 mb-3">
+                                            <div className={`w-12 h-12 rounded-xl ${cfg.bgColor} flex items-center justify-center shrink-0`}>
+                                                <span className={`material-symbols-outlined text-xl ${cfg.color}`}>
+                                                    {cfg.icon}
+                                                </span>
                                             </div>
-                                            {data.last_action && (
-                                                <p className="text-xs text-gray-400 truncate">
-                                                    <span className="material-symbols-outlined text-[12px] mr-1 align-middle">history</span>
-                                                    {data.last_action}
-                                                </p>
-                                            )}
-                                            {data.recent_decisions.length > 0 && (
-                                                <div className="mt-3 space-y-1">
-                                                    {data.recent_decisions.slice(0, 3).map((d) => (
-                                                        <div key={d.id} className="text-xs text-gray-500 truncate">
-                                                            <span className="text-gray-600 font-mono mr-1">{d.decision_type}:</span>
-                                                            {d.decision_outcome}
-                                                        </div>
-                                                    ))}
+                                            <div className="flex-1 min-w-0">
+                                                <h3 className="font-semibold text-white">{cfg.label}</h3>
+                                                <p className="text-xs text-gray-500 leading-relaxed">{cfg.description}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center justify-between text-xs">
+                                            <div className="flex items-center gap-4">
+                                                <div>
+                                                    <span className="text-gray-500">Actions:</span>
+                                                    <span className="ml-1 font-mono font-bold text-white">{agentDecisions.length}</span>
                                                 </div>
+                                                {agentDecisions[0] && (
+                                                    <div>
+                                                        <span className="text-gray-500">Last:</span>
+                                                        <span className="ml-1 font-mono text-gray-400">
+                                                            {new Date(agentDecisions[0].created_at).toLocaleTimeString("en-US", {
+                                                                hour: "2-digit",
+                                                                minute: "2-digit"
+                                                            })}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {isSelected && (
+                                                <span className={`badge ${cfg.color.replace("text-", "badge-")}`}>Selected</span>
                                             )}
                                         </div>
-                                    );
-                                })}
-                            </div>
+                                    </button>
+                                );
+                            })}
                         </div>
-                    )}
+                        {selectedAgent && (
+                            <p className="text-xs text-gray-500 mt-3 text-center">
+                                Showing only actions from <span className="text-white font-semibold">{selectedAgent}</span>
+                                <button onClick={() => setSelectedAgent(null)} className="ml-2 text-primary hover:underline">
+                                    Clear filter
+                                </button>
+                            </p>
+                        )}
+                    </div>
 
-                    {/* Topics */}
-                    {topics.length > 0 && (
-                        <div className="card">
-                            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Topic Assignments</h3>
-                            <div className="space-y-2 max-h-60 overflow-y-auto scrollbar-hide">
-                                {topics.map((topic) => (
-                                    <div key={topic.id} className="flex items-center gap-3 text-xs py-1" style={{ paddingLeft: `${topic.depth * 16}px` }}>
-                                        <span className={`w-2 h-2 rounded-full shrink-0 ${topic.status === "completed" ? "bg-accent-green" : topic.status === "in_progress" ? "bg-primary" : "bg-gray-600"}`} />
-                                        <span className="text-gray-300 truncate flex-1">{topic.topic}</span>
-                                        <span className="text-gray-600 font-mono shrink-0">{topic.findings_count} findings</span>
-                                    </div>
-                                ))}
+                    {/* Activity Timeline */}
+                    <div>
+                        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
+                            Activity Timeline ({filteredDecisions.length} actions)
+                        </h2>
+                        <div className="card p-0 overflow-hidden">
+                            <div className="max-h-[600px] overflow-y-auto">
+                                <div className="divide-y divide-dark-border">
+                                    {filteredDecisions.map((decision, idx) => (
+                                        <ActionCard key={decision.id} decision={decision} />
+                                    ))}
+                                </div>
                             </div>
                         </div>
-                    )}
-
-                    {/* Decision Log */}
-                    {decisions.length > 0 && (
-                        <div className="card">
-                            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Decision Log</h3>
-                            <div className="space-y-2 max-h-60 overflow-y-auto scrollbar-hide">
-                                {decisions.slice(0, 30).map((d) => (
-                                    <div key={d.id} className="flex items-start gap-3 text-xs py-1.5 border-b border-dark-border/50 last:border-0">
-                                        <span className="font-mono text-gray-600 shrink-0 w-16">
-                                            {new Date(d.created_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
-                                        </span>
-                                        <span className="badge badge-system shrink-0">{d.agent_role}</span>
-                                        <span className="text-gray-500 shrink-0">{d.decision_type}</span>
-                                        <span className="text-gray-300 truncate flex-1">{d.decision_outcome}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Live WebSocket Events */}
-                    {events.length > 0 && (
-                        <div className="card">
-                            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Live Agent Events</h3>
-                            <div className="space-y-2 max-h-60 overflow-y-auto scrollbar-hide">
-                                {events.slice(0, 20).map((event, i) => (
-                                    <div key={i} className="flex items-start gap-3 text-xs py-1">
-                                        <span className="font-mono text-gray-600 shrink-0 w-16">
-                                            {new Date(event.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                                        </span>
-                                        <span className={`badge ${getBadgeClass(event.event_type)}`}>{event.event_type}</span>
-                                        <span className="text-gray-500">{event.agent}</span>
-                                        <span className="text-gray-400 truncate">{getEventText(event)}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Empty state */}
-                    {Object.keys(roles).length === 0 && decisions.length === 0 && events.length === 0 && (
-                        <div className="flex-1 flex items-center justify-center py-16">
-                            <div className="text-center">
-                                <span className="material-symbols-outlined text-4xl text-gray-600 mb-3 block">groups</span>
-                                <p className="text-sm text-gray-400">No agent data yet.</p>
-                                <p className="text-xs text-gray-600 mt-1">Agent decisions will appear as research progresses.</p>
-                            </div>
-                        </div>
-                    )}
+                    </div>
                 </main>
             )}
-
-            {/* Footer */}
-            <footer className="border-t border-dark-border bg-terminal-black px-6 py-2">
-                <div className="max-w-7xl mx-auto flex items-center justify-between text-xs font-mono text-gray-500">
-                    <span>Session: {sessionId.slice(0, 8)}</span>
-                    <span>{decisions.length} decisions · {events.length} live events</span>
-                    <span className="flex items-center gap-2">
-                        <span className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-accent-green" : "bg-gray-600"}`} />
-                        WebSocket {connected ? "active" : "inactive"}
-                    </span>
-                </div>
-            </footer>
         </div>
     );
 }
 
-/* ── sub-components ─────────────────────────────────────── */
-function RoleSection({
-    roleName,
-    roleData,
-    level,
-    statusConfig,
-    topicCount,
-    workerCount,
-}: {
-    roleName: string;
-    roleData: HierarchyData["roles"][string];
-    level: string;
-    statusConfig: Record<string, { color: string; bg: string; label: string }>;
-    topicCount?: number;
-    workerCount?: number;
-}) {
-    const cfg = roleConfig[roleName.toLowerCase()] || defaultRoleCfg;
-    const hasActivity = roleData.decision_count > 0;
-    const statusCfg = statusConfig[hasActivity ? "active" : "idle"];
+/* ── Action Card ────────────────────────────────────────── */
+function ActionCard({ decision }: { decision: AgentDecision }) {
+    const [expanded, setExpanded] = useState(false);
+    const cfg = roleConfig[decision.agent_role.toLowerCase()] || defaultRoleCfg;
+
+    // Parse action into human-readable text
+    const action = getActionDescription(decision);
+    const hasDetails = decision.reasoning || (decision.inputs && Object.keys(decision.inputs).length > 0) || (decision.metrics && Object.keys(decision.metrics).length > 0);
 
     return (
-        <section>
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <span className="material-symbols-outlined text-sm">{cfg.icon}</span>
-                {cfg.label}
-            </h2>
-            <div className={`card relative overflow-hidden ${level === "manager" ? "border-primary/30" : ""}`}>
-                <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                            <span className="material-symbols-outlined text-primary text-xl">{cfg.icon}</span>
-                        </div>
-                        <div>
-                            <p className="font-semibold">{roleName}</p>
-                            <p className="text-xs text-gray-500">{cfg.sublabel}</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className={`status-dot ${statusCfg.bg}`} />
-                        <span className={`text-xs font-medium ${statusCfg.color}`}>{statusCfg.label}</span>
-                    </div>
+        <div className="p-4 hover:bg-dark-surface/50 transition-colors">
+            {/* Header */}
+            <div className="flex items-start gap-3">
+                <div className={`w-10 h-10 rounded-lg ${cfg.bgColor} flex items-center justify-center shrink-0`}>
+                    <span className={`material-symbols-outlined text-lg ${cfg.color}`}>{cfg.icon}</span>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
-                    <span className="material-symbols-outlined text-[14px]">history</span>
-                    {roleData.last_action || "No actions recorded yet"}
-                </div>
-
-                <div className="flex items-center gap-4 text-xs text-gray-500">
-                    <span className="flex items-center gap-1">
-                        <span className="material-symbols-outlined text-sm">analytics</span>
-                        {roleData.decision_count} decisions
-                    </span>
-                    {topicCount !== undefined && (
-                        <span className="flex items-center gap-1">
-                            <span className="material-symbols-outlined text-sm">topic</span>
-                            {topicCount} topics
+                <div className="flex-1 min-w-0">
+                    {/* Agent & Time */}
+                    <div className="flex items-center gap-2 mb-1.5">
+                        <span className={`text-sm font-semibold ${cfg.color}`}>{cfg.label}</span>
+                        <span className="text-gray-600">•</span>
+                        <span className="text-xs text-gray-500 font-mono">
+                            {new Date(decision.created_at).toLocaleString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit"
+                            })}
                         </span>
+                        {decision.iteration !== null && (
+                            <>
+                                <span className="text-gray-600">•</span>
+                                <span className="text-xs text-gray-500">
+                                    <span className="material-symbols-outlined text-xs align-middle mr-0.5">replay</span>
+                                    Iteration {decision.iteration}
+                                </span>
+                            </>
+                        )}
+                    </div>
+
+                    {/* Action Description */}
+                    <p className="text-sm text-white leading-relaxed mb-2">{action}</p>
+
+                    {/* Quick metrics */}
+                    {decision.metrics && Object.keys(decision.metrics).length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                            {Object.entries(decision.metrics).slice(0, 3).map(([key, value]) => (
+                                <span key={key} className="inline-flex items-center gap-1 px-2 py-0.5 bg-dark-bg rounded text-xs">
+                                    <span className="text-gray-500">{key}:</span>
+                                    <span className="text-gray-300 font-mono">{String(value)}</span>
+                                </span>
+                            ))}
+                        </div>
                     )}
-                    {workerCount !== undefined && (
-                        <span className="flex items-center gap-1">
-                            <span className="material-symbols-outlined text-sm">group</span>
-                            {workerCount} workers
-                        </span>
+
+                    {/* Expand button */}
+                    {hasDetails && (
+                        <button
+                            onClick={() => setExpanded(!expanded)}
+                            className="text-xs text-gray-500 hover:text-primary transition-colors flex items-center gap-1 mt-2"
+                        >
+                            <span className="material-symbols-outlined text-sm">
+                                {expanded ? "expand_less" : "expand_more"}
+                            </span>
+                            {expanded ? "Hide details" : "Show details"}
+                        </button>
+                    )}
+
+                    {/* Expanded Details */}
+                    {expanded && hasDetails && (
+                        <div className="mt-3 space-y-3 pl-4 border-l-2 border-dark-border">
+                            {/* Reasoning */}
+                            {decision.reasoning && (
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-sm">psychology</span>
+                                        Why this action was taken
+                                    </p>
+                                    <p className="text-sm text-gray-300 leading-relaxed italic bg-dark-surface/30 rounded p-3">
+                                        "{decision.reasoning}"
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Inputs */}
+                            {decision.inputs && Object.keys(decision.inputs).length > 0 && (
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-sm">input</span>
+                                        Input data used
+                                    </p>
+                                    <div className="bg-terminal-black border border-terminal-border rounded p-3 overflow-x-auto">
+                                        <pre className="font-mono text-xs text-gray-400">
+                                            {JSON.stringify(decision.inputs, null, 2)}
+                                        </pre>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* All Metrics */}
+                            {decision.metrics && Object.keys(decision.metrics).length > 3 && (
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-sm">monitoring</span>
+                                        Performance metrics
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {Object.entries(decision.metrics).map(([key, value]) => (
+                                            <div key={key} className="bg-dark-surface/50 rounded px-3 py-2">
+                                                <p className="text-xs text-gray-500">{key}</p>
+                                                <p className="text-sm text-white font-mono">{String(value)}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
-
-                {/* Recent decisions as reasoning trace */}
-                {roleData.recent_decisions.length > 0 && (
-                    <div className="mt-4 bg-dark-bg rounded-lg p-3 text-xs space-y-1">
-                        <p className="text-gray-500 uppercase tracking-wider font-medium mb-2">Recent Reasoning</p>
-                        {roleData.recent_decisions.slice(0, 5).map((d, i) => (
-                            <p key={d.id} className="text-gray-400">
-                                <span className="text-gray-600 mr-1">{i + 1}.</span>
-                                <span className="text-gray-500 font-mono mr-1">[{d.decision_type}]</span>
-                                {d.reasoning || d.decision_outcome}
-                            </p>
-                        ))}
-                    </div>
-                )}
             </div>
-        </section>
+        </div>
     );
 }
 
-function getBadgeClass(eventType: string): string {
-    switch (eventType) {
-        case "thinking": return "badge-thinking";
-        case "action": return "badge-action";
-        case "finding": return "badge-finding";
-        case "error": return "badge-error";
-        default: return "badge-system";
-    }
-}
+/* ── Helpers ────────────────────────────────────────────── */
+function getActionDescription(decision: AgentDecision): string {
+    const { decision_type, decision_outcome } = decision;
 
-function getEventText(event: AgentEvent): string {
-    const d = event.data || {};
-    return d.message || d.thought || d.action || d.content || JSON.stringify(d).slice(0, 80);
+    // Map to human-readable descriptions
+    const actionMap: Record<string, (outcome: string) => string> = {
+        decompose_goal: (o) => `Decomposed research goal → ${o}`,
+        assign_topic: (o) => `Assigned new research topic: "${o}"`,
+        critique_findings: (o) => `Critiqued findings from research → ${o}`,
+        web_search: (o) => `Searched the web for: "${o}"`,
+        extract_finding: (o) => `Found: ${o}`,
+        verify_finding: (o) => `Verified finding → ${o}`,
+        synthesis: (o) => `Synthesized results → ${o}`,
+        directive_complete: (o) => `Completed directive → ${o}`,
+        topic_complete: (o) => `Finished researching: "${o}"`,
+        query_expansion: (o) => `Expanded search query → "${o}"`,
+        fallback_search: (o) => `Tried alternative search → "${o}"`,
+        deep_report_section: (o) => `Wrote report section → ${o}`,
+        knowledge_graph_update: (o) => `Updated knowledge graph → ${o}`,
+        contradiction_detected: (o) => `⚠️ Detected contradiction → ${o}`,
+        retrieve_context: (o) => `Retrieved context for research → ${o}`,
+        route_tool: (o) => `Selected tool → ${o}`,
+        plan: (o) => `Planned next steps → ${o}`,
+    };
+
+    const descFn = actionMap[decision_type.toLowerCase()];
+    if (descFn) return descFn(decision_outcome);
+
+    // Fallback: humanize the decision_type
+    const humanType = decision_type
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+
+    return `${humanType} → ${decision_outcome}`;
 }

@@ -19,6 +19,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
   const [goal, setGoal] = useState("");
   const [timeLimit, setTimeLimit] = useState(30);
   const [autonomous, setAutonomous] = useState(true); // Default to autonomous
+  const [enableMidQuestions, setEnableMidQuestions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -112,7 +113,8 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
         body: JSON.stringify({
           goal: researchGoal,
           time_limit: timeLimit,
-          autonomous: true, // Always autonomous after enrichment
+          autonomous: !enableMidQuestions, // Set autonomous based on mid-questions setting
+          enable_mid_questions: enableMidQuestions,
         }),
       });
 
@@ -216,6 +218,23 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
                   className="sr-only peer"
                   checked={!autonomous}
                   onChange={(e) => setAutonomous(!e.target.checked)}
+                />
+                <div className="w-11 h-6 bg-dark-border peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary" />
+              </label>
+            </div>
+
+            {/* Mid-Research Questions Toggle */}
+            <div className="flex items-center justify-between py-2 border border-dark-border rounded-lg px-4 bg-dark-surface/30">
+              <div className="flex flex-col">
+                <span className="text-sm font-medium text-white">Enable Mid-Research Questions</span>
+                <span className="text-xs text-gray-400">AI can ask questions during research to guide the process</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={enableMidQuestions}
+                  onChange={(e) => setEnableMidQuestions(e.target.checked)}
                 />
                 <div className="w-11 h-6 bg-dark-border peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary" />
               </label>

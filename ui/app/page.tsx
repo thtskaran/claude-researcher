@@ -165,7 +165,9 @@ export default function Home() {
 
 function SessionCard({ session, onClick }: { session: Session; onClick: () => void }) {
   const isActive = session.status === "running" || session.status === "pending";
-  const timeAgo = getTimeAgo(session.created_at);
+  const timeDisplay = isActive
+    ? getElapsedTime(session.created_at)
+    : getDuration(session.created_at, session.completed_at);
 
   return (
     <button
@@ -202,29 +204,58 @@ function SessionCard({ session, onClick }: { session: Session; onClick: () => vo
 
       <div className="flex items-center justify-between text-xs text-gray-500 font-mono">
         <span className="flex items-center gap-1">
-          <span className="material-symbols-outlined text-[14px]">schedule</span>
-          {timeAgo}
+          <span className="material-symbols-outlined text-[14px]">{isActive ? "schedule" : "timer"}</span>
+          {timeDisplay}
         </span>
         <span className="flex items-center gap-1">
-          <span className="material-symbols-outlined text-[14px]">timer</span>
-          {session.time_limit}m
+          <span className="material-symbols-outlined text-[14px]">hourglass_empty</span>
+          {session.time_limit}m limit
         </span>
       </div>
     </button>
   );
 }
 
-function getTimeAgo(dateString: string): string {
+function getElapsedTime(startDateString: string): string {
   const now = new Date();
-  const date = new Date(dateString);
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
+  const start = new Date(startDateString);
+  const diffMs = now.getTime() - start.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
   const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
+
+  if (diffMins < 1) return "just started";
+  if (diffMins < 60) return `${diffMins}m elapsed`;
+  if (diffHours < 24) return `${diffHours}h ${diffMins % 60}m elapsed`;
   const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${diffDays}d ${diffHours % 24}h elapsed`;
+}
+
+function getDuration(startDateString: string, endDateString?: string | null): string {
+  if (!endDateString) {
+    // If no end date, show when it was created
+    const now = new Date();
+    const start = new Date(startDateString);
+    const diffMs = now.getTime() - start.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+
+  // Calculate actual duration
+  const start = new Date(startDateString);
+  const end = new Date(endDateString);
+  const diffMs = end.getTime() - start.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+
+  if (diffSecs < 60) return `${diffSecs}s`;
+  if (diffMins < 60) return `${diffMins}m ${diffSecs % 60}s`;
+  return `${diffHours}h ${diffMins % 60}m`;
 }
