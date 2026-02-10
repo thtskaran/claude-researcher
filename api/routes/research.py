@@ -26,6 +26,7 @@ class StartResearchRequest(BaseModel):
     goal: str
     time_limit: int = 60
     autonomous: bool = True
+    enable_mid_questions: bool = False
 
 
 class ClarifyRequest(BaseModel):
@@ -74,7 +75,7 @@ class ResearchStatusResponse(BaseModel):
     message: str | None = None
 
 
-async def run_research_background(session_id: str, goal: str, time_limit: int, autonomous: bool = True):
+async def run_research_background(session_id: str, goal: str, time_limit: int, autonomous: bool = True, enable_mid_questions: bool = False):
     """
     Run research in the background.
 
@@ -86,12 +87,14 @@ async def run_research_background(session_id: str, goal: str, time_limit: int, a
     print(f"   Goal: {goal}")
     print(f"   Time Limit: {time_limit} minutes")
     print(f"   Autonomous Mode: {autonomous}")
+    print(f"   Mid-Research Questions: {enable_mid_questions}")
     print(f"{'='*60}\n")
 
     try:
         print("📦 Importing ResearchHarness...")
         from src.agents.director import ResearchHarness
         from src.interaction import InteractionConfig
+        from api.ui_interaction import UIInteraction
         print("✓ Import successful")
 
         # Update session status to running
@@ -99,13 +102,16 @@ async def run_research_background(session_id: str, goal: str, time_limit: int, a
         db = await get_db()
         await db.update_session_status(session_id, "running")
 
-        # Create interaction config based on autonomous mode
+        # Create interaction config
         print("⚙️  Creating interaction config...")
         interaction_config = InteractionConfig(
-            enable_clarification=not autonomous,  # Enable clarification if not autonomous
-            autonomous_mode=autonomous,
+            enable_clarification=False,  # Pre-research clarification handled separately
+            enable_async_questions=enable_mid_questions,  # Enable mid-research questions
+            autonomous_mode=autonomous and not enable_mid_questions,
+            question_timeout=60,
+            max_questions_per_session=5,
         )
-        print(f"✓ Config created (clarification: {not autonomous}, autonomous: {autonomous})")
+        print(f"✓ Config created (mid_questions: {enable_mid_questions}, autonomous: {autonomous})")
 
         print("🚀 Starting research harness...")
         async with ResearchHarness(
@@ -113,6 +119,19 @@ async def run_research_background(session_id: str, goal: str, time_limit: int, a
             interaction_config=interaction_config
         ) as harness:
             print("✓ Harness initialized")
+
+            # Replace CLI interaction with UI interaction if mid-questions enabled
+            if enable_mid_questions:
+                print("🔄 Setting up UI interaction handler...")
+                ui_interaction = UIInteraction(
+                    session_id=session_id,
+                    config=interaction_config,
+                    llm_callback=harness.director._interaction_llm_callback,
+                )
+                # Replace manager's interaction handler
+                harness.director.manager.interaction = ui_interaction
+                print("✓ UI interaction configured")
+
             print(f"🔍 Starting research for: {goal}")
             print(f"   Using existing session ID: {session_id}")
 
@@ -177,9 +196,15 @@ async def start_research(
     session = await db.create_session(request.goal, request.time_limit)
     session_id = session.id
 
-    # Start research in background with autonomous flag
+    # Start research in background with autonomous flag and mid-questions setting
     task = asyncio.create_task(
-        run_research_background(session_id, request.goal, request.time_limit, request.autonomous)
+        run_research_background(
+            session_id,
+            request.goal,
+            request.time_limit,
+            request.autonomous,
+            request.enable_mid_questions
+        )
     )
     running_research[session_id] = task
 
@@ -253,3 +278,23 @@ async def stop_research(session_id: str):
     del running_research[session_id]
 
     return {"status": "stopped", "session_id": session_id}
+
+
+class AnswerQuestionRequest(BaseModel):
+    """Request to answer a mid-research question."""
+    question_id: str
+    response: str
+
+
+@router.post("/{session_id}/answer")
+async def answer_question(session_id: str, request: AnswerQuestionRequest):
+    """Answer a mid-research question."""
+    from api.question_manager import get_question_manager
+
+    question_manager = get_question_manager()
+    success = question_manager.answer_question(request.question_id, request.response)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Question not found or already answered")
+
+    return {"status": "answered", "question_id": request.question_id}

@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import ActivityFeed from "@/components/ActivityFeed";
 import FindingsBrowser from "@/components/FindingsBrowser";
 import ReportPreview from "@/components/ReportPreview";
 import SourcesBrowser from "@/components/SourcesBrowser";
+import QuestionModal from "@/components/QuestionModal";
+import { ResearchWebSocket } from "@/lib/websocket";
 import Link from "next/link";
 
 interface Session {
@@ -39,6 +41,14 @@ export default function SessionDetail() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<TabId>("activity");
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [pendingQuestion, setPendingQuestion] = useState<{
+    questionId: string;
+    question: string;
+    context: string;
+    options: string[];
+    timeout: number;
+  } | null>(null);
+  const wsRef = useRef<ResearchWebSocket | null>(null);
 
   useEffect(() => {
     fetchSession();
@@ -58,6 +68,32 @@ export default function SessionDetail() {
     }, 10000);
     return () => clearInterval(interval);
   }, [session?.status]);
+
+  useEffect(() => {
+    // Set up WebSocket listener for mid-research questions
+    const ws = new ResearchWebSocket(sessionId);
+
+    ws.onEvent((event) => {
+      if (event.event_type === "question_asked" && event.data) {
+        setPendingQuestion({
+          questionId: event.data.question_id,
+          question: event.data.question,
+          context: event.data.context || "",
+          options: event.data.options || [],
+          timeout: event.data.timeout || 60,
+        });
+      } else if (event.event_type === "question_answered" || event.event_type === "question_timeout") {
+        setPendingQuestion(null);
+      }
+    });
+
+    ws.connect();
+    wsRef.current = ws;
+
+    return () => {
+      ws.disconnect();
+    };
+  }, [sessionId]);
 
   const fetchSession = async () => {
     try {
@@ -84,6 +120,16 @@ export default function SessionDetail() {
     } catch {
       // Non-critical
     }
+  };
+
+  const handleQuestionSubmit = (response: string) => {
+    console.log("Question answered:", response);
+    setPendingQuestion(null);
+  };
+
+  const handleQuestionTimeout = () => {
+    console.log("Question timed out");
+    setPendingQuestion(null);
   };
 
   if (loading) {
@@ -281,6 +327,20 @@ export default function SessionDetail() {
           />
         )}
       </main>
+
+      {/* Mid-Research Question Modal */}
+      {pendingQuestion && (
+        <QuestionModal
+          sessionId={sessionId}
+          questionId={pendingQuestion.questionId}
+          question={pendingQuestion.question}
+          context={pendingQuestion.context}
+          options={pendingQuestion.options}
+          timeout={pendingQuestion.timeout}
+          onSubmit={handleQuestionSubmit}
+          onTimeout={handleQuestionTimeout}
+        />
+      )}
     </div>
   );
 }
