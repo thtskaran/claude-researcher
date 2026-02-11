@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { marked } from "marked";
 
 interface ReportPreviewProps {
   sessionId: string;
@@ -158,107 +159,324 @@ export default function ReportPreview({ sessionId }: ReportPreviewProps) {
       link.remove();
       URL.revokeObjectURL(url);
     } else if (format === "pdf") {
-      // Export as PDF using browser print
-      // Create a temporary div with the markdown rendered
       const printWindow = window.open("", "_blank");
       if (!printWindow) {
         alert("Please allow popups to export PDF");
         return;
       }
 
-      // Convert markdown to HTML for printing
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Research Report - ${sessionId}</title>
-          <style>
-            @media print {
-              @page { margin: 2cm; size: A4; }
-            }
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-              line-height: 1.6;
-              color: #1a1915;
-              max-width: 800px;
-              margin: 0 auto;
-              padding: 20px;
-            }
-            h1 { font-size: 28px; margin-top: 40px; margin-bottom: 20px; page-break-after: avoid; }
-            h2 { font-size: 22px; margin-top: 32px; margin-bottom: 16px; page-break-after: avoid; }
-            h3 { font-size: 18px; margin-top: 24px; margin-bottom: 12px; page-break-after: avoid; }
-            p { margin-bottom: 16px; text-align: justify; }
-            ul, ol { margin-bottom: 16px; padding-left: 24px; }
-            li { margin-bottom: 8px; }
-            blockquote {
-              border-left: 4px solid #82af78;
-              padding-left: 20px;
-              margin: 24px 0;
-              font-style: italic;
-              background: #f5f5f0;
-              padding: 16px 16px 16px 20px;
-            }
-            code {
-              background: #f5f5f0;
-              padding: 2px 6px;
-              border-radius: 3px;
-              font-family: monospace;
-              font-size: 0.9em;
-            }
-            pre {
-              background: #f5f5f0;
-              padding: 16px;
-              border-radius: 8px;
-              overflow-x: auto;
-              margin-bottom: 16px;
-            }
-            pre code { background: none; padding: 0; }
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-bottom: 20px;
-            }
-            th, td {
-              border: 1px solid #ddd;
-              padding: 12px;
-              text-align: left;
-            }
-            th {
-              background: #f5f5f0;
-              font-weight: 600;
-            }
-            a { color: #82af78; text-decoration: none; }
-            a:hover { text-decoration: underline; }
-            .page-break { page-break-before: always; }
-          </style>
-        </head>
-        <body>
-          ${report
-            .replace(/\n\n/g, "</p><p>")
-            .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-            .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-            .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-            .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-            .replace(/\*(.+?)\*/g, "<em>$1</em>")
-            .replace(/\[(\d+)\]/g, '<sup>[$1]</sup>')
-            .replace(/^> (.+)$/gm, "<blockquote>$1</blockquote>")
-            .replace(/^- (.+)$/gm, "<li>$1</li>")
-            .replace(/(<li>.*<\/li>\n?)+/g, "<ul>$&</ul>")
-            .replace(/^\d+\. (.+)$/gm, "<li>$1</li>")
-            .split("\n").join("<br/>")}
-        </body>
-        </html>
-      `;
+      // Convert markdown to proper HTML using marked (GFM enabled by default)
+      let htmlBody = await marked.parse(report);
+
+      // --- Post-process for academic preprint layout ---
+
+      // Style the paper title (first h1)
+      htmlBody = htmlBody.replace(/<h1>/, '<h1 class="paper-title">');
+
+      // Style subtitle line
+      htmlBody = htmlBody.replace(
+        /<p><em>Deep Research Report<\/em><\/p>/,
+        '<p class="paper-subtitle">Deep Research Report</p>'
+      );
+
+      // Wrap metadata block (content between first two <hr> tags)
+      let hrIdx = 0;
+      htmlBody = htmlBody.replace(/<hr\s*\/?>/g, () => {
+        hrIdx++;
+        if (hrIdx === 1) return '<div class="metadata">';
+        if (hrIdx === 2) return '</div>';
+        return '<hr>';
+      });
+
+      // Remove Table of Contents section (anchor links don't work in PDF)
+      htmlBody = htmlBody.replace(
+        /<h2>[^<]*Table of Contents[^<]*<\/h2>[\s\S]*?(?=<h2)/i,
+        ''
+      );
+
+      // Convert [N] citation markers to superscripts everywhere
+      htmlBody = htmlBody.replace(
+        /\[(\d+)\]/g,
+        '<sup class="cite">[$1]</sup>'
+      );
+
+      // Wrap references section
+      htmlBody = htmlBody.replace(
+        /(<h2>[^<]*References[^<]*<\/h2>)([\s\S]*?)(?=<h2|<section|$)/i,
+        '<section class="references">$1$2</section>'
+      );
+
+      // Wrap appendix sections
+      htmlBody = htmlBody.replace(
+        /(<h2>[^<]*Appendix[^<]*<\/h2>)([\s\S]*?)(?=<h2|<section|$)/gi,
+        '<section class="appendix">$1$2</section>'
+      );
+
+      const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Research Report – ${sessionId}</title>
+<style>
+/* ===== Academic Preprint Stylesheet ===== */
+@page {
+  size: A4;
+  margin: 0;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: Georgia, "Times New Roman", "Liberation Serif", serif;
+  font-size: 11pt;
+  line-height: 1.65;
+  color: #1a1a1a;
+  margin: 0;
+  padding: 0;
+}
+
+article.paper {
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 20mm 22mm;
+}
+
+/* --- Title Block --- */
+h1.paper-title {
+  text-align: center;
+  font-size: 20pt;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0 0 6pt 0;
+  letter-spacing: -0.3pt;
+}
+
+p.paper-subtitle {
+  text-align: center;
+  font-style: italic;
+  font-size: 12pt;
+  color: #444;
+  margin: 0 0 14pt 0;
+}
+
+.metadata {
+  text-align: center;
+  margin: 0 auto 6pt;
+  padding: 10pt 0;
+  border-top: 0.75pt solid #1a1a1a;
+  border-bottom: 0.75pt solid #1a1a1a;
+}
+.metadata p {
+  text-align: center;
+  margin: 2pt 0;
+  font-size: 9.5pt;
+  color: #333;
+}
+
+/* --- Section Headings --- */
+h2 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14pt;
+  font-weight: 700;
+  margin: 26pt 0 8pt 0;
+  padding-bottom: 3pt;
+  border-bottom: 0.5pt solid #999;
+  page-break-after: avoid;
+  line-height: 1.3;
+}
+h3 {
+  font-size: 12pt;
+  font-weight: 700;
+  margin: 18pt 0 6pt 0;
+  page-break-after: avoid;
+  line-height: 1.3;
+}
+h4 {
+  font-size: 11pt;
+  font-weight: 700;
+  font-style: italic;
+  margin: 14pt 0 4pt 0;
+  page-break-after: avoid;
+}
+
+/* --- Body Text --- */
+p {
+  margin: 0 0 8pt 0;
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  orphans: 3;
+  widows: 3;
+}
+
+/* --- Abstract / TL;DR Blockquote --- */
+blockquote {
+  margin: 10pt 0.4in;
+  padding: 0;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  font-style: italic;
+  border: none;
+  color: #222;
+  page-break-inside: avoid;
+}
+blockquote p {
+  font-size: inherit;
+  margin-bottom: 6pt;
+}
+
+/* --- Citations --- */
+sup.cite {
+  font-size: 7.5pt;
+  line-height: 0;
+  vertical-align: super;
+  color: #333;
+  font-style: normal;
+}
+
+/* --- Lists --- */
+ul, ol {
+  margin: 4pt 0 10pt 0;
+  padding-left: 20pt;
+}
+li {
+  margin-bottom: 3pt;
+  text-align: justify;
+}
+li p {
+  margin-bottom: 2pt;
+}
+
+/* --- Tables --- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9.5pt;
+  margin: 12pt 0;
+  page-break-inside: avoid;
+}
+th, td {
+  border: 0.5pt solid #555;
+  padding: 4pt 6pt;
+  text-align: left;
+  line-height: 1.4;
+}
+th {
+  font-weight: 700;
+  background: #f0f0f0;
+  font-size: 9pt;
+}
+
+/* --- Code --- */
+code {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 9pt;
+  background: #f4f4f4;
+  padding: 1pt 3pt;
+  border-radius: 1pt;
+}
+pre {
+  background: #f8f8f8;
+  border: 0.5pt solid #ccc;
+  padding: 8pt 10pt;
+  font-size: 8.5pt;
+  line-height: 1.4;
+  overflow-x: auto;
+  margin: 8pt 0 12pt 0;
+  page-break-inside: avoid;
+}
+pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* --- Rules --- */
+hr {
+  border: none;
+  border-top: 0.5pt solid #bbb;
+  margin: 18pt 0;
+}
+
+/* --- Links --- */
+a {
+  color: #1a4480;
+  text-decoration: underline;
+  text-underline-offset: 1.5pt;
+}
+
+/* --- Emphasis --- */
+strong { font-weight: 700; }
+em { font-style: italic; }
+
+/* --- References Section --- */
+section.references {
+  page-break-before: always;
+  margin-top: 30pt;
+}
+section.references h2 {
+  font-size: 14pt;
+  margin-bottom: 12pt;
+}
+section.references p {
+  font-size: 9.5pt;
+  line-height: 1.45;
+  margin-bottom: 5pt;
+  padding-left: 28pt;
+  text-indent: -28pt;
+  text-align: left;
+  word-break: break-all;
+}
+section.references sup.cite {
+  font-size: 9.5pt;
+  vertical-align: baseline;
+  font-weight: 600;
+}
+
+/* --- Appendix --- */
+section.appendix {
+  page-break-before: always;
+  margin-top: 30pt;
+}
+section.appendix h2 {
+  font-size: 13pt;
+}
+section.appendix p,
+section.appendix li {
+  font-size: 10pt;
+}
+
+/* --- Page Break Control --- */
+h1, h2, h3, h4 { page-break-after: avoid; }
+table, figure, blockquote, pre { page-break-inside: avoid; }
+
+/* --- Images --- */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 10pt auto;
+}
+
+@media print {
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+</style>
+</head>
+<body>
+<article class="paper">
+${htmlBody}
+</article>
+</body>
+</html>`;
 
       printWindow.document.write(htmlContent);
       printWindow.document.close();
-
-      // Wait for content to load, then trigger print dialog
       printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.print();
-          // Don't close the window automatically - let user close it after printing
-        }, 250);
+        setTimeout(() => { printWindow.print(); }, 300);
       };
     }
   };
