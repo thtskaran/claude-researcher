@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 class FindingType(str, Enum):
     """Types of research findings."""
+
     FACT = "fact"
     INSIGHT = "insight"
     CONNECTION = "connection"
@@ -19,6 +20,7 @@ class FindingType(str, Enum):
 
 class AgentRole(str, Enum):
     """Agent roles in the hierarchy."""
+
     INTERN = "intern"
     MANAGER = "manager"
     DIRECTOR = "director"
@@ -26,6 +28,7 @@ class AgentRole(str, Enum):
 
 class Finding(BaseModel):
     """A single research finding from the Intern agent."""
+
     id: int | None = None
     session_id: str  # 7-char hex ID
     content: str
@@ -37,6 +40,8 @@ class Finding(BaseModel):
     validated_by_manager: bool = False
     manager_notes: str | None = None
 
+    topic_id: int | None = None
+
     # Verification fields
     verification_status: str | None = None  # verified/flagged/rejected/skipped
     verification_method: str | None = None  # cove/critic/kg_match/streaming/batch
@@ -46,6 +51,7 @@ class Finding(BaseModel):
 
 class ResearchTopic(BaseModel):
     """A research topic or subtopic to investigate."""
+
     id: int | None = None
     session_id: str  # 7-char hex ID
     topic: str
@@ -60,6 +66,7 @@ class ResearchTopic(BaseModel):
 
 class ResearchSession(BaseModel):
     """A research session with time limits and goals."""
+
     id: str | None = None  # 7-char hex ID
     goal: str
     slug: str | None = None  # AI-generated short name for output folder
@@ -74,6 +81,7 @@ class ResearchSession(BaseModel):
 
 class AgentMessage(BaseModel):
     """Message passed between agents in the hierarchy."""
+
     id: int | None = None
     session_id: str  # 7-char hex ID
     from_agent: AgentRole
@@ -86,6 +94,7 @@ class AgentMessage(BaseModel):
 
 class ManagerDirective(BaseModel):
     """Directive from Manager to Intern."""
+
     action: str  # search, deep_dive, verify, expand, stop
     topic: str
     instructions: str
@@ -95,6 +104,7 @@ class ManagerDirective(BaseModel):
 
 class InternReport(BaseModel):
     """Report from Intern to Manager."""
+
     topic: str
     findings: list[Finding]
     searches_performed: int
@@ -104,6 +114,7 @@ class InternReport(BaseModel):
 
 class ManagerReport(BaseModel):
     """Report from Manager to Director."""
+
     summary: str
     key_findings: list[Finding]
     topics_explored: list[str]

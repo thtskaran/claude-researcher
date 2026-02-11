@@ -169,6 +169,7 @@ export default function KnowledgeGraphPage() {
 
         const props = selectedNode.properties as Record<string, unknown>;
         const confidence = typeof props?.confidence === "number" ? props.confidence : null;
+        const description = typeof props?.description === "string" ? props.description : null;
         const aliases = Array.isArray(props?.aliases) ? (props.aliases as string[]).filter(Boolean) : [];
         const sources = Array.isArray(props?.sources) ? (props.sources as string[]) : [];
 
@@ -217,6 +218,7 @@ export default function KnowledgeGraphPage() {
 
         return {
             confidence,
+            description,
             aliases,
             sources,
             inEdges,
@@ -378,10 +380,14 @@ export default function KnowledgeGraphPage() {
                     // Progressive labels: only show labels for nodes with enough connections
                     const showLabel = degree >= 1;
 
+                    const desc = typeof (e.properties as Record<string, unknown>)?.description === "string"
+                        ? ((e.properties as Record<string, unknown>).description as string).slice(0, 80)
+                        : null;
+
                     return {
                         id: e.id,
                         label: showLabel ? (e.name.length > 30 ? e.name.slice(0, 27) + "\u2026" : e.name) : undefined,
-                        title: `${e.name}\n${e.entity_type} \u00b7 ${degree} connections`,
+                        title: `${e.name}\n${e.entity_type} \u00b7 ${degree} connections${desc ? '\n' + desc : ''}`,
                         color: {
                             background: cfg.bg,
                             border: cfg.border,
@@ -417,6 +423,7 @@ export default function KnowledgeGraphPage() {
                             id: r.id,
                             from: r.subject_id,
                             to: r.object_id,
+                            label: r.predicate.replace(/_/g, " "),
                             title: r.predicate.replace(/_/g, " "),
                             color: {
                                 color: color + "80",
@@ -463,8 +470,12 @@ export default function KnowledgeGraphPage() {
                     },
                     edges: {
                         font: {
-                            size: 0,
-                            color: "transparent",
+                            size: 9,
+                            color: "#8b8578",
+                            strokeWidth: 2,
+                            strokeColor: "#1a1915",
+                            align: "middle",
+                            background: "#1a1915",
                         },
                         chosen: true,
                         selectionWidth: 1,
@@ -759,6 +770,11 @@ export default function KnowledgeGraphPage() {
                                         <span className="material-symbols-outlined text-lg">close</span>
                                     </button>
                                 </div>
+
+                                {/* Description */}
+                                {d.description && (
+                                    <p className="text-xs text-ink-secondary mt-2 leading-relaxed">{d.description}</p>
+                                )}
 
                                 {/* Aliases */}
                                 {d.aliases.length > 0 && (

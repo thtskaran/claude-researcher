@@ -259,6 +259,46 @@
     @apply text-xs bg-card-inset border border-edge rounded-lg p-3 overflow-x-auto mb-3;
   }
 
+  .report-markdown hr {
+    @apply border-edge my-6;
+  }
+
+  .report-markdown strong {
+    @apply font-semibold text-ink;
+  }
+
+  .report-markdown em {
+    @apply italic text-ink-secondary;
+  }
+
+  .report-markdown a {
+    @apply text-sage hover:underline cursor-pointer;
+  }
+
+  .report-markdown table {
+    @apply w-full text-sm;
+  }
+
+  .report-markdown thead {
+    @apply bg-card-inset border-b border-edge;
+  }
+
+  .report-markdown tbody {
+    @apply divide-y divide-edge/50;
+  }
+
+  .report-markdown th {
+    @apply text-left text-xs font-semibold text-ink-secondary uppercase tracking-wider px-4 py-2.5;
+  }
+
+  .report-markdown td {
+    @apply px-4 py-2.5 text-sm text-ink;
+  }
+
+  .report-markdown tr:hover {
+    @apply bg-card-hover/50;
+  }
+
   /* ── Citation buttons ── */
   .citation-btn {
     @apply inline-flex items-center justify-center align-middle h-5 px-1.5 mx-0.5 text-[10px] font-bold text-sage bg-sage-soft hover:bg-sage/20 rounded cursor-pointer ring-1 ring-sage/30 transition-all;

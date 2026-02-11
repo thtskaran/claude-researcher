@@ -33,15 +33,55 @@ def _generate_slug(goal: str) -> str:
     """
     # Remove common question words and punctuation
     text = goal.lower()
-    text = re.sub(r'\?+$', '', text)
+    text = re.sub(r"\?+$", "", text)
 
     # Remove stop words
     stop_words = {
-        'the', 'a', 'an', 'of', 'in', 'on', 'at', 'to', 'for', 'and', 'or', 'but',
-        'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
-        'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might',
-        'what', 'how', 'why', 'when', 'where', 'who', 'which', 'can',
-        'latest', 'current', 'recent', 'new', 'best', 'top',
+        "the",
+        "a",
+        "an",
+        "of",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "and",
+        "or",
+        "but",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "what",
+        "how",
+        "why",
+        "when",
+        "where",
+        "who",
+        "which",
+        "can",
+        "latest",
+        "current",
+        "recent",
+        "new",
+        "best",
+        "top",
     }
     words = text.split()
     words = [w for w in words if w not in stop_words]
@@ -50,16 +90,16 @@ def _generate_slug(goal: str) -> str:
     words = words[:5]
 
     # Clean and join
-    slug = '-'.join(words)
-    slug = re.sub(r'[^a-z0-9-]', '', slug)
-    slug = re.sub(r'-+', '-', slug)
-    slug = slug.strip('-')
+    slug = "-".join(words)
+    slug = re.sub(r"[^a-z0-9-]", "", slug)
+    slug = re.sub(r"-+", "-", slug)
+    slug = slug.strip("-")
 
     # Limit length
     if len(slug) > 50:
-        slug = slug[:50].rsplit('-', 1)[0]
+        slug = slug[:50].rsplit("-", 1)[0]
 
-    return slug or 'research'
+    return slug or "research"
 
 
 class ResearchDatabase:
@@ -435,8 +475,14 @@ class ResearchDatabase:
                         confidence = ?
                     WHERE id = ?
                     """,
-                    (verification_status, verification_method, kg_support_score,
-                     original_confidence, new_confidence, finding_id),
+                    (
+                        verification_status,
+                        verification_method,
+                        kg_support_score,
+                        original_confidence,
+                        new_confidence,
+                        finding_id,
+                    ),
                 )
             else:
                 await self._connection.execute(
@@ -448,8 +494,13 @@ class ResearchDatabase:
                         original_confidence = ?
                     WHERE id = ?
                     """,
-                    (verification_status, verification_method, kg_support_score,
-                     original_confidence, finding_id),
+                    (
+                        verification_status,
+                        verification_method,
+                        kg_support_score,
+                        original_confidence,
+                        finding_id,
+                    ),
                 )
             await self._connection.commit()
         except Exception:
@@ -562,6 +613,7 @@ class ResearchDatabase:
             Finding(
                 id=row["id"],
                 session_id=row["session_id"],
+                topic_id=row["topic_id"] if "topic_id" in row.keys() else None,
                 content=row["content"],
                 finding_type=FindingType(row["finding_type"]),
                 source_url=row["source_url"],
@@ -570,10 +622,18 @@ class ResearchDatabase:
                 created_at=datetime.fromisoformat(row["created_at"]),
                 validated_by_manager=bool(row["validated_by_manager"]),
                 manager_notes=row["manager_notes"],
-                verification_status=row["verification_status"] if "verification_status" in row.keys() else None,
-                verification_method=row["verification_method"] if "verification_method" in row.keys() else None,
-                kg_support_score=row["kg_support_score"] if "kg_support_score" in row.keys() else 0.0,
-                original_confidence=row["original_confidence"] if "original_confidence" in row.keys() else None,
+                verification_status=row["verification_status"]
+                if "verification_status" in row.keys()
+                else None,
+                verification_method=row["verification_method"]
+                if "verification_method" in row.keys()
+                else None,
+                kg_support_score=row["kg_support_score"]
+                if "kg_support_score" in row.keys()
+                else 0.0,
+                original_confidence=row["original_confidence"]
+                if "original_confidence" in row.keys()
+                else None,
             )
             for row in rows
         ]
