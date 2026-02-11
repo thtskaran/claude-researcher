@@ -565,20 +565,22 @@ Format your response as JSON:
                             finding.verification_method = verification_result.verification_method.value
                             finding.kg_support_score = verification_result.kg_support_score
 
-                            # Save detailed verification result to verification_results table for UI
-                            if finding.id:
-                                try:
-                                    await self.db.save_verification_result(
-                                        session_id=session_id,
-                                        finding_id=finding.id,
-                                        result_dict=verification_result.to_dict(),
-                                    )
-                                except Exception:
-                                    pass  # Don't let verification result saving block research
                         except Exception as e:
                             self._log(f"[VERIFY] Error: {e}", style="dim")
 
                     await self.db.save_finding(finding)
+
+                    # Save detailed verification result AFTER save_finding (which assigns finding.id)
+                    if verification_result and finding.id:
+                        try:
+                            await self.db.save_verification_result(
+                                session_id=session_id,
+                                finding_id=finding.id,
+                                result_dict=verification_result.to_dict(),
+                            )
+                        except Exception:
+                            pass  # Don't let verification result saving block research
+
                     findings.append(finding)
                     self.findings.append(finding)
 
@@ -660,21 +662,22 @@ Format your response as JSON:
                             finding.verification_status = verification_result.verification_status.value
                             finding.verification_method = verification_result.verification_method.value
                             finding.kg_support_score = verification_result.kg_support_score
-
-                            # Save detailed verification result to verification_results table for UI
-                            if finding.id:
-                                try:
-                                    await self.db.save_verification_result(
-                                        session_id=session_id,
-                                        finding_id=finding.id,
-                                        result_dict=verification_result.to_dict(),
-                                    )
-                                except Exception:
-                                    pass  # Don't let verification result saving block research
                         except Exception:
                             pass
 
                     await self.db.save_finding(finding)
+
+                    # Save detailed verification result AFTER save_finding (which assigns finding.id)
+                    if verification_result and finding.id:
+                        try:
+                            await self.db.save_verification_result(
+                                session_id=session_id,
+                                finding_id=finding.id,
+                                result_dict=verification_result.to_dict(),
+                            )
+                        except Exception:
+                            pass
+
                     findings.append(finding)
                     self.findings.append(finding)
 
