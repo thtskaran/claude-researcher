@@ -54,6 +54,8 @@ RELATION_TYPES = {
     'authored_by': 'Authorship',
     'published_in': 'Publication venue',
     'mentioned_in': 'Reference in source',
+    # Co-occurrence
+    'co_occurs_with': 'Entities that appear together in the same finding',
 }
 
 

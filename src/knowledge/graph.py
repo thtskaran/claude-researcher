@@ -20,6 +20,106 @@ from .models import ENTITY_TYPES, Contradiction, Entity, KGFinding, Relation
 from .store import HybridKnowledgeGraphStore
 
 
+# Canonical predicate mapping — normalizes free-form predicates to a fixed set
+# for better graph connectivity. ~130 synonyms → ~20 canonical forms.
+PREDICATE_CANONICAL_MAP: dict[str, str] = {
+    # === Canonical predicates (identity mappings) ===
+    'supports': 'supports',
+    'contradicts': 'contradicts',
+    'qualifies': 'qualifies',
+    'cites': 'cites',
+    'is_a': 'is_a',
+    'part_of': 'part_of',
+    'causes': 'causes',
+    'correlates_with': 'correlates_with',
+    'enables': 'enables',
+    'implements': 'implements',
+    'outperforms': 'outperforms',
+    'similar_to': 'similar_to',
+    'alternative_to': 'alternative_to',
+    'authored_by': 'authored_by',
+    'published_in': 'published_in',
+    'mentioned_in': 'mentioned_in',
+    'co_occurs_with': 'co_occurs_with',
+    # Directional predicates (kept separate for contradiction detection)
+    'increases': 'increases',
+    'decreases': 'decreases',
+    'prevents': 'prevents',
+    'blocks': 'blocks',
+    'improves': 'improves',
+    'worsens': 'worsens',
+    'underperforms': 'underperforms',
+    # === Synonyms → supports ===
+    'evidence_for': 'supports', 'backs': 'supports', 'confirms': 'supports',
+    'validates': 'supports', 'demonstrates': 'supports', 'proves': 'supports',
+    'shows': 'supports', 'indicates': 'supports', 'corroborates': 'supports',
+    'suggests': 'supports', 'backs_up': 'supports',
+    # === Synonyms → contradicts ===
+    'conflicts_with': 'contradicts', 'opposes': 'contradicts', 'refutes': 'contradicts',
+    'disproves': 'contradicts', 'challenges': 'contradicts', 'negates': 'contradicts',
+    'disputes': 'contradicts', 'denies': 'contradicts',
+    # === Synonyms → qualifies ===
+    'limits': 'qualifies', 'conditions': 'qualifies', 'constrains': 'qualifies',
+    'modifies': 'qualifies',
+    # === Synonyms → cites ===
+    'references': 'cites', 'refers_to': 'cites', 'based_on': 'cites',
+    'builds_on': 'cites', 'draws_from': 'cites', 'derived_from': 'cites',
+    # === Synonyms → is_a ===
+    'is': 'is_a', 'type_of': 'is_a', 'kind_of': 'is_a', 'instance_of': 'is_a',
+    'form_of': 'is_a', 'classified_as': 'is_a', 'subtype_of': 'is_a',
+    'category_of': 'is_a',
+    # === Synonyms → part_of ===
+    'component_of': 'part_of', 'belongs_to': 'part_of', 'subset_of': 'part_of',
+    'included_in': 'part_of', 'element_of': 'part_of', 'contains': 'part_of',
+    'comprises': 'part_of', 'consists_of': 'part_of', 'has': 'part_of',
+    'includes': 'part_of',
+    # === Synonyms → causes ===
+    'leads_to': 'causes', 'results_in': 'causes', 'produces': 'causes',
+    'triggers': 'causes', 'induces': 'causes', 'generates': 'causes',
+    'creates': 'causes', 'drives': 'causes', 'contributes_to': 'causes',
+    'influences': 'causes', 'affects': 'causes', 'impacts': 'causes',
+    'determines': 'causes',
+    # === Synonyms → correlates_with ===
+    'associated_with': 'correlates_with', 'related_to': 'correlates_with',
+    'linked_to': 'correlates_with', 'connected_to': 'correlates_with',
+    'measures': 'correlates_with', 'predicts': 'correlates_with',
+    'corresponds_to': 'correlates_with',
+    # === Synonyms → enables ===
+    'allows': 'enables', 'facilitates': 'enables', 'permits': 'enables',
+    'requires': 'enables', 'depends_on': 'enables', 'needs': 'enables',
+    # === Synonyms → implements ===
+    'realizes': 'implements', 'applies': 'implements', 'uses': 'implements',
+    'employs': 'implements', 'utilizes': 'implements', 'leverages': 'implements',
+    'adopts': 'implements', 'extends': 'implements',
+    # === Synonyms → outperforms ===
+    'better_than': 'outperforms', 'surpasses': 'outperforms', 'exceeds': 'outperforms',
+    'superior_to': 'outperforms', 'beats': 'outperforms', 'faster_than': 'outperforms',
+    # === Synonyms → similar_to ===
+    'resembles': 'similar_to', 'analogous_to': 'similar_to', 'comparable_to': 'similar_to',
+    'equivalent_to': 'similar_to', 'same_as': 'similar_to',
+    # === Synonyms → alternative_to ===
+    'replaces': 'alternative_to', 'substitute_for': 'alternative_to',
+    'competes_with': 'alternative_to', 'instead_of': 'alternative_to',
+    # === Synonyms → authored_by ===
+    'written_by': 'authored_by', 'created_by': 'authored_by', 'developed_by': 'authored_by',
+    'invented_by': 'authored_by', 'designed_by': 'authored_by', 'proposed_by': 'authored_by',
+    'introduced_by': 'authored_by',
+    # === Synonyms → published_in ===
+    'appeared_in': 'published_in', 'presented_at': 'published_in',
+    'reported_in': 'published_in', 'released_in': 'published_in',
+    # === Synonyms → mentioned_in ===
+    'described_in': 'mentioned_in', 'discussed_in': 'mentioned_in',
+    'found_in': 'mentioned_in', 'cited_in': 'mentioned_in',
+}
+
+# Canonical predicate names for inclusion in LLM prompts
+CANONICAL_PREDICATES_PROMPT = (
+    "supports, contradicts, causes, enables, implements, is_a, part_of, "
+    "correlates_with, outperforms, similar_to, alternative_to, authored_by, "
+    "published_in, increases, decreases, qualifies, cites, mentioned_in"
+)
+
+
 class IncrementalKnowledgeGraph:
     """Real-time knowledge graph that builds as findings stream in.
 
@@ -189,8 +289,13 @@ class IncrementalKnowledgeGraph:
                 extract_domain_types=True,  # Also use LLM for CONCEPT, CLAIM, etc.
             )
 
-            # Resolve and add entities
-            for entity in entities[:5]:
+            # Resolve and add entities (improvement #1: raised cap 5→8)
+            for entity in entities[:8]:
+                # Improvement #7: propagate source URL to entity properties
+                if finding.source_url:
+                    entity.properties.setdefault('source_urls', [])
+                    if finding.source_url not in entity.properties['source_urls']:
+                        entity.properties['source_urls'].append(finding.source_url)
                 resolved = await self._resolve_entity(entity)
                 result['entities'].append(resolved)
 
@@ -204,6 +309,7 @@ class IncrementalKnowledgeGraph:
                 finding.content,
                 result['entities'],
                 finding.id,
+                credibility_score=finding.credibility_score,  # improvement #5
             )
 
             for relation in relations:
@@ -214,6 +320,14 @@ class IncrementalKnowledgeGraph:
                     self.store.add_contradiction(contradiction)
                     result['contradictions_found'] += 1
 
+                self.store.add_relation(relation, self.session_id)
+                result['relations'].append(relation)
+
+            # Improvement #4: cross-finding co-occurrence links
+            co_relations = self._build_co_occurrence_links(
+                result['entities'], result['relations'], finding,
+            )
+            for relation in co_relations:
                 self.store.add_relation(relation, self.session_id)
                 result['relations'].append(relation)
 
@@ -228,7 +342,7 @@ class IncrementalKnowledgeGraph:
             'finding_id': finding.id,
         }
 
-        entity_types_list = ", ".join(list(ENTITY_TYPES.keys())[:8])
+        entity_types_list = ", ".join(list(ENTITY_TYPES.keys())[:10])
 
         prompt = f"""Extract key entities and their relationships from this research finding.
 
@@ -236,17 +350,33 @@ Finding: {finding.content}
 
 Entity Types: {entity_types_list}
 
-Return as JSON with entities and relations:
+For each entity provide:
+- name: Canonical name
+- type: One of the entity types above
+- description: One-sentence description of this entity
+
+For METRIC entities, also include:
+- value: The numeric value (e.g. "3.5", "92%")
+- unit: The unit of measurement (e.g. "%", "ms", "users")
+
+For CLAIM entities, also include:
+- attributed_to: Who made this claim (if known)
+- date_claimed: When it was claimed (if known)
+
+Allowed predicates for relations (use ONLY these):
+{CANONICAL_PREDICATES_PROMPT}
+
+Return as JSON:
 {{
   "entities": [
-    {{"name": "Entity name", "type": "CONCEPT"}}
+    {{"name": "Entity name", "type": "CONCEPT", "description": "Brief description"}}
   ],
   "relations": [
     {{"subject": "Entity1", "predicate": "causes", "object": "Entity2"}}
   ]
 }}
 
-Keep it concise: max 5 entities, max 3 relations. Focus on the most important facts."""
+Extract up to 8 entities and 5 relations. Focus on the most important facts."""
 
         try:
             response = await self.llm_callback(prompt)
@@ -256,22 +386,43 @@ Keep it concise: max 5 entities, max 3 relations. Focus on the most important fa
             if match:
                 data = json.loads(match.group())
 
-                # Process entities
-                for e in data.get('entities', [])[:5]:
+                # Improvement #5: use source credibility for relation confidence
+                confidence = finding.credibility_score if finding.credibility_score else 0.8
+
+                # Process entities (improvement #1: raised cap 5→8)
+                for e in data.get('entities', [])[:8]:
                     if isinstance(e, dict) and e.get('name'):
+                        entity_type = e.get('type', 'CONCEPT').upper()
+
+                        # Build properties (improvements #2, #3, #7, #8)
+                        props: dict[str, Any] = {}
+                        if e.get('description'):
+                            props['description'] = e['description']
+                        if finding.source_url:
+                            props['source_urls'] = [finding.source_url]
+                        if entity_type == 'METRIC' and e.get('value'):
+                            props['metric_value'] = e['value']
+                            props['metric_unit'] = e.get('unit', '')
+                        if entity_type == 'CLAIM':
+                            if e.get('attributed_to'):
+                                props['attributed_to'] = e['attributed_to']
+                            if e.get('date_claimed'):
+                                props['date_claimed'] = e['date_claimed']
+
                         entity = Entity(
                             id=self._generate_id(),
                             name=e['name'],
-                            entity_type=e.get('type', 'CONCEPT').upper(),
+                            entity_type=entity_type,
                             aliases=[],
                             sources=[finding.id],
+                            properties=props,
                         )
                         resolved = await self._resolve_entity(entity)
                         result['entities'].append(resolved)
 
-                # Process relations
+                # Process relations (improvement #1: raised cap 3→5)
                 name_to_id = {e.name.lower(): e.id for e in result['entities']}
-                for r in data.get('relations', [])[:3]:
+                for r in data.get('relations', [])[:5]:
                     if isinstance(r, dict):
                         subject_id = name_to_id.get(r.get('subject', '').lower())
                         object_id = name_to_id.get(r.get('object', '').lower())
@@ -280,10 +431,11 @@ Keep it concise: max 5 entities, max 3 relations. Focus on the most important fa
                             relation = Relation(
                                 id=self._generate_id(),
                                 subject_id=subject_id,
-                                predicate=self._normalize_predicate(r.get('predicate', 'related_to')),
+                                predicate=self._normalize_predicate(
+                                    r.get('predicate', 'related_to')),
                                 object_id=object_id,
                                 source_id=finding.id,
-                                confidence=0.8,
+                                confidence=confidence,
                             )
 
                             # Check for contradictions
@@ -296,6 +448,14 @@ Keep it concise: max 5 entities, max 3 relations. Focus on the most important fa
                             self.store.add_relation(relation, self.session_id)
                             result['relations'].append(relation)
 
+                # Improvement #4: co-occurrence links
+                co_relations = self._build_co_occurrence_links(
+                    result['entities'], result['relations'], finding,
+                )
+                for relation in co_relations:
+                    self.store.add_relation(relation, self.session_id)
+                    result['relations'].append(relation)
+
         except Exception:
             # Silently fail - KG is optional
             pass
@@ -307,6 +467,7 @@ Keep it concise: max 5 entities, max 3 relations. Focus on the most important fa
         text: str,
         entities: list[Entity],
         source_id: str,
+        credibility_score: float | None = None,
     ) -> list[Relation]:
         """Fast relation extraction for pre-extracted entities.
 
@@ -315,15 +476,18 @@ Keep it concise: max 5 entities, max 3 relations. Focus on the most important fa
         if len(entities) < 2:
             return []
 
-        entity_names = ", ".join([e.name for e in entities[:5]])
+        entity_names = ", ".join([e.name for e in entities[:8]])
 
         prompt = f"""Given these entities: {entity_names}
 
 Extract relationships from this text:
 {text[:500]}
 
-Return JSON array (max 3 relations):
-[{{"subject": "Entity1", "predicate": "verb phrase", "object": "Entity2"}}]"""
+Allowed predicates (use ONLY these):
+{CANONICAL_PREDICATES_PROMPT}
+
+Return JSON array (max 5 relations):
+[{{"subject": "Entity1", "predicate": "causes", "object": "Entity2"}}]"""
 
         try:
             response = await self.llm_callback(prompt)
@@ -340,8 +504,10 @@ Return JSON array (max 3 relations):
                 for alias in e.aliases:
                     name_to_id[alias.lower()] = e.id
 
+            confidence = credibility_score if credibility_score else 0.8
+
             relations = []
-            for r in data[:3]:
+            for r in data[:5]:
                 if not isinstance(r, dict):
                     continue
 
@@ -355,7 +521,7 @@ Return JSON array (max 3 relations):
                         predicate=self._normalize_predicate(r.get('predicate', 'related_to')),
                         object_id=object_id,
                         source_id=source_id,
-                        confidence=0.8,
+                        confidence=confidence,
                     )
                     relations.append(relation)
 
@@ -416,7 +582,7 @@ Return JSON array (max 3 relations):
         if not findings:
             return result
 
-        entity_types_list = ", ".join(list(ENTITY_TYPES.keys())[:8])
+        entity_types_list = ", ".join(list(ENTITY_TYPES.keys())[:10])
 
         # Format findings for batch processing
         findings_text = "\n\n".join([
@@ -430,16 +596,22 @@ Return JSON array (max 3 relations):
 
 Entity Types: {entity_types_list}
 
+For each entity provide name, type, and a brief description.
+For METRIC entities, also include "value" and "unit".
+
+Allowed predicates for relations (use ONLY these):
+{CANONICAL_PREDICATES_PROMPT}
+
 Return as JSON array, one object per finding:
 [
   {{
     "finding": 1,
-    "entities": [{{"name": "Entity", "type": "CONCEPT"}}],
+    "entities": [{{"name": "Entity", "type": "CONCEPT", "description": "Brief description"}}],
     "relations": [{{"subject": "Entity1", "predicate": "causes", "object": "Entity2"}}]
   }}
 ]
 
-Keep concise: max 3 entities and 2 relations per finding."""
+Max 5 entities and 4 relations per finding."""
 
         try:
             response = await self.llm_callback(prompt)
@@ -457,25 +629,37 @@ Keep concise: max 3 entities and 2 relations per finding."""
                     if finding_idx < 0 or finding_idx >= len(findings):
                         finding_idx = 0
                     finding = findings[finding_idx]
+                    confidence = finding.credibility_score if finding.credibility_score else 0.8
 
-                    # Process entities
+                    # Process entities (raised cap 3→5)
                     entities = []
-                    for e in item.get('entities', [])[:3]:
+                    for e in item.get('entities', [])[:5]:
                         if isinstance(e, dict) and e.get('name'):
+                            entity_type = e.get('type', 'CONCEPT').upper()
+                            props: dict[str, Any] = {}
+                            if e.get('description'):
+                                props['description'] = e['description']
+                            if finding.source_url:
+                                props['source_urls'] = [finding.source_url]
+                            if entity_type == 'METRIC' and e.get('value'):
+                                props['metric_value'] = e['value']
+                                props['metric_unit'] = e.get('unit', '')
+
                             entity = Entity(
                                 id=self._generate_id(),
                                 name=e['name'],
-                                entity_type=e.get('type', 'CONCEPT').upper(),
+                                entity_type=entity_type,
                                 aliases=[],
                                 sources=[finding.id],
+                                properties=props,
                             )
                             resolved = await self._resolve_entity(entity)
                             entities.append(resolved)
                             result['entities_count'] += 1
 
-                    # Process relations
+                    # Process relations (raised cap 2→4)
                     name_to_id = {e.name.lower(): e.id for e in entities}
-                    for r in item.get('relations', [])[:2]:
+                    for r in item.get('relations', [])[:4]:
                         if isinstance(r, dict):
                             subject_id = name_to_id.get(r.get('subject', '').lower())
                             object_id = name_to_id.get(r.get('object', '').lower())
@@ -484,10 +668,11 @@ Keep concise: max 3 entities and 2 relations per finding."""
                                 relation = Relation(
                                     id=self._generate_id(),
                                     subject_id=subject_id,
-                                    predicate=self._normalize_predicate(r.get('predicate', 'related_to')),
+                                    predicate=self._normalize_predicate(
+                                    r.get('predicate', 'related_to')),
                                     object_id=object_id,
                                     source_id=finding.id,
-                                    confidence=0.8,
+                                    confidence=confidence,
                                 )
 
                                 # Check for contradictions
@@ -576,6 +761,14 @@ Return as JSON array:
                 if entity.sources:
                     existing.sources = list(set(existing.sources + entity.sources))
                 existing.aliases = list(set(existing.aliases + entity.aliases + [entity.name]))
+                # Merge source_urls from properties
+                existing_urls = set(existing.properties.get('source_urls', []))
+                new_urls = set(entity.properties.get('source_urls', []))
+                if new_urls:
+                    existing.properties['source_urls'] = list(existing_urls | new_urls)
+                # Keep first description, don't overwrite
+                if entity.properties.get('description'):
+                    existing.properties.setdefault('description', entity.properties['description'])
                 self.store.add_entity(existing, self.session_id)  # Update
                 return existing
 
@@ -586,6 +779,11 @@ Return as JSON array:
                 # Found via alias
                 if entity.sources:
                     existing.sources = list(set(existing.sources + entity.sources))
+                # Merge source_urls
+                existing_urls = set(existing.properties.get('source_urls', []))
+                new_urls = set(entity.properties.get('source_urls', []))
+                if new_urls:
+                    existing.properties['source_urls'] = list(existing_urls | new_urls)
                 self.store.add_entity(existing, self.session_id)
                 return existing
 
@@ -699,10 +897,73 @@ Return as JSON array:
         return False
 
     def _normalize_predicate(self, predicate: str) -> str:
-        """Normalize predicate to canonical form."""
-        # Lowercase, strip, limit to 3 words
-        words = predicate.lower().strip().split()[:3]
-        return '_'.join(words) if words else 'related_to'
+        """Normalize predicate to canonical form using PREDICATE_CANONICAL_MAP.
+
+        Tries exact match, then 2-word prefix, then first word.
+        Falls back to underscore-joined truncation if no canonical match.
+        """
+        words = predicate.lower().strip().split()[:4]
+        if not words:
+            return 'correlates_with'
+
+        normalized = '_'.join(words)
+
+        # Try exact match
+        if normalized in PREDICATE_CANONICAL_MAP:
+            return PREDICATE_CANONICAL_MAP[normalized]
+
+        # Try first 2 words
+        if len(words) >= 2:
+            two_word = '_'.join(words[:2])
+            if two_word in PREDICATE_CANONICAL_MAP:
+                return PREDICATE_CANONICAL_MAP[two_word]
+
+        # Try first word only
+        if words[0] in PREDICATE_CANONICAL_MAP:
+            return PREDICATE_CANONICAL_MAP[words[0]]
+
+        # Fallback: return cleaned form (max 3 words)
+        return '_'.join(words[:3])
+
+    def _build_co_occurrence_links(
+        self,
+        entities: list[Entity],
+        explicit_relations: list[Relation],
+        finding: KGFinding,
+    ) -> list[Relation]:
+        """Create co_occurs_with relations between entities from the same finding
+        that don't already have an explicit relation. Capped at 5 per finding."""
+        if len(entities) < 2:
+            return []
+
+        # Build set of entity pairs that already have explicit relations
+        linked_pairs: set[tuple[str, str]] = set()
+        for rel in explicit_relations:
+            linked_pairs.add((rel.subject_id, rel.object_id))
+            linked_pairs.add((rel.object_id, rel.subject_id))
+
+        co_relations: list[Relation] = []
+        for i, e1 in enumerate(entities):
+            for e2 in entities[i + 1:]:
+                if e1.id == e2.id:
+                    continue
+                if (e1.id, e2.id) in linked_pairs:
+                    continue
+
+                relation = Relation(
+                    id=self._generate_id(),
+                    subject_id=e1.id,
+                    predicate='co_occurs_with',
+                    object_id=e2.id,
+                    source_id=finding.id,
+                    confidence=0.4,
+                )
+                co_relations.append(relation)
+
+                if len(co_relations) >= 5:
+                    return co_relations
+
+        return co_relations
 
     def _generate_id(self) -> str:
         """Generate unique ID."""

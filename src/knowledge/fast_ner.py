@@ -420,9 +420,12 @@ Only extract these entity types:
 {types_desc}
 
 Return as JSON array:
-[{{"name": "entity name", "type": "CONCEPT"}}]
+[{{"name": "entity name", "type": "CONCEPT", "description": "one-sentence description"}}]
 
-Keep it concise: max 5 entities. Focus on the most important domain concepts.
+For METRIC entities, also include "value" and "unit" fields.
+For CLAIM entities, also include "attributed_to" (who made the claim, if known).
+
+Keep it concise: max 8 entities. Focus on the most important domain concepts.
 Do NOT extract people, organizations, locations, or dates (those are already handled).
 """
 
@@ -454,6 +457,16 @@ Do NOT extract people, organizations, locations, or dates (those are already han
 
                 seen_names.add(name.lower())
 
+                # Build properties from LLM extraction
+                props = {}
+                if item.get("description"):
+                    props["description"] = item["description"]
+                if entity_type == "METRIC" and item.get("value"):
+                    props["metric_value"] = item["value"]
+                    props["metric_unit"] = item.get("unit", "")
+                if entity_type == "CLAIM" and item.get("attributed_to"):
+                    props["attributed_to"] = item["attributed_to"]
+
                 entities.append(Entity(
                     id=str(uuid.uuid4())[:8],
                     name=name,
@@ -461,9 +474,10 @@ Do NOT extract people, organizations, locations, or dates (those are already han
                     aliases=[],
                     sources=[source_id] if source_id else [],
                     confidence=0.75,  # LLM extraction confidence
+                    properties=props,
                 ))
 
-            return entities[:5]
+            return entities[:8]
 
         except Exception:
             return []
