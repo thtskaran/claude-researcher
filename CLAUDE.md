@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Setup & Commands
 
@@ -28,7 +28,7 @@ researcher ui abc123e                  # Open specific session
 researcher ui --port 9000              # Custom API port
 researcher ui --no-browser             # Don't auto-open browser
 
-# Linting (configured in pyproject.toml)
+# Linting (configured in pyproject.toml, line-length=100, target py311)
 ruff check src/
 ruff format src/
 ```
@@ -82,7 +82,7 @@ Next.js app with these pages:
 - `/session/[id]/verify` -- Verification results
 - `/session/[id]/sources` -- Source credibility analysis
 
-API server: `api/server.py` (FastAPI on :8080). WebSocket endpoint for real-time progress.
+API server: `api/server.py` (FastAPI on :8080). WebSocket endpoint (`/ws/{session_id}`) for real-time progress. CORS allows all origins.
 
 ### Model Routing
 
@@ -90,14 +90,42 @@ API server: `api/server.py` (FastAPI on :8080). WebSocket endpoint for real-time
 - **Sonnet**: Web search, finding extraction, analysis, report section generation
 - **Opus**: Strategic planning, synthesis, critique (expensive -- minimize usage)
 
+Model names are lowercase strings: `"haiku"`, `"sonnet"`, `"opus"` (no version numbers).
+
+### LLM Calling Pattern (Claude Agent SDK)
+
+All LLM calls use `claude-agent-sdk`, **not** direct Anthropic API calls:
+
+```python
+from claude_agent_sdk import ClaudeAgentOptions, query
+
+options = ClaudeAgentOptions(
+    model="sonnet",                    # lowercase model name
+    max_turns=1,
+    allowed_tools=[],                  # e.g. ["WebSearch", "WebFetch"]
+    system_prompt=self.system_prompt,
+    env=env,                           # ANTHROPIC_API_KEY if available
+    max_thinking_tokens=10000,         # only for extended thinking
+)
+async for message in query(prompt=prompt, options=options):
+    # process AssistantMessage -> TextBlock
+```
+
+API key resolution: `ANTHROPIC_API_KEY` env var, then `~/.claude/get-api-key.sh` fallback.
+
 ### Conventions
 
 - Everything is `async/await` -- all LLM, DB, and web calls are non-blocking
 - Agents receive `llm_callback` functions rather than direct model access (dependency injection)
+- All data models use Pydantic `BaseModel` with `Field()` for validation, not dataclasses. Enums inherit from `str, Enum`. Type hints use `str | None` style.
 - Decision logging uses `asyncio.create_task()` (fire-and-forget, never blocks research)
+- Non-critical operations (logging, event emission) are wrapped in try/except with pass -- never let them crash agents
+- Manager protects shared state (`topics_queue`, `all_findings`) with `asyncio.Lock()` during parallel intern execution
+- DB writes use try/commit/except/rollback pattern
+- Retry pattern: 3 attempts with exponential backoff + jitter (`(2 ** attempt) + random.uniform(0, 0.5)`)
 - Token estimation: `len(content) // 4` (rough but O(1))
-- Session IDs are 7-character hex strings
-- Output saved to `output/{topic_slug}_{session_id}/` with `report.md`, `findings.json`
+- Session IDs are 7-character hex strings (`secrets.token_hex(4)[:7]`)
+- Output saved to `output/{topic_slug}_{session_id}/` with `report.md`, `findings.json`, `knowledge_graph.json`, `knowledge_graph.html`
 
 ### Web Search & Scraping (Bright Data)
 
@@ -117,10 +145,19 @@ Academic paper search uses free APIs directly, **not** Bright Data (`src/tools/a
 - **Auto-detection**: Interns automatically query academic APIs in parallel with web search when the research topic contains academic indicators (e.g., "research", "study", "clinical trial").
 - **Integration**: Results are converted to `SearchResult` objects for compatibility with the existing pipeline. Academic results are prioritized at the top of merged search results.
 
+### Environment Variables
+
+- **`BRIGHT_DATA_API_TOKEN`** -- **Required**. Powers web search and page scraping.
+- **`BRIGHT_DATA_ZONE`** -- Optional. Bright Data zone (default: `mcp_unlocker`).
+- **`ANTHROPIC_API_KEY`** -- Optional. Falls back to `~/.claude/get-api-key.sh` if unset.
+- **`CLAUDE_RESEARCHER_DISABLE_LOG_EVENTS`** -- Set to `"1"` to disable verbose WebSocket log events.
+- **`CLAUDE_RESEARCHER_IN_API`** -- Set to `"1"` by API server to prevent event proxy loops.
+
+Loaded via `python-dotenv` from project root `.env` file.
+
 ### Dependencies Requiring Setup
 
-- **Claude Code CLI** -- **Required**. Must be installed and authenticated (`claude` command must work in terminal). This is the LLM backbone -- all three agent tiers (Director, Manager, Interns) use Claude models through it. Install: https://docs.anthropic.com/en/docs/claude-code
-- **`BRIGHT_DATA_API_TOKEN`** env var -- **Required**. Powers general web search (SERP API) and page scraping (Web Unlocker). Academic search (Semantic Scholar, arXiv) does **not** require this. Get a token from https://brightdata.com/. Optionally set `BRIGHT_DATA_ZONE` (defaults to `mcp_unlocker`).
+- **Claude Code CLI** -- **Required**. Must be installed and authenticated (`claude` command must work in terminal). This is the LLM backbone -- all three agent tiers use Claude models through it.
 - **spaCy model**: `python -m spacy download en_core_web_sm`
 - **ChromaDB**: persists vector embeddings locally
 - **BGE embeddings**: `BAAI/bge-large-en-v1.5` downloaded on first use via sentence-transformers
