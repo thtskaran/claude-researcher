@@ -161,6 +161,76 @@ export default function KnowledgeGraphPage() {
         return relations.filter(e => e.subject_id === selectedId || e.object_id === selectedId);
     }, [selectedId, relations]);
 
+    /* ── Rich detail computations for selected node ────── */
+    const degrees = useMemo(() => computeDegrees(entities, relations), [entities, relations]);
+
+    const selectedDetail = useMemo(() => {
+        if (!selectedNode || !selectedId) return null;
+
+        const props = selectedNode.properties as Record<string, unknown>;
+        const confidence = typeof props?.confidence === "number" ? props.confidence : null;
+        const aliases = Array.isArray(props?.aliases) ? (props.aliases as string[]).filter(Boolean) : [];
+        const sources = Array.isArray(props?.sources) ? (props.sources as string[]) : [];
+
+        // Degree info
+        const inEdges = relations.filter(r => r.object_id === selectedId);
+        const outEdges = relations.filter(r => r.subject_id === selectedId);
+        const totalDegree = degrees.get(selectedId) || 0;
+
+        // Group outgoing by predicate
+        const outByPred: Record<string, { predicate: string; targets: { id: string; name: string; type: string }[] }> = {};
+        outEdges.forEach(e => {
+            const p = e.predicate;
+            if (!outByPred[p]) outByPred[p] = { predicate: p, targets: [] };
+            outByPred[p].targets.push({ id: e.object_id, name: e.object_name || "Unknown", type: e.object_type || "" });
+        });
+
+        // Group incoming by predicate
+        const inByPred: Record<string, { predicate: string; sources: { id: string; name: string; type: string }[] }> = {};
+        inEdges.forEach(e => {
+            const p = e.predicate;
+            if (!inByPred[p]) inByPred[p] = { predicate: p, sources: [] };
+            inByPred[p].sources.push({ id: e.subject_id, name: e.subject_name || "Unknown", type: e.subject_type || "" });
+        });
+
+        // Neighbor types distribution
+        const neighborTypes: Record<string, number> = {};
+        connectedEdges.forEach(e => {
+            const otherId = e.subject_id === selectedId ? e.object_id : e.subject_id;
+            const otherType = e.subject_id === selectedId ? (e.object_type || "UNKNOWN") : (e.subject_type || "UNKNOWN");
+            neighborTypes[otherType] = (neighborTypes[otherType] || 0) + 1;
+        });
+
+        // Average confidence of connected edges
+        const edgeConfidences = connectedEdges.map(e => e.confidence).filter(c => c != null);
+        const avgEdgeConfidence = edgeConfidences.length > 0 ? edgeConfidences.reduce((a, b) => a + b, 0) / edgeConfidences.length : null;
+
+        // Contradictions involving this entity
+        const entityContradictions = contradictions.filter(c => {
+            return connectedEdges.some(e => e.id === c.relation1_id || e.id === c.relation2_id);
+        });
+
+        // Centrality percentile (how connected vs. all nodes)
+        const allDegrees = Array.from(degrees.values()).sort((a, b) => a - b);
+        const rank = allDegrees.filter(d => d <= totalDegree).length;
+        const percentile = allDegrees.length > 0 ? Math.round((rank / allDegrees.length) * 100) : 0;
+
+        return {
+            confidence,
+            aliases,
+            sources,
+            inEdges,
+            outEdges,
+            totalDegree,
+            outByPred,
+            inByPred,
+            neighborTypes,
+            avgEdgeConfidence,
+            entityContradictions,
+            percentile,
+        };
+    }, [selectedNode, selectedId, relations, connectedEdges, contradictions, degrees, entities]);
+
     /* ── Search ─────────────────────────────────────────── */
     const searchResults = useMemo(() => {
         if (!searchQuery.trim()) return [];
@@ -665,78 +735,249 @@ export default function KnowledgeGraphPage() {
                     )}
 
                     {/* Detail Panel */}
-                    {selectedNode && (
-                        <div className="absolute right-4 top-4 w-80 bg-card/95 backdrop-blur-xl border border-edge rounded-xl p-5 z-20 max-h-[calc(100%-6rem)] overflow-y-auto animate-fade-up-in" style={{ boxShadow: "var(--shadow-lg)" }}>
-                            <div className="flex items-start justify-between mb-3">
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                    <span
-                                        className="w-3 h-3 rounded-full shrink-0"
-                                        style={{ backgroundColor: (entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).bg }}
-                                    />
-                                    <h3 className="font-semibold text-sm truncate">{selectedNode.name}</h3>
+                    {selectedNode && selectedDetail && (() => {
+                        const cfg = entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg;
+                        const d = selectedDetail;
+                        return (
+                        <div className="absolute right-4 top-4 w-[22rem] bg-card/95 backdrop-blur-xl border border-edge rounded-xl z-20 max-h-[calc(100%-6rem)] overflow-y-auto animate-fade-up-in" style={{ boxShadow: "var(--shadow-lg)" }}>
+                            {/* Header */}
+                            <div className="p-5 pb-0">
+                                <div className="flex items-start justify-between mb-2">
+                                    <div className="flex items-start gap-2.5 min-w-0">
+                                        <span className="w-3.5 h-3.5 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: cfg.bg }} />
+                                        <div className="min-w-0">
+                                            <h3 className="font-semibold text-sm leading-snug break-words">{selectedNode.name}</h3>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <span className="badge text-[10px]" style={{ backgroundColor: cfg.dimBg, color: cfg.bg, borderColor: cfg.bg + "40" }}>
+                                                    {selectedNode.entity_type}
+                                                </span>
+                                                <span className="text-[10px] text-ink-muted font-mono">{selectedNode.id.slice(0, 8)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => { setSelectedId(null); if (networkRef.current) networkRef.current.unselectAll(); }} className="text-ink-muted hover:text-ink transition-colors shrink-0">
+                                        <span className="material-symbols-outlined text-lg">close</span>
+                                    </button>
                                 </div>
-                                <button onClick={() => { setSelectedId(null); if (networkRef.current) networkRef.current.unselectAll(); }} className="text-ink-muted hover:text-ink transition-colors shrink-0">
-                                    <span className="material-symbols-outlined text-lg">close</span>
-                                </button>
+
+                                {/* Aliases */}
+                                {d.aliases.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap gap-1">
+                                        {d.aliases.map((a, i) => (
+                                            <span key={i} className="text-[10px] text-ink-muted bg-card-inset px-1.5 py-0.5 rounded">aka: {a}</span>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
-                            <span
-                                className="badge text-xs mb-4 inline-block"
-                                style={{
-                                    backgroundColor: (entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).dimBg,
-                                    color: (entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).bg,
-                                    borderColor: (entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).bg + "40",
-                                }}
-                            >
-                                {selectedNode.entity_type}
-                            </span>
+                            {/* Stats row */}
+                            <div className="grid grid-cols-4 gap-px bg-edge/30 mx-5 mt-4 rounded-lg overflow-hidden">
+                                {[
+                                    { label: "Degree", value: d.totalDegree, sub: `top ${100 - d.percentile}%` },
+                                    { label: "In", value: d.inEdges.length },
+                                    { label: "Out", value: d.outEdges.length },
+                                    { label: "Confidence", value: d.confidence != null ? `${Math.round(d.confidence * 100)}%` : "\u2014" },
+                                ].map((s, i) => (
+                                    <div key={i} className="bg-card-inset px-2 py-2 text-center">
+                                        <div className="text-sm font-semibold text-ink">{s.value}</div>
+                                        <div className="text-[9px] text-ink-muted uppercase tracking-wide">{s.label}</div>
+                                        {s.sub && <div className="text-[9px] text-ink-muted">{s.sub}</div>}
+                                    </div>
+                                ))}
+                            </div>
 
-                            {/* Properties */}
-                            {selectedNode.properties && Object.keys(selectedNode.properties).length > 0 && (
-                                <div className="mb-4">
-                                    <label className="text-[10px] text-ink-muted uppercase tracking-widest font-bold block mb-2">Properties</label>
-                                    <div className="space-y-1">
-                                        {Object.entries(selectedNode.properties).map(([k, v]) => (
-                                            <div key={k} className="text-xs flex justify-between gap-2">
-                                                <span className="text-ink-muted font-mono shrink-0">{k}</span>
-                                                <span className="text-ink-secondary truncate">{String(v)}</span>
+                            {/* Confidence bar */}
+                            {d.confidence != null && (
+                                <div className="mx-5 mt-3">
+                                    <div className="h-1.5 bg-card-inset rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full transition-all duration-500"
+                                            style={{
+                                                width: `${d.confidence * 100}%`,
+                                                backgroundColor: d.confidence >= 0.7 ? cfg.bg : d.confidence >= 0.4 ? "#d7b464" : "#d77369",
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Neighbor type distribution */}
+                            {Object.keys(d.neighborTypes).length > 0 && (
+                                <div className="px-5 mt-4">
+                                    <label className="text-[10px] text-ink-muted uppercase tracking-widest font-bold block mb-2">Neighbor Types</label>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {Object.entries(d.neighborTypes).sort(([,a],[,b]) => b - a).map(([type, count]) => {
+                                            const tc = entityTypeConfig[type] || defaultEntityCfg;
+                                            return (
+                                                <span key={type} className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: tc.dimBg, color: tc.bg }}>
+                                                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tc.bg }} />
+                                                    {type.toLowerCase()} ({count})
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Contradictions */}
+                            {d.entityContradictions.length > 0 && (
+                                <div className="px-5 mt-4">
+                                    <label className="text-[10px] text-coral uppercase tracking-widest font-bold block mb-2">
+                                        <span className="material-symbols-outlined text-xs align-middle mr-1">warning</span>
+                                        Contradictions ({d.entityContradictions.length})
+                                    </label>
+                                    <div className="space-y-1.5">
+                                        {d.entityContradictions.map(c => (
+                                            <div key={c.id} className="text-xs bg-coral-soft border border-coral/20 rounded-md p-2">
+                                                <div className="font-medium text-coral">{c.contradiction_type.replace(/_/g, " ")}</div>
+                                                <div className="text-ink-secondary mt-0.5">{c.description}</div>
+                                                <div className="text-[10px] text-ink-muted mt-1">Severity: {c.severity}</div>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
                             )}
 
-                            {/* Connections */}
-                            <div>
-                                <label className="text-[10px] text-ink-muted uppercase tracking-widest font-bold block mb-2">Connections ({connectedEdges.length})</label>
-                                <div className="space-y-1.5 max-h-60 overflow-y-auto">
-                                    {connectedEdges.map((edge, i) => {
-                                        const isSubject = edge.subject_id === selectedId;
-                                        const otherName = isSubject ? edge.object_name : edge.subject_name;
-                                        const color = predicateColors[edge.predicate] || defaultEdgeColor;
-                                        return (
-                                            <button
-                                                key={i}
-                                                onClick={() => {
-                                                    const otherId = isSubject ? edge.object_id : edge.subject_id;
-                                                    centerOnNode(otherId);
-                                                }}
-                                                className="flex items-center gap-2 text-xs w-full text-left hover:bg-card-hover p-1.5 rounded-md transition-colors"
-                                            >
-                                                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                                                <span className="text-ink-muted font-mono shrink-0">{edge.predicate.replace(/_/g, " ")}</span>
-                                                <span className="text-ink-secondary truncate">{otherName || "Unknown"}</span>
-                                                <span className="material-symbols-outlined text-ink-muted text-[12px] ml-auto shrink-0">arrow_forward</span>
-                                            </button>
-                                        );
-                                    })}
-                                    {connectedEdges.length === 0 && (
-                                        <p className="text-xs text-ink-muted">No connections</p>
-                                    )}
+                            {/* Outgoing Relations (grouped by predicate) */}
+                            {Object.keys(d.outByPred).length > 0 && (
+                                <div className="px-5 mt-4">
+                                    <label className="text-[10px] text-ink-muted uppercase tracking-widest font-bold block mb-2">
+                                        <span className="material-symbols-outlined text-xs align-middle mr-0.5">arrow_forward</span>
+                                        Outgoing ({d.outEdges.length})
+                                    </label>
+                                    <div className="space-y-2">
+                                        {Object.values(d.outByPred).map(group => {
+                                            const color = predicateColors[group.predicate] || defaultEdgeColor;
+                                            return (
+                                                <div key={group.predicate}>
+                                                    <div className="flex items-center gap-1.5 mb-1">
+                                                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+                                                        <span className="text-[10px] font-mono text-ink-muted uppercase">{group.predicate.replace(/_/g, " ")}</span>
+                                                        <span className="text-[10px] text-ink-muted">({group.targets.length})</span>
+                                                    </div>
+                                                    <div className="space-y-0.5 ml-3">
+                                                        {group.targets.map(t => {
+                                                            const tc = entityTypeConfig[t.type] || defaultEntityCfg;
+                                                            return (
+                                                                <button
+                                                                    key={t.id}
+                                                                    onClick={() => centerOnNode(t.id)}
+                                                                    className="flex items-center gap-1.5 text-xs w-full text-left hover:bg-card-hover px-1.5 py-1 rounded transition-colors"
+                                                                >
+                                                                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: tc.bg }} />
+                                                                    <span className="text-ink-secondary truncate">{t.name}</span>
+                                                                    <span className="text-[10px] text-ink-muted ml-auto shrink-0">{t.type.toLowerCase()}</span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
+                            )}
+
+                            {/* Incoming Relations (grouped by predicate) */}
+                            {Object.keys(d.inByPred).length > 0 && (
+                                <div className="px-5 mt-4">
+                                    <label className="text-[10px] text-ink-muted uppercase tracking-widest font-bold block mb-2">
+                                        <span className="material-symbols-outlined text-xs align-middle mr-0.5">arrow_back</span>
+                                        Incoming ({d.inEdges.length})
+                                    </label>
+                                    <div className="space-y-2">
+                                        {Object.values(d.inByPred).map(group => {
+                                            const color = predicateColors[group.predicate] || defaultEdgeColor;
+                                            return (
+                                                <div key={group.predicate}>
+                                                    <div className="flex items-center gap-1.5 mb-1">
+                                                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+                                                        <span className="text-[10px] font-mono text-ink-muted uppercase">{group.predicate.replace(/_/g, " ")}</span>
+                                                        <span className="text-[10px] text-ink-muted">({group.sources.length})</span>
+                                                    </div>
+                                                    <div className="space-y-0.5 ml-3">
+                                                        {group.sources.map(s => {
+                                                            const sc = entityTypeConfig[s.type] || defaultEntityCfg;
+                                                            return (
+                                                                <button
+                                                                    key={s.id}
+                                                                    onClick={() => centerOnNode(s.id)}
+                                                                    className="flex items-center gap-1.5 text-xs w-full text-left hover:bg-card-hover px-1.5 py-1 rounded transition-colors"
+                                                                >
+                                                                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: sc.bg }} />
+                                                                    <span className="text-ink-secondary truncate">{s.name}</span>
+                                                                    <span className="text-[10px] text-ink-muted ml-auto shrink-0">{s.type.toLowerCase()}</span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Source references */}
+                            {d.sources.length > 0 && (
+                                <div className="px-5 mt-4">
+                                    <label className="text-[10px] text-ink-muted uppercase tracking-widest font-bold block mb-2">Source References</label>
+                                    <div className="flex flex-wrap gap-1">
+                                        {d.sources.map((src, i) => (
+                                            <span key={i} className="text-[10px] font-mono bg-sage-soft text-sage px-1.5 py-0.5 rounded">
+                                                finding #{src}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Edge confidence */}
+                            {d.avgEdgeConfidence != null && (
+                                <div className="px-5 mt-4">
+                                    <label className="text-[10px] text-ink-muted uppercase tracking-widest font-bold block mb-1">Avg. Relation Confidence</label>
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1 h-1.5 bg-card-inset rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full rounded-full"
+                                                style={{
+                                                    width: `${d.avgEdgeConfidence * 100}%`,
+                                                    backgroundColor: d.avgEdgeConfidence >= 0.7 ? "#82af78" : d.avgEdgeConfidence >= 0.4 ? "#d7b464" : "#d77369",
+                                                }}
+                                            />
+                                        </div>
+                                        <span className="text-[10px] font-mono text-ink-secondary">{Math.round(d.avgEdgeConfidence * 100)}%</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Raw properties (collapsible for advanced users) */}
+                            {selectedNode.properties && Object.keys(selectedNode.properties).filter(k => !["aliases", "sources", "confidence"].includes(k)).length > 0 && (
+                                <details className="px-5 mt-4">
+                                    <summary className="text-[10px] text-ink-muted uppercase tracking-widest font-bold cursor-pointer hover:text-ink-secondary transition-colors">
+                                        Raw Properties
+                                    </summary>
+                                    <div className="space-y-1 mt-2">
+                                        {Object.entries(selectedNode.properties)
+                                            .filter(([k]) => !["aliases", "sources", "confidence"].includes(k))
+                                            .map(([k, v]) => (
+                                            <div key={k} className="text-xs flex justify-between gap-2">
+                                                <span className="text-ink-muted font-mono shrink-0">{k}</span>
+                                                <span className="text-ink-secondary truncate">{String(v)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </details>
+                            )}
+
+                            {/* Metadata footer */}
+                            <div className="px-5 py-3 mt-4 border-t border-edge/50 text-[10px] text-ink-muted flex items-center justify-between">
+                                <span>Created {new Date(selectedNode.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                                {connectedEdges.length === 0 && <span className="text-coral/60">Isolated node</span>}
                             </div>
                         </div>
-                    )}
+                        );
+                    })()}
 
                     {/* Bottom Controls Bar */}
                     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-card/90 backdrop-blur-xl border border-edge rounded-xl px-5 py-2.5 z-20 flex items-center gap-4 max-w-[92vw] overflow-x-auto" style={{ boxShadow: "var(--shadow-lg)" }}>
