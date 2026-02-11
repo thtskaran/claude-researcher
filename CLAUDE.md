@@ -1,15 +1,19 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
-## Commands
+## Setup & Commands
 
 ```bash
-# Install in development mode
+# Install
+python -m venv .venv && source .venv/bin/activate
 pip install -e .
 
-# Run research
+# Run research (CLI -- results persist in SQLite, viewable in UI later)
 researcher "Your research question" --time 30
+
+# Launch web UI (starts API on :8080 + Next.js on :3000, opens browser)
+researcher ui
 
 # CLI options
 researcher "topic" --time 60          # Time limit in minutes (default: 60)
@@ -17,6 +21,12 @@ researcher "topic" --no-clarify        # Skip pre-research clarification
 researcher "topic" --autonomous        # No user interaction
 researcher "topic" --db my.db          # Custom SQLite database path
 researcher "topic" --timeout 30        # Timeout for mid-research questions
+
+# UI options
+researcher ui                          # Launch UI + API servers
+researcher ui abc123e                  # Open specific session
+researcher ui --port 9000              # Custom API port
+researcher ui --no-browser             # Don't auto-open browser
 
 # Linting (configured in pyproject.toml)
 ruff check src/
@@ -30,55 +40,79 @@ researcher "Test query" --autonomous --time 5
 
 ## Architecture
 
-This is a **hierarchical 3-tier multi-agent research system** that performs autonomous deep web research.
+Hierarchical 3-tier multi-agent deep research system. Not a summarizer -- it searches, extracts discrete findings, builds a knowledge graph, detects contradictions, verifies claims, and synthesizes reports with inline citations.
 
 ### Agent Hierarchy
 
 ```
-Director (Sonnet 4.5) → Manager (Opus 4.5 + Extended Thinking) → Intern Pool (3x parallel, Sonnet 4.5)
+Director (Sonnet) -> Manager (Opus + Extended Thinking) -> Intern Pool (3x parallel, Sonnet)
 ```
 
-- **Director** (`src/agents/director.py`): User interface layer. Handles session management, pre-research clarification, and progress display.
-- **Manager** (`src/agents/manager.py`): Strategic brain. Decomposes goals, directs interns, critiques findings, synthesizes reports. Uses extended thinking for planning/synthesis.
-- **Intern** (`src/agents/intern.py`): Executes web searches and extracts findings. Runs in parallel pool of 3.
-- **BaseAgent** (`src/agents/base.py`): Implements ReAct (Reason→Act→Observe) loop. Contains `ModelRouter` that routes tasks to Haiku/Sonnet/Opus based on complexity.
+- **Director** (`src/agents/director.py`): User interface layer. Session management, pre-research clarification, progress display.
+- **Manager** (`src/agents/manager.py`): Strategic brain. Decomposes goals, directs interns, critiques findings, uses KG gaps to guide research, synthesizes reports. Extended thinking for planning/synthesis.
+- **Intern** (`src/agents/intern.py`): Web search, query expansion, finding extraction. Runs in parallel pool of 3.
+- **BaseAgent** (`src/agents/base.py`): ReAct (Reason->Act->Observe) loop. Contains `ModelRouter` routing tasks to Haiku/Sonnet/Opus by complexity.
 
 ### Data Flow
 
-1. Director clarifies goal → creates session in SQLite
-2. Manager decomposes into topics → queues work
-3. Parallel interns search web → extract findings → save to DB
-4. Knowledge graph builds incrementally from findings (entity/relation extraction via spaCy NER + LLM)
+1. Director clarifies goal -> creates session in SQLite
+2. Manager decomposes into topics -> queues work
+3. Parallel interns search web -> extract findings -> save to DB
+4. Knowledge graph builds incrementally (spaCy NER + LLM entity/relation extraction)
 5. Manager uses KG gaps/contradictions to guide follow-up research
-6. Synthesis phase: Manager with extended thinking → `DeepReportWriter` generates dynamic sections
+6. Verification pipeline (CoVe + CRITIC) runs on findings
+7. Synthesis: `DeepReportWriter` plans sections dynamically, selects findings per-section, generates with inline citations
 
 ### Key Subsystems
 
+- **Reports** (`src/reports/writer.py`): Dynamic section planning. Per-section finding selection (keyword relevance + type affinity + verification weighting). Inline `[N]` citations. KG context injection. Source index mapping.
 - **Hybrid Retrieval** (`src/retrieval/`): BM25 + ChromaDB vector search + Reciprocal Rank Fusion + cross-encoder reranking. Entry point: `create_retriever()`.
-- **Knowledge Graph** (`src/knowledge/`): Real-time incremental graph using NetworkX + SQLite. Detects contradictions between sources. Visualized as interactive HTML.
-- **Memory** (`src/memory/`): Hybrid buffer+compression to handle long sessions without token overflow.
-- **Verification** (`src/verification/`): Chain-of-Verification + CRITIC pipeline for high-stakes claims.
+- **Knowledge Graph** (`src/knowledge/`): Real-time incremental graph using NetworkX + SQLite. Contradiction detection. Visualized as interactive HTML in UI.
+- **Memory** (`src/memory/`): Hybrid buffer+compression for long sessions without token overflow.
+- **Verification** (`src/verification/`): Chain-of-Verification + CRITIC pipeline. Results feed back into report confidence language.
 - **Decision Logging** (`src/audit/`): Async fire-and-forget logging of all agent decisions for auditability.
+
+### Web UI (`ui/`)
+
+Next.js app with these pages:
+- `/` -- Session list
+- `/session/[id]` -- Session detail with tabs: Overview, Findings, Report, Sources
+- `/session/[id]/graph` -- Interactive knowledge graph (vis-network)
+- `/session/[id]/agents` -- Agent decision audit trail
+- `/session/[id]/verify` -- Verification results
+- `/session/[id]/sources` -- Source credibility analysis
+
+API server: `api/server.py` (FastAPI on :8080). WebSocket endpoint for real-time progress.
 
 ### Model Routing
 
-- **Haiku 4.5**: Classification, simple extraction (fast/cheap)
-- **Sonnet 4.5**: Web search, finding extraction, analysis, report writing
-- **Opus 4.5**: Strategic planning, synthesis, critique (expensive — minimize usage)
+- **Haiku**: Classification, simple extraction (fast/cheap)
+- **Sonnet**: Web search, finding extraction, analysis, report section generation
+- **Opus**: Strategic planning, synthesis, critique (expensive -- minimize usage)
 
 ### Conventions
 
-- Everything is `async/await` — all LLM, DB, and web calls are non-blocking
-- Agents receive `llm_callback` functions rather than direct model access (dependency injection pattern)
+- Everything is `async/await` -- all LLM, DB, and web calls are non-blocking
+- Agents receive `llm_callback` functions rather than direct model access (dependency injection)
 - Decision logging uses `asyncio.create_task()` (fire-and-forget, never blocks research)
-- Token estimation: `len(content) // 4 ≈ tokens` (rough but O(1))
+- Token estimation: `len(content) // 4` (rough but O(1))
 - Session IDs are 7-character hex strings
 - Output saved to `output/{topic_slug}_{session_id}/` with `report.md`, `findings.json`, `knowledge_graph.html`
 
+### Web Search & Scraping (Bright Data)
+
+All web access goes through Bright Data (`src/tools/web_search.py`):
+
+- **SERP API**: Google search via `parsed_light` format -- returns structured results (title, URL, snippet) from `organic` field. Endpoint: `https://api.brightdata.com/request` with `zone` and `data_format: "parsed_light"`.
+- **Web Unlocker**: Full page scraping with `data_format: "markdown"` -- bypasses bot detection, CAPTCHAs, anti-scraping. Returns clean markdown for LLM consumption.
+- **Retry logic**: 3 attempts with exponential backoff + jitter on both search and scrape.
+- **Zone**: Configurable via `BRIGHT_DATA_ZONE` env var (defaults to `mcp_unlocker`).
+
 ### Dependencies Requiring Setup
 
-- **Claude Code CLI** must be authenticated (`claude` command available) — API keys pulled from it
-- **`BRIGHT_DATA_API_TOKEN`** env var required for web search/scraping (Bright Data API). Optionally set `BRIGHT_DATA_ZONE` (defaults to `mcp_unlocker`)
-- **spaCy model**: required for fast NER (`python -m spacy download en_core_web_sm` or similar)
+- **Claude Code CLI** -- **Required**. Must be installed and authenticated (`claude` command must work in terminal). This is the LLM backbone -- all three agent tiers (Director, Manager, Interns) use Claude models through it. Install: https://docs.anthropic.com/en/docs/claude-code
+- **`BRIGHT_DATA_API_TOKEN`** env var -- **Required**. Powers all web search (SERP API) and page scraping (Web Unlocker). Get a token from https://brightdata.com/. Optionally set `BRIGHT_DATA_ZONE` (defaults to `mcp_unlocker`).
+- **spaCy model**: `python -m spacy download en_core_web_sm`
 - **ChromaDB**: persists vector embeddings locally
 - **BGE embeddings**: `BAAI/bge-large-en-v1.5` downloaded on first use via sentence-transformers
+- **Node.js 18+**: for the Next.js UI (auto npm-install on first `researcher ui`)

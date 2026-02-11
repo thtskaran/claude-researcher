@@ -1,113 +1,90 @@
 # Claude Deep Researcher
 
-A hierarchical multi-agent research system that performs autonomous deep research on any topic. Built with real-time knowledge graphs, contradiction detection, and extended thinking.
+A deep research tool for people who actually need answers, not paragraphs of fluff.
+
+Most "AI research" tools give you a wall of vaguely-sourced text that sounds authoritative but says nothing specific. This one deploys a hierarchy of AI agents that independently search the web, extract discrete findings, build a knowledge graph, detect contradictions between sources, verify claims, and then synthesize everything into a report with inline citations you can trace back to the original source.
+
+The result: 100-300+ findings from 50-150+ sources, a live knowledge graph with entity relationships and contradiction detection, and a report where every claim cites its source.
 
 ## Quick Start
 
 ```bash
-# Install/update Python dependencies
+# Clone and install
+git clone <repo-url>
+cd claude-researcher
+python -m venv .venv && source .venv/bin/activate
 pip install -e .
 
-# Launch the web UI (auto-starts API + UI)
+# Run research from CLI (results viewable in UI later)
+researcher "Your research question" --time 30
+
+# Or launch the web UI directly
 researcher ui
 ```
 
-Reports saved to `output/{topic}_{session-id}/`
+That's it. Two commands: `pip install -e .`, then `researcher`.
+
+### Prerequisites
+
+1. **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)** -- must be installed and authenticated. The system uses Claude's API through the CLI, so the `claude` command must work in your terminal. This is the backbone that powers all three agent tiers (Director, Manager, Interns).
+
+2. **[Bright Data](https://brightdata.com/) API token** -- set the `BRIGHT_DATA_API_TOKEN` environment variable. This powers all web search and page scraping (see [How Web Search Works](#how-web-search-works) below). Optionally set `BRIGHT_DATA_ZONE` (defaults to `mcp_unlocker`).
+
+3. **Python 3.10+**
+
+4. **Node.js 18+** (for the web UI -- auto-installs deps on first `researcher ui`)
 
 ---
 
-## Real-World Comparison: claude-researcher vs ChatGPT Deep Research
+## How Web Search Works (Bright Data)
 
-Same topic: **"AI-powered penetration testing systems"** (1 hour research)
+Most AI research tools hit a wall the moment a website blocks their scraper. claude-researcher doesn't have that problem.
 
-| Metric | claude-researcher | ChatGPT Deep Research |
-|--------|------------------|----------------------|
-| **Sources** | **127** | ~25 |
-| **Findings** | **303** | Not tracked |
-| **Knowledge Graph** | **2,688 entities** | None |
-| **Contradiction Detection** | **Yes** | No |
-| **Latest Sources** | **Jan 2026** | Older |
+All web access goes through [Bright Data](https://brightdata.com/)'s infrastructure, which gives the system two capabilities that generic HTTP requests can't match:
 
-### What claude-researcher found that ChatGPT missed:
+**SERP API** -- Google search results returned as structured data (titles, URLs, snippets) via Bright Data's `parsed_light` format. No HTML parsing, no breaking when Google changes their layout. The system gets clean, structured search results every time.
+
+**Web Unlocker** -- Full page scraping that bypasses bot detection, CAPTCHAs, and anti-scraping measures. Pages are returned as clean markdown, ready for the LLM to process. This means the system can read paywalled research blogs, JavaScript-heavy SPAs, and sites that would return a 403 to a normal `requests.get()`. Bright Data handles proxy rotation, browser fingerprinting, and CAPTCHA solving transparently.
+
+Why this matters for research quality:
+- **Access**: Sites that block scrapers (news sites, research platforms, corporate blogs) are readable
+- **Reliability**: Proxy rotation and automatic retries mean searches don't fail randomly
+- **Clean data**: Markdown output means no HTML parsing bugs, no broken extractors
+- **Scale**: 50-150+ sources per session without getting rate-limited or blocked
+
+Without Bright Data, you'd be limited to whatever Google's basic search API returns and whatever sites don't block your IP. With it, the interns can actually read the pages they find.
+
+---
+
+## What Makes This Different
+
+### vs ChatGPT Deep Research / Gemini Deep Research / Perplexity
+
+Same topic: **"AI-powered penetration testing systems"** (1 hour)
+
+| | claude-researcher | ChatGPT Deep Research |
+|---|---|---|
+| **Sources analyzed** | **127** | ~25 |
+| **Discrete findings** | **303** | Not tracked |
+| **Knowledge graph** | **2,688 entities, contradiction detection** | None |
+| **Inline citations** | **Every claim cites [N]** | Vague attribution |
+| **Verification** | **Chain-of-Verification pipeline** | None |
+| **Latest sources** | **Jan 2026** | Older |
+
+Things claude-researcher found that ChatGPT missed entirely:
 - OWASP Top 10 for Agentic Applications 2026 (brand new framework)
-- 94.4% of LLM agents vulnerable to prompt injection (specific statistic)
+- 94.4% of LLM agents vulnerable to prompt injection (specific statistic with source)
 - IBM Bob exploitation case study (Jan 2026)
 - US Federal Register RFI on AI agent security
 - Hexstrike-AI's 150-agent orchestration architecture
 
-See full comparison: [`examples/`](./examples/)
-
----
-
----
-
-## Key Concepts
-
-### Research Depth
-
-Depth = how many levels deep the research goes from your original question.
-
-```
-Depth 0: "What are the latest AI safety research directions?"  ← Your question
-         │
-         ├─ Depth 1: "Mechanistic interpretability 2026"       ← Decomposed aspects
-         │           │
-         │           └─ Depth 2: "Sparse autoencoders scaling" ← Follow-up topics
-         │
-         ├─ Depth 1: "AI alignment techniques"
-         │
-         └─ Depth 1: "AI governance frameworks"
-```
-
-- **Depth 0**: Your original question
-- **Depth 1**: Sub-topics the system breaks your question into (parallel phase)
-- **Depth 2+**: Follow-up topics discovered during research
-- **Max Depth** (default: 5): Prevents infinite rabbit holes
-
-### Research Phases
-
-1. **Parallel Initial Phase**: Decomposes your goal into 3 aspects, researches them simultaneously
-2. **Deep Dive Phase**: ReAct loop - manager critiques findings, identifies gaps, directs follow-up research
-3. **Synthesis Phase**: Generates narrative report with extended thinking
-
-### Agent Hierarchy
-
-| Agent | Model | Role |
-|-------|-------|------|
-| **Director** | Sonnet | User interface, session management |
-| **Manager** | Opus | Strategy, critique, synthesis (uses extended thinking) |
-| **Intern** | Sonnet | Web searches, finding extraction |
-
-### Finding Types
-
-| Type | What it means |
-|------|---------------|
-| `FACT` | Verified specific information |
-| `INSIGHT` | Analysis or interpretation |
-| `CONNECTION` | Links between topics |
-| `SOURCE` | Valuable primary source |
-| `QUESTION` | Unanswered question for follow-up |
-| `CONTRADICTION` | Conflicting information across sources |
-
----
-
-## Installation
-
-```bash
-git clone <repo-url>
-cd claude-researcher
-pip install -e .
-```
-
-### Requirements
-
-- Python 3.10+
-- Claude Code CLI installed and authenticated (`claude` command works)
-- API credentials (uses Claude Code's credentials automatically)
+The difference isn't just "more sources." It's that the system builds a knowledge graph as it researches, detects when sources contradict each other, identifies gaps in what it knows, and directs follow-up research to fill those gaps. It doesn't just search and summarize -- it reasons about what it's learning.
 
 ---
 
 ## Usage
+
+### CLI (start research, view later in UI)
 
 ```bash
 # Basic research (default 60 min)
@@ -116,116 +93,117 @@ researcher "Your research question here"
 # Quick research
 researcher "What is WebAssembly?" --time 5
 
-# Long deep research
+# Long deep dive
 researcher "Comprehensive overview of quantum computing" --time 120
 
-# Custom database (isolate projects)
-researcher "ML in healthcare" --db ml_research.db
+# Fully autonomous (no interaction)
+researcher "AI safety" --autonomous
 
 # Skip clarification questions
 researcher "AI safety" --no-clarify
 
-# Fully autonomous mode (no interaction)
-researcher "AI safety" --autonomous
+# Custom database (isolate projects)
+researcher "ML in healthcare" --db ml_research.db
 ```
 
-### Options
+Every research session saves to `output/{topic}_{session-id}/` with:
+- `report.md` -- Full narrative report with inline citations
+- `findings.json` -- All structured findings
+- `knowledge_graph.html` -- Interactive graph visualization
+
+All sessions are also persisted in SQLite, so you can view any past session in the UI at any time.
+
+### Web UI (view everything)
+
+```bash
+researcher ui
+```
+
+This starts the API server (port 8080) and Next.js frontend (port 3000), then opens your browser. From the UI you can:
+
+- **Sessions list** -- See all past and active research sessions
+- **Live progress** -- Watch agents work in real-time via WebSocket
+- **Report** -- Read the full report with working table of contents, inline citations, tables, and proper formatting
+- **Findings** -- Browse all extracted findings with confidence scores and verification status
+- **Knowledge Graph** -- Interactive visualization with entity types, relation labels, contradiction highlighting, and node detail panels
+- **Sources** -- See every source analyzed with credibility scores
+- **Verification** -- Review the Chain-of-Verification results
+- **Agent Decisions** -- Full audit trail of every decision every agent made
+
+```bash
+# Open UI for a specific session
+researcher ui abc123e
+
+# Custom API port
+researcher ui --port 9000
+
+# Start without opening browser
+researcher ui --no-browser
+```
+
+### CLI Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--time`, `-t` | Time limit in minutes | 60 |
 | `--db`, `-d` | SQLite database path | research.db |
-| `--no-clarify` | Skip pre-research clarification questions | False |
-| `--autonomous`, `-a` | Run fully autonomous (no user interaction) | False |
-| `--timeout` | Timeout in seconds for mid-research questions | 60 |
+| `--no-clarify` | Skip pre-research clarification | False |
+| `--autonomous`, `-a` | No user interaction at all | False |
+| `--timeout` | Timeout for mid-research questions (seconds) | 60 |
 
 ---
 
-## Interactive Features
+## How It Works
 
-The researcher supports three interactive features to help focus and guide research:
-
-### 1. Pre-Research Clarification
-
-Before research begins, the system asks 2-4 questions to refine the scope:
+### Agent Hierarchy
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ Before we begin, a few quick questions to focus the research:  │
-│ Press Enter to skip any question, or type 's' to skip all.     │
-└─────────────────────────────────────────────────────────────────┘
-
-What time period are you most interested in?
-Options: Recent (2024-2025) / Historical / All time
-> Recent (2024-2025)
-
-What's your primary use case?
-Options: Academic research / Business application / General learning
-> Business application
+Director (Sonnet) -- user interface, session management
+    |
+Manager (Opus + Extended Thinking) -- strategy, critique, synthesis
+    |
+Intern Pool (3x Sonnet, parallel) -- web search, finding extraction
 ```
 
-The system then refines your goal:
+The Director talks to you. The Manager thinks. The Interns search.
+
+### Research Flow
+
+1. **Clarification** -- Director asks 2-4 questions to refine your goal (skip with `--no-clarify`)
+2. **Decomposition** -- Manager breaks your question into 3+ parallel research threads
+3. **Parallel search** -- 3 interns simultaneously search the web, extract findings, save to DB
+4. **Knowledge graph** -- Entities and relations extracted in real-time (spaCy NER + LLM)
+5. **Critique loop** -- Manager reviews findings, identifies gaps and contradictions, queues follow-up research
+6. **Deep dive** -- Iterative cycles of search/critique/follow-up until time runs out
+7. **Verification** -- Chain-of-Verification + CRITIC pipeline on high-stakes claims
+8. **Synthesis** -- Report generated with section-relevant finding selection and inline citations
+
+### Research Depth
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ Original: Machine learning in customer support                  │
-│                                                                 │
-│ Refined: Recent (2024-2025) machine learning applications in   │
-│ customer support for business implementation, focusing on       │
-│ practical deployment and ROI.                                   │
-└─────────────────────────────────────────────────────────────────┘
+Depth 0: "What are the latest AI safety research directions?"  <-- Your question
+         |
+         +- Depth 1: "Mechanistic interpretability 2026"       <-- Decomposed aspects
+         |           |
+         |           +- Depth 2: "Sparse autoencoders scaling" <-- Follow-up from gaps
+         |
+         +- Depth 1: "AI alignment techniques"
+         |
+         +- Depth 1: "AI governance frameworks"
 ```
 
-**Skip with:** `--no-clarify` flag or type `s` during questions.
+The system goes up to depth 5 by default. Each level is driven by what the knowledge graph says is missing.
 
-### 2. Mid-Research Guidance Injection
+### Interactive Features
 
-While research is running, you can inject guidance to steer the direction:
-
-1. **Type your message** (text won't be visible due to the spinner)
-2. **Press Enter**
-3. **The spinner pauses** and shows what you typed:
-   ```
-   ━━━ User Guidance ━━━
-   You typed: focus more on chatbots and automated responses
-   Press Enter to send, or type more to replace: _
-   ```
-4. **Press Enter** to confirm or type a replacement
-5. **Spinner resumes** and your guidance is used in the next iteration
-
-**Example guidance messages:**
+**Mid-research guidance**: While research runs, type a message and press Enter to steer the agents:
 - "Focus on practical implementations, not theory"
 - "Look into company X specifically"
 - "Skip historical background, go deeper on current research"
-- "The AI findings seem outdated, search for 2024 sources"
 
-The Manager agent will incorporate your guidance in its next thinking cycle:
-```
-[USER GUIDANCE] Received 1 message(s)
-  → focus more on chatbots and automated responses
-```
+**Mid-research questions**: The Manager may ask you questions during research (e.g., "Should I investigate pricing models?"). Times out after 60s and continues autonomously.
 
-### 3. Mid-Research Questions (Async)
-
-The Manager may occasionally ask you questions during research:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ Question                                                        │
-├─────────────────────────────────────────────────────────────────┤
-│ Should I investigate pricing models in more depth?              │
-│ We found conflicting information about enterprise costs.        │
-│                                                                 │
-│ Options: Yes, investigate / No, continue / Focus on SMB only    │
-│ (60s timeout - research will continue if no response)           │
-└─────────────────────────────────────────────────────────────────┘
-> Yes, investigate
-```
-
-If you don't respond within the timeout, research continues autonomously.
-
-### Interaction Modes
-
-| Mode | Clarification | Mid-Research Input | Questions |
+| Mode | Clarification | Mid-research input | Questions |
 |------|---------------|-------------------|-----------|
 | **Default** | Yes | Yes | Yes |
 | `--no-clarify` | No | Yes | Yes |
@@ -233,328 +211,76 @@ If you don't respond within the timeout, research continues autonomously.
 
 ---
 
-## Output
-
-### Console Output
-
-You'll see real-time progress:
-- Search queries and results
-- Extracted findings with confidence scores
-- Manager critiques
-- Knowledge graph statistics
-- Follow-up topics being added
-
-### Generated Files
-
-Each research session creates a dedicated folder:
-
-```
-output/
-└── ai-safety-research_a1b2c3d/     # {slug}_{session-id}/
-    ├── report.md                    # Narrative research report
-    ├── findings.json                # Structured findings data
-    └── knowledge_graph.html         # Interactive visualization
-```
-
-**Naming convention:**
-- `slug` - AI-generated from your research question (e.g., "ai-safety-research")
-- `session-id` - Unique 7-character hex ID (e.g., "a1b2c3d")
-
-### Session Statistics
-
-At the end of research, you'll see:
-
-| Stat | Meaning |
-|------|---------|
-| **Topics Explored** | Number of sub-topics researched |
-| **Total Findings** | Facts, insights, etc. extracted |
-| **Unique Searches** | Web searches performed |
-| **Max Depth** | Deepest level reached (see above) |
-| **Time Used** | Actual research duration |
-
-### Cost Tracking
-
-The system tracks API costs in real-time and displays an estimate at the end:
-
-```
-                        API Cost Estimate
-┌────────────┬──────┬──────────┬──────────┬──────────┬──────────┐
-│ Model      │ Calls│ Input    │ Output   │ Thinking │ Cost     │
-├────────────┼──────┼──────────┼──────────┼──────────┼──────────┤
-│ Sonnet 4.5 │ 45   │ 125,000  │ 45,000   │ 0        │ $1.0500  │
-│ Opus 4.5   │ 12   │ 80,000   │ 35,000   │ 50,000   │ $2.5250  │
-│ Haiku 4.5  │ 8    │ 15,000   │ 8,000    │ 0        │ $0.0550  │
-│ Web        │ 23   │ 23 srch  │ 0 fetch  │ -        │ $0.2300  │
-├────────────┼──────┼──────────┼──────────┼──────────┼──────────┤
-│ TOTAL      │ 65   │ 220,000  │ 88,000   │ 50,000   │ $3.8600  │
-└────────────┴──────┴──────────┴──────────┴──────────┴──────────┘
-```
-
-**Current Pricing (per million tokens):**
-
-| Model | Input | Output | Notes |
-|-------|-------|--------|-------|
-| Opus 4.5 | $5 | $25 | Extended thinking tokens billed as output |
-| Sonnet 4.5 | $3 | $15 | Extended thinking tokens billed as output |
-| Haiku 4.5 | $1 | $5 | Extended thinking tokens billed as output |
-| Web Search | - | - | $0.01 per search |
-
-Cost data is also saved to `findings.json` for tracking across sessions.
-
----
-
-## Architecture
-
-```
-                         ┌──────────────────────┐
-                         │        USER          │
-                         │  • Clarification     │
-                         │  • Mid-research input│
-                         └──────────┬───────────┘
-                                    │
-┌─────────────────────────────────────────────────────────────┐
-│                     DIRECTOR (Sonnet)                       │
-│  Session management, progress display, report export        │
-│  + UserInteraction handler, InputListener                   │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│              MANAGER (Opus + Extended Thinking)             │
-│  • Decomposes goal into parallel research threads           │
-│  • Critiques findings, identifies gaps                      │
-│  • Steers research using knowledge graph insights           │
-│  • Incorporates user guidance from message queue            │
-│  • Synthesizes final report                                 │
-└─────────────────────────────────────────────────────────────┘
-                              │
-          ┌───────────────────┼───────────────────┐
-          ▼                   ▼                   ▼
-┌──────────────────┐ ┌──────────────────┐ ┌────────────────┐
-│  INTERN POOL     │ │  KNOWLEDGE GRAPH │ │    MEMORY      │
-│  (Parallel)      │ │                  │ │                │
-│  • Web searches  │ │  • Entities      │ │  • Hybrid      │
-│  • Query expand  │ │  • Relations     │ │    buffer      │
-│  • Extract facts │ │  • Gaps          │ │  • Compression │
-│                  │ │  • Contradictions│ │  • External DB │
-└──────────────────┘ └──────────────────┘ └────────────────┘
-```
-
-### Parallel Execution
-
-The system uses an **intern pool** (default: 3 parallel interns) for:
-- Initial research phase: 3 aspects researched simultaneously
-- Queued topics: Multiple topics processed in parallel when available
-
-This significantly speeds up research compared to sequential execution.
+## Key Systems
 
 ### Knowledge Graph
 
-Built in real-time as research progresses:
-- **Entities**: Concepts, claims, evidence, methods extracted from findings
-- **Relations**: How entities connect (causes, supports, contradicts)
-- **Gap Detection**: Graph analysis identifies missing knowledge
-- **Contradiction Detection**: Flags conflicting claims for investigation
+Built incrementally as research progresses:
+- **Entities**: Concepts, claims, evidence, methods, metrics, organizations
+- **Relations**: supports, contradicts, causes, cites, implements, outperforms
+- **Gap detection**: Graph analysis identifies under-researched areas
+- **Contradiction detection**: Flags conflicting claims across sources with severity
 
-The manager uses KG insights to decide what to research next.
+The Manager uses KG insights to decide what to research next. The report writer uses KG data (key concepts, contradictions, gaps) to enrich section content.
 
-**Tip**: If the knowledge graph HTML lags with large graphs (1000+ nodes), click the physics button at the bottom and disable physics to stop the simulation.
+### Report Generation
 
-### Hybrid Memory
+Reports use **dynamic AI-driven section planning** -- the AI analyzes your findings and decides what sections are needed rather than using a fixed template.
 
-For long research sessions:
-- **Recent Buffer**: Full recent messages (high fidelity)
-- **Compressed Summary**: Older context summarized to save tokens
-- **External Store**: Findings persisted to SQLite for retrieval
+| Section Type | When Used |
+|------|-----------|
+| **TL;DR** | Always first -- bottom-line answer in 2-3 sentences |
+| **Flash Numbers** | Key statistics when quantitative data exists |
+| **Stats Table** | Markdown table when comparing items |
+| **Comparison** | Side-by-side analysis of approaches |
+| **Timeline** | When temporal progression exists |
+| **Narrative** | Core thematic sections (3-5 of these) |
+| **Analysis** | Cross-cutting patterns and insights |
+| **Gaps** | Open questions and contradictions |
+| **Conclusions** | Always last -- recommendations and next steps |
 
----
+Every section gets findings **selected specifically for that section** (keyword relevance + type affinity + verification status), not just the same top-N findings repeated.
 
-## Report Structure
+Claims cite their sources inline using `[N]` notation that maps to the numbered reference list.
 
-Reports use **dynamic AI-driven section planning**. Instead of a fixed template, the AI analyzes findings and decides what sections are needed.
+### Fact Verification
 
-### How It Works
+Chain-of-Verification (CoVe) + CRITIC pipeline:
+- Verified findings marked `[VERIFIED]` -- cited with confidence in the report
+- Flagged findings marked `[FLAGGED]` -- hedged language in the report
+- Rejected findings deprioritized
+- KG corroboration score factors into confidence
 
-1. **Structure Planning** - AI analyzes findings and outputs a JSON plan of sections
-2. **Section Generation** - Each section generated according to its type with specialized formatting
+### Hybrid Retrieval
 
-### Available Section Types
-
-| Type | Format | When Used |
-|------|--------|-----------|
-| **TL;DR** | 2-3 sentence blockquote | Always first - bottom-line answer |
-| **Flash Numbers** | `**94.4%** - description` | When quantitative data exists |
-| **Stats Table** | Markdown comparison table | When comparing multiple items |
-| **Comparison** | Side-by-side analysis | When evaluating approaches/systems |
-| **Timeline** | Chronological progression | When temporal data exists |
-| **Narrative** | Standard prose (4-6 paragraphs) | Core thematic sections |
-| **Analysis** | Deep synthesis | Patterns and insights |
-| **Gaps** | Open questions | Uncertainties and unknowns |
-| **Conclusions** | Recommendations | Always near end |
-
-### Example Output
-
-```markdown
-## 1. TL;DR
-> AI-powered pentesting tools can generate working exploits in 10-15 minutes,
-> with 94.4% of LLM agents vulnerable to prompt injection attacks.
-
-## 2. Key Numbers
-**94.4%** - LLM agents vulnerable to prompt injection
-**10-15 min** - Time to generate working CVE exploits
-**150+** - Tools orchestrated by Hexstrike-AI
-
-## 3. Current Threat Landscape
-[narrative prose...]
-
-## 4. Framework Comparison
-| Framework | Focus | Release | Tools |
-|-----------|-------|---------|-------|
-| PentestGPT | ... | ... | ... |
-
-## 5. Analysis & Patterns
-[synthesis...]
-```
-
-Reports use **Sonnet** for section generation with specialized prompts per section type.
+BM25 + ChromaDB vector search + Reciprocal Rank Fusion + cross-encoder reranking. 15-30% better recall than single-method retrieval. All models run locally.
 
 ---
 
-## Configuration
+## Output
 
-### Adjust Research Depth
+### Generated Files
 
-In `src/agents/manager.py`:
-```python
-self.max_depth: int = 5  # How deep to follow threads
+```
+output/
++-- ai-safety-research_a1b2c3d/     # {slug}_{session-id}/
+    +-- report.md                    # Narrative report with inline citations
+    +-- findings.json                # All findings + cost data
+    +-- knowledge_graph.html         # Interactive graph visualization
 ```
 
-### Adjust Parallel Pool Size
+### Cost Tracking
 
-```python
-manager = ManagerAgent(
-    db, intern, config,
-    pool_size=3,        # Number of parallel interns
-    use_parallel=True,  # Enable/disable parallel execution
-)
-```
+The system tracks API costs and shows an estimate at the end:
 
-### Model Selection
+| Model | Input/M tokens | Output/M tokens |
+|-------|-------|--------|
+| Opus | $15 | $75 |
+| Sonnet | $3 | $15 |
+| Haiku | $0.80 | $4 |
+| Web Search | $0.01/search | |
 
-The system automatically routes tasks to appropriate models:
-
-| Task | Model |
-|------|-------|
-| Classification, simple extraction | Haiku |
-| Web search, query expansion | Sonnet |
-| Strategic planning, synthesis, critique | Opus |
-
----
-
-## Hybrid Retrieval System
-
-The system includes a high-quality hybrid retrieval module combining semantic and lexical search:
-
-### Components
-
-| Component | Purpose |
-|-----------|---------|
-| **BGE Embeddings** | State-of-the-art semantic embeddings (bge-large-en-v1.5) |
-| **ChromaDB** | Local persistent vector database |
-| **BM25** | Lexical search for exact keyword matching |
-| **Cross-Encoder** | Reranking for final quality boost (bge-reranker-large) |
-
-### Quality Benefits
-
-- **15-30% better recall** than single-method retrieval
-- **Hybrid fusion** catches both semantic and keyword matches
-- **Reranking** provides cross-encoder accuracy on top candidates
-- **Local inference** - all models run on-device
-
-### Usage
-
-```python
-from src.retrieval import HybridRetriever, create_retriever
-
-# Quick setup with best-quality defaults
-retriever = create_retriever()
-
-# Add documents
-retriever.add_texts([
-    "Quantum computing uses qubits for parallel computation",
-    "Machine learning models learn from data patterns",
-    "Neural networks are inspired by biological neurons",
-])
-
-# Search
-results = retriever.search("how do quantum computers work")
-for r in results:
-    print(f"{r.score:.3f}: {r.content[:50]}...")
-
-# For research findings specifically
-from src.retrieval import FindingsRetriever
-findings_retriever = FindingsRetriever()
-findings_retriever.add_finding(finding, session_id)
-results = findings_retriever.search("AI safety research")
-```
-
-### Configuration
-
-```python
-from src.retrieval import HybridConfig, EmbeddingConfig, RerankerConfig
-
-config = HybridConfig(
-    persist_directory=".retrieval",
-    embedding=EmbeddingConfig(
-        model_name="BAAI/bge-large-en-v1.5",  # Best quality
-        device="auto",  # auto-detect GPU/MPS/CPU
-    ),
-    reranker=RerankerConfig(
-        model_name="BAAI/bge-reranker-large",
-    ),
-    semantic_weight=0.5,  # Balance semantic vs BM25
-    use_reranker=True,    # Enable cross-encoder reranking
-)
-
-retriever = HybridRetriever(config)
-```
-
-### Model Options
-
-| Model | Size | Quality | Speed |
-|-------|------|---------|-------|
-| `BAAI/bge-large-en-v1.5` | 1.3GB | Best | Slower |
-| `BAAI/bge-base-en-v1.5` | 440MB | Good | Fast |
-| `BAAI/bge-small-en-v1.5` | 130MB | OK | Fastest |
-
----
-
-## Database
-
-All research persists to SQLite:
-
-| Table | Contents |
-|-------|----------|
-| `sessions` | Research sessions (7-char hex ID, goal, slug) |
-| `findings` | Extracted findings with sources |
-| `topics` | Research topics with depth/status |
-| `kg_entities` | Knowledge graph entities |
-| `kg_relations` | Entity relationships |
-| `kg_contradictions` | Detected conflicts |
-
-Files created:
-- `research.db` - Main database
-- `research_kg.db` - Knowledge graph
-- `research_memory.db` - External memory store
-
-Session IDs are unique 7-character hexadecimal strings (e.g., `a1b2c3d`).
-
----
-
-## Troubleshooting
-
-### API errors
-Check Claude Code is authenticated: `claude --version`
+A typical 30-min session costs $2-5. A 60-min deep dive costs $5-15 depending on topic complexity.
 
 ---
 
@@ -562,67 +288,49 @@ Check Claude Code is authenticated: `claude --version`
 
 ```
 claude-researcher/
-├── src/
-│   ├── agents/
-│   │   ├── base.py       # ReAct loop, model routing
-│   │   ├── intern.py     # Web search, query expansion
-│   │   ├── manager.py    # Strategy, critique, KG integration
-│   │   ├── director.py   # User interface, session management
-│   │   └── parallel.py   # Parallel intern pool
-│   ├── interaction/      # User interaction features
-│   │   ├── models.py     # ClarifiedGoal, UserMessage, etc.
-│   │   ├── config.py     # InteractionConfig
-│   │   ├── handler.py    # UserInteraction class
-│   │   └── listener.py   # Background input listener
-│   ├── retrieval/        # Hybrid retrieval system
-│   │   ├── embeddings.py # BGE embedding service
-│   │   ├── vectorstore.py # ChromaDB vector store
-│   │   ├── bm25.py       # BM25 lexical search
-│   │   ├── reranker.py   # Cross-encoder reranking
-│   │   ├── hybrid.py     # Hybrid retriever (RRF fusion)
-│   │   ├── findings.py   # Research findings retriever
-│   │   └── memory_integration.py # Semantic memory store
-│   ├── costs/            # API cost tracking
-│   │   └── tracker.py    # CostTracker, CostSummary, pricing
-│   ├── knowledge/
-│   │   ├── graph.py      # Incremental KG construction
-│   │   ├── store.py      # NetworkX + SQLite hybrid
-│   │   ├── query.py      # Gap detection interface
-│   │   ├── credibility.py # Source scoring
-│   │   └── visualize.py  # Pyvis, Mermaid output
-│   ├── memory/
-│   │   ├── hybrid.py     # Buffer + summary compression
-│   │   └── external.py   # SQLite external store
-│   ├── reports/
-│   │   └── writer.py     # Dynamic section planning, specialized generators
-│   ├── models/
-│   │   └── findings.py   # Data models
-│   ├── storage/
-│   │   └── database.py   # SQLite persistence
-│   └── main.py           # CLI entry point
-├── output/               # Generated reports
-├── pyproject.toml
-└── README.md
++-- src/
+|   +-- agents/           # Director, Manager, Intern, ReAct loop
+|   +-- knowledge/        # KG construction, gap detection, contradiction detection
+|   +-- reports/          # Dynamic section planning, inline citations
+|   +-- retrieval/        # Hybrid search (BM25 + vector + reranker)
+|   +-- verification/     # CoVe + CRITIC verification pipeline
+|   +-- memory/           # Hybrid buffer + compression for long sessions
+|   +-- interaction/      # User clarification, mid-research guidance
+|   +-- costs/            # API cost tracking
+|   +-- audit/            # Agent decision logging
+|   +-- tools/            # Web search & scraping (Bright Data API)
+|   +-- models/           # Pydantic data models
+|   +-- storage/          # SQLite persistence
+|   +-- main.py           # CLI entry point
++-- api/                  # FastAPI backend for the web UI
++-- ui/                   # Next.js frontend
++-- output/               # Generated reports
++-- pyproject.toml
++-- CLAUDE.md             # AI coding assistant instructions
++-- README.md
 ```
+
+---
+
+## Troubleshooting
+
+**"claude: command not found"** -- Install and authenticate [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code).
+
+**Web searches failing** -- Set `BRIGHT_DATA_API_TOKEN` env var. Optionally set `BRIGHT_DATA_ZONE` (defaults to `mcp_unlocker`).
+
+**spaCy model missing** -- Run `python -m spacy download en_core_web_sm`.
+
+**UI won't start** -- Make sure Node.js 18+ is installed. `researcher ui` runs `npm install` automatically on first launch.
+
+**Knowledge graph slow with 1000+ nodes** -- In the graph view, disable physics from the bottom toolbar.
 
 ---
 
 ## Credits
 
-Built with:
-- [Claude Agent SDK](https://docs.anthropic.com/) - Agent framework
-- [Anthropic API](https://docs.anthropic.com/) - Direct API for reports
-- [Rich](https://github.com/Textualize/rich) - Terminal output
-- [NetworkX](https://networkx.org/) - Graph algorithms
-- [Pyvis](https://pyvis.readthedocs.io/) - Graph visualization
-- [Sentence Transformers](https://sbert.net/) - BGE embeddings
-- [ChromaDB](https://www.trychroma.com/) - Vector database
+Built with [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), [Claude Agent SDK](https://docs.anthropic.com/), [Bright Data](https://brightdata.com/) (SERP API + Web Unlocker), [Rich](https://github.com/Textualize/rich), [NetworkX](https://networkx.org/), [Sentence Transformers](https://sbert.net/), [ChromaDB](https://www.trychroma.com/), [FastAPI](https://fastapi.tiangolo.com/), [Next.js](https://nextjs.org/).
 
-Inspired by:
-- [Gemini Deep Research](https://gemini.google/overview/deep-research/)
-- [Perplexity](https://www.perplexity.ai/)
-- [GPT Researcher](https://github.com/assafelovic/gpt-researcher)
-- [Stanford STORM](https://arxiv.org/abs/2402.14207)
+Inspired by [Gemini Deep Research](https://gemini.google/overview/deep-research/), [Perplexity](https://www.perplexity.ai/), [GPT Researcher](https://github.com/assafelovic/gpt-researcher), [Stanford STORM](https://arxiv.org/abs/2402.14207).
 
 ## License
 
