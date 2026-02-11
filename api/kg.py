@@ -63,8 +63,7 @@ class KnowledgeGraphAPI:
         params = []
 
         if session_id:
-            # Include both session-specific data AND legacy data without session_id
-            conditions.append("(session_id = ? OR session_id IS NULL)")
+            conditions.append("(session_id = ? OR session_id IS NULL OR session_id = '')")
             params.append(session_id)
 
         if entity_type:
@@ -102,8 +101,7 @@ class KnowledgeGraphAPI:
         if not self._db_exists():
             return []
 
-        # Include both session-specific data AND legacy data without session_id
-        where_clause = "WHERE (r.session_id = ? OR r.session_id IS NULL)" if session_id else ""
+        where_clause = "WHERE (r.session_id = ? OR r.session_id IS NULL OR r.session_id = '')" if session_id else ""
         params = (session_id, limit) if session_id else (limit,)
 
         rows = await self._run(
@@ -138,8 +136,7 @@ class KnowledgeGraphAPI:
         if not self._db_exists():
             return []
 
-        # Include both session-specific data AND legacy data without session_id
-        where_clause = "WHERE (session_id = ? OR session_id IS NULL)" if session_id else ""
+        where_clause = "WHERE (session_id = ? OR session_id IS NULL OR session_id = '')" if session_id else ""
         params = (session_id, limit) if session_id else (limit,)
 
         return await self._run(
@@ -155,28 +152,35 @@ class KnowledgeGraphAPI:
             params,
         )
 
-    async def get_stats(self) -> dict:
-        """Get KG statistics."""
+    async def get_stats(self, session_id: str | None = None) -> dict:
+        """Get KG statistics, optionally filtered by session."""
         if not self._db_exists():
             return {"entities": 0, "relations": 0, "contradictions": 0, "entity_types": {}}
 
+        where = "WHERE (session_id = ? OR session_id IS NULL OR session_id = '')" if session_id else ""
+        params = (session_id,) if session_id else ()
+
         entities_row = await self._run(
             _scalar_sync,
-            "SELECT COUNT(*) as count FROM kg_entities",
+            f"SELECT COUNT(*) as count FROM kg_entities {where}",
+            params,
         )
         relations_row = await self._run(
             _scalar_sync,
-            "SELECT COUNT(*) as count FROM kg_relations",
+            f"SELECT COUNT(*) as count FROM kg_relations {where}",
+            params,
         )
         contradictions_row = await self._run(
             _scalar_sync,
-            "SELECT COUNT(*) as count FROM kg_contradictions",
+            f"SELECT COUNT(*) as count FROM kg_contradictions {where}",
+            params,
         )
 
         # Entity type breakdown
         type_rows = await self._run(
             _query_sync,
-            "SELECT entity_type, COUNT(*) as count FROM kg_entities GROUP BY entity_type ORDER BY count DESC",
+            f"SELECT entity_type, COUNT(*) as count FROM kg_entities {where} GROUP BY entity_type ORDER BY count DESC",
+            params,
         )
         entity_types = {row["entity_type"]: row["count"] for row in type_rows}
 

@@ -49,6 +49,7 @@ class HybridKnowledgeGraphStore:
                 entity_type TEXT NOT NULL,
                 properties TEXT,
                 embedding BLOB,
+                session_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -64,6 +65,7 @@ class HybridKnowledgeGraphStore:
                 source_id TEXT,
                 confidence REAL DEFAULT 1.0,
                 properties TEXT,
+                session_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (subject_id) REFERENCES kg_entities(id),
                 FOREIGN KEY (object_id) REFERENCES kg_entities(id)
@@ -96,11 +98,19 @@ class HybridKnowledgeGraphStore:
                 severity TEXT DEFAULT 'medium',
                 resolution TEXT,
                 resolved_at TIMESTAMP,
+                session_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (relation1_id) REFERENCES kg_relations(id),
                 FOREIGN KEY (relation2_id) REFERENCES kg_relations(id)
             )
         """)
+
+        # Migrate existing tables: add session_id if missing
+        for table in ("kg_entities", "kg_relations", "kg_contradictions"):
+            cursor.execute(f"PRAGMA table_info({table})")
+            columns = {row[1] for row in cursor.fetchall()}
+            if "session_id" not in columns:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN session_id TEXT")
 
         # Indexes for fast queries
         cursor.execute(
@@ -117,6 +127,12 @@ class HybridKnowledgeGraphStore:
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_relation_object ON kg_relations(object_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_entity_session ON kg_entities(session_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_relation_session ON kg_relations(session_id)"
         )
 
         conn.commit()
@@ -235,15 +251,15 @@ class HybridKnowledgeGraphStore:
 
         return relation.id
 
-    def add_contradiction(self, contradiction: Contradiction) -> str:
+    def add_contradiction(self, contradiction: Contradiction, session_id: str | None = None) -> str:
         """Record a detected contradiction."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
         cursor.execute("""
             INSERT INTO kg_contradictions
-            (id, relation1_id, relation2_id, contradiction_type, description, severity)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (id, relation1_id, relation2_id, contradiction_type, description, severity, session_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
             contradiction.id,
             contradiction.relation1_id,
@@ -251,6 +267,7 @@ class HybridKnowledgeGraphStore:
             contradiction.contradiction_type,
             contradiction.description,
             contradiction.severity,
+            session_id,
         ))
 
         conn.commit()

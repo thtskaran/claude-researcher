@@ -34,7 +34,7 @@ async def get_knowledge_graph(
 async def get_knowledge_stats(session_id: str):
     """Get KG statistics."""
     kg = get_kg()
-    return await kg.get_stats()
+    return await kg.get_stats(session_id=session_id)
 
 
 @router.get("/{session_id}/knowledge/entity/{entity_id}")

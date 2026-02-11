@@ -1258,6 +1258,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
         """
         self.research_goal = goal
         self.session_id = session_id
+        self.knowledge_graph.session_id = session_id
         self.time_limit_minutes = time_limit_minutes
         self.start_time = datetime.now()
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 
@@ -35,46 +35,57 @@ interface KGContradiction {
 }
 
 /* ── Entity style map ──────────────────────────────────── */
-const entityTypeConfig: Record<string, { color: string; icon: string; label: string }> = {
-    CLAIM: { color: "#f59e0b", icon: "\u{1F4A1}", label: "Claim" },
-    CONCEPT: { color: "#6366f1", icon: "\u{1F3F7}\uFE0F", label: "Concept" },
-    SOURCE: { color: "#6b7280", icon: "\u{1F4C4}", label: "Source" },
-    EVIDENCE: { color: "#10b981", icon: "\u{1F52C}", label: "Evidence" },
-    TECHNOLOGY: { color: "#0ea5e9", icon: "\u2699\uFE0F", label: "Technology" },
-    METHOD: { color: "#8b5cf6", icon: "\u{1F527}", label: "Method" },
-    METRIC: { color: "#f43f5e", icon: "\u{1F4CA}", label: "Metric" },
-    PERSON: { color: "#ec4899", icon: "\u{1F464}", label: "Person" },
-    ORGANIZATION: { color: "#14b8a6", icon: "\u{1F3E2}", label: "Organization" },
-    QUOTE: { color: "#f97316", icon: "\u{1F4AC}", label: "Quote" },
+const entityTypeConfig: Record<string, { bg: string; border: string; dimBg: string; label: string }> = {
+    CLAIM:        { bg: "#d49e6e", border: "#b87c4c", dimBg: "rgba(212,158,110,0.15)", label: "Claim" },
+    CONCEPT:      { bg: "#a594be", border: "#8b7aa5", dimBg: "rgba(165,148,190,0.15)", label: "Concept" },
+    SOURCE:       { bg: "#8b8578", border: "#6e695e", dimBg: "rgba(139,133,120,0.15)", label: "Source" },
+    EVIDENCE:     { bg: "#82af78", border: "#5e8c54", dimBg: "rgba(130,175,120,0.15)", label: "Evidence" },
+    TECHNOLOGY:   { bg: "#7ab0c4", border: "#5a95ab", dimBg: "rgba(122,176,196,0.15)", label: "Technology" },
+    METHOD:       { bg: "#a594be", border: "#8b7aa5", dimBg: "rgba(165,148,190,0.15)", label: "Method" },
+    METRIC:       { bg: "#d77369", border: "#c05a50", dimBg: "rgba(215,115,105,0.15)", label: "Metric" },
+    PERSON:       { bg: "#c9917a", border: "#b87c4c", dimBg: "rgba(201,145,122,0.15)", label: "Person" },
+    ORGANIZATION: { bg: "#a8bba3", border: "#8aa383", dimBg: "rgba(168,187,163,0.15)", label: "Organization" },
+    QUOTE:        { bg: "#d7b464", border: "#c09a3e", dimBg: "rgba(215,180,100,0.15)", label: "Quote" },
 };
-const defaultEntityCfg = { color: "#9ca3af", icon: "\u25CF", label: "Other" };
+const defaultEntityCfg = { bg: "#8b8578", border: "#6e695e", dimBg: "rgba(139,133,120,0.15)", label: "Other" };
 
 const predicateColors: Record<string, string> = {
-    supports: "#10b981",
-    contradicts: "#f43f5e",
-    related: "#0ea5e9",
-    related_to: "#0ea5e9",
-    is_a: "#6366f1",
-    part_of: "#8b5cf6",
-    causes: "#f59e0b",
-    cites: "#6b7280",
-    implements: "#a78bfa",
-    outperforms: "#10b981",
-    similar_to: "#0ea5e9",
-    alternative_to: "#ec4899",
-    authored_by: "#6b7280",
-    mentioned_in: "#6b7280",
+    supports: "#82af78",
+    contradicts: "#d77369",
+    related: "#7ab0c4",
+    related_to: "#7ab0c4",
+    is_a: "#a594be",
+    part_of: "#a594be",
+    causes: "#d7b464",
+    cites: "#8b8578",
+    implements: "#a594be",
+    outperforms: "#82af78",
+    similar_to: "#7ab0c4",
+    alternative_to: "#c9917a",
+    authored_by: "#8b8578",
+    mentioned_in: "#8b8578",
 };
-const defaultEdgeColor = "#484f58";
+const defaultEdgeColor = "#3c3a34";
 
-/* ── Theme-aware colors for vis-network ───────────────── */
-function getGraphTheme() {
-    const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-    return {
-        fontColor: isDark ? "#f0ece4" : "#3a2c22",
-        fontBg: isDark ? "rgba(28, 26, 22, 0.85)" : "rgba(247, 244, 234, 0.85)",
-        edgeFontColor: isDark ? "#b4aa9e" : "#766252",
-    };
+/* ── Graph theme (dark-only) ───────────────────────────── */
+const THEME = {
+    fontColor: "#f0ece4",
+    fontBg: "rgba(28, 26, 22, 0.85)",
+    edgeFontColor: "#b4aa9e",
+    pageBg: "#1c1a16",
+    dimmedFont: "rgba(240,236,228,0.25)",
+    dimmedEdge: "rgba(55,52,44,0.3)",
+};
+
+/* ── Degree centrality helper ──────────────────────────── */
+function computeDegrees(entities: KGEntity[], relations: KGRelation[]): Map<string, number> {
+    const deg = new Map<string, number>();
+    entities.forEach(e => deg.set(e.id, 0));
+    relations.forEach(r => {
+        deg.set(r.subject_id, (deg.get(r.subject_id) || 0) + 1);
+        deg.set(r.object_id, (deg.get(r.object_id) || 0) + 1);
+    });
+    return deg;
 }
 
 /* ── Main Component ────────────────────────────────────── */
@@ -93,9 +104,15 @@ export default function KnowledgeGraphPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [searchActive, setSearchActive] = useState(false);
     const [zoomLevel, setZoomLevel] = useState(100);
+    const [stabilizing, setStabilizing] = useState(false);
 
     const containerRef = useRef<HTMLDivElement>(null);
     const networkRef = useRef<any>(null);
+    const nodesDatasetRef = useRef<any>(null);
+    const edgesDatasetRef = useRef<any>(null);
+    const allNodesRef = useRef<Record<string, any>>({});
+    const allEdgesRef = useRef<Record<string, any>>({});
+    const highlightActiveRef = useRef(false);
 
     /* ── Fetch data ─────────────────────────────────────── */
     const fetchGraph = async () => {
@@ -105,10 +122,8 @@ export default function KnowledgeGraphPage() {
             const res = await fetch(`/api/sessions/${sessionId}/knowledge/graph?limit=500`);
             if (!res.ok) throw new Error("Failed to load knowledge graph");
             const data = await res.json();
-            const ents: KGEntity[] = data.entities || [];
-            const rels: KGRelation[] = data.relations || [];
-            setEntities(ents);
-            setRelations(rels);
+            setEntities(data.entities || []);
+            setRelations(data.relations || []);
             setContradictions(data.contradictions || []);
         } catch {
             setError("Unable to load knowledge graph data");
@@ -155,66 +170,170 @@ export default function KnowledgeGraphPage() {
             .slice(0, 8);
     }, [searchQuery, filteredEntities]);
 
-    const centerOnNode = (nodeId: string) => {
+    const centerOnNode = useCallback((nodeId: string) => {
         if (networkRef.current) {
+            const pos = networkRef.current.getPositions([nodeId]);
+            if (pos[nodeId]) {
+                networkRef.current.moveTo({
+                    position: pos[nodeId],
+                    scale: 1.8,
+                    animation: { duration: 600, easingFunction: "easeInOutQuad" as any }
+                });
+            }
             networkRef.current.selectNodes([nodeId], true);
-            networkRef.current.moveTo({
-                position: { x: 0, y: 0 },
-                scale: 1.5,
-                animation: { duration: 500, easingFunction: "easeInOutQuad" as any }
-            });
             setSelectedId(nodeId);
             setSearchActive(false);
             setSearchQuery("");
         }
-    };
+    }, []);
 
-    const fitToView = () => {
+    const fitToView = useCallback(() => {
         if (networkRef.current) {
-            networkRef.current.fit({ animation: { duration: 500, easingFunction: "easeInOutQuad" as any } });
+            networkRef.current.fit({
+                animation: { duration: 600, easingFunction: "easeInOutQuad" as any },
+                maxZoomLevel: 1.5
+            });
         }
-    };
+    }, []);
+
+    /* ── Hover-to-dim ──────────────────────────────────── */
+    const highlightConnected = useCallback((hoveredNodeId: string) => {
+        if (!networkRef.current || !nodesDatasetRef.current || !edgesDatasetRef.current) return;
+
+        highlightActiveRef.current = true;
+        const connectedNodes = new Set<string>(networkRef.current.getConnectedNodes(hoveredNodeId));
+        connectedNodes.add(hoveredNodeId);
+
+        const connectedEdgeIds = new Set<string>(networkRef.current.getConnectedEdges(hoveredNodeId));
+
+        // Dim non-connected nodes
+        const nodeUpdates: any[] = [];
+        const allNodes = allNodesRef.current;
+        for (const nodeId in allNodes) {
+            const node = allNodes[nodeId];
+            if (connectedNodes.has(nodeId)) {
+                nodeUpdates.push({
+                    id: nodeId,
+                    opacity: 1.0,
+                    font: { color: THEME.fontColor, background: THEME.fontBg },
+                });
+            } else {
+                nodeUpdates.push({
+                    id: nodeId,
+                    opacity: 0.15,
+                    font: { color: THEME.dimmedFont, background: "transparent" },
+                });
+            }
+        }
+        nodesDatasetRef.current.update(nodeUpdates);
+
+        // Dim non-connected edges
+        const edgeUpdates: any[] = [];
+        const allEdges = allEdgesRef.current;
+        for (const edgeId in allEdges) {
+            const edge = allEdges[edgeId];
+            if (connectedEdgeIds.has(edgeId)) {
+                const color = edge._originalColor || defaultEdgeColor;
+                edgeUpdates.push({
+                    id: edgeId,
+                    color: { color, highlight: color, hover: color, opacity: 1.0 },
+                    width: edge._originalWidth || 1.5,
+                });
+            } else {
+                edgeUpdates.push({
+                    id: edgeId,
+                    color: { color: THEME.dimmedEdge, highlight: THEME.dimmedEdge, hover: THEME.dimmedEdge, opacity: 0.1 },
+                    width: 0.5,
+                });
+            }
+        }
+        edgesDatasetRef.current.update(edgeUpdates);
+    }, []);
+
+    const unhighlightAll = useCallback(() => {
+        if (!highlightActiveRef.current || !nodesDatasetRef.current || !edgesDatasetRef.current) return;
+        highlightActiveRef.current = false;
+
+        const nodeUpdates: any[] = [];
+        const allNodes = allNodesRef.current;
+        for (const nodeId in allNodes) {
+            nodeUpdates.push({
+                id: nodeId,
+                opacity: 1.0,
+                font: { color: THEME.fontColor, background: THEME.fontBg },
+            });
+        }
+        nodesDatasetRef.current.update(nodeUpdates);
+
+        const edgeUpdates: any[] = [];
+        const allEdges = allEdgesRef.current;
+        for (const edgeId in allEdges) {
+            const edge = allEdges[edgeId];
+            const color = edge._originalColor || defaultEdgeColor;
+            edgeUpdates.push({
+                id: edgeId,
+                color: { color: color + "80", highlight: color, hover: color, opacity: 1.0 },
+                width: edge._originalWidth || 1.5,
+            });
+        }
+        edgesDatasetRef.current.update(edgeUpdates);
+    }, []);
 
     /* ── Initialize vis-network ─────────────────────────── */
     useEffect(() => {
         if (!containerRef.current || loading || entities.length === 0) return;
 
-        // Dynamically import vis-network (client-side only)
         import("vis-network").then(({ Network }) => {
             import("vis-data").then(({ DataSet }) => {
                 if (!containerRef.current) return;
 
-                const theme = getGraphTheme();
+                setStabilizing(true);
 
-                // Create filtered node IDs set
+                // Compute degree centrality
+                const degrees = computeDegrees(filteredEntities, relations);
+                const maxDegree = Math.max(1, ...Array.from(degrees.values()));
+
+                // Build filtered entity ID set
                 const filteredIds = new Set(filteredEntities.map(e => e.id));
 
-                // Prepare nodes
+                // Prepare nodes with degree-based sizing
                 const nodes = filteredEntities.map(e => {
                     const cfg = entityTypeConfig[e.entity_type] || defaultEntityCfg;
-                    const edgeCount = relations.filter(r =>
-                        r.subject_id === e.id || r.object_id === e.id
-                    ).length;
-                    const size = Math.max(20, Math.min(50, 20 + edgeCount * 3));
+                    const degree = degrees.get(e.id) || 0;
+
+                    // Size: 8 (isolated) to 40 (highest degree), logarithmic scale
+                    const normalizedDeg = maxDegree > 0 ? degree / maxDegree : 0;
+                    const size = 8 + Math.log(1 + normalizedDeg * 9) / Math.log(10) * 32;
+
+                    // Progressive labels: only show labels for nodes with enough connections
+                    const showLabel = degree >= 1;
 
                     return {
                         id: e.id,
-                        label: e.name.length > 25 ? e.name.slice(0, 22) + "..." : e.name,
-                        title: `<b>${e.name}</b><br/>Type: ${e.entity_type}<br/>Connections: ${edgeCount}`,
+                        label: showLabel ? (e.name.length > 30 ? e.name.slice(0, 27) + "\u2026" : e.name) : undefined,
+                        title: `${e.name}\n${e.entity_type} \u00b7 ${degree} connections`,
                         color: {
-                            background: cfg.color,
-                            border: cfg.color,
-                            highlight: { background: cfg.color, border: "#ffffff" }
+                            background: cfg.bg,
+                            border: cfg.border,
+                            highlight: { background: cfg.bg, border: "#f0ece4" },
+                            hover: { background: cfg.bg, border: "#f0ece4" },
                         },
-                        shape: e.entity_type === "CLAIM" ? "diamond" : "dot",
-                        size: size,
+                        shape: "dot",
+                        size,
+                        mass: 1 + degree * 0.2,
                         font: {
-                            color: theme.fontColor,
-                            size: 14,
+                            color: THEME.fontColor,
+                            size: Math.max(10, Math.min(16, 10 + degree * 0.5)),
                             face: "Figtree, system-ui, sans-serif",
-                            background: theme.fontBg,
-                            strokeWidth: 0
-                        }
+                            background: THEME.fontBg,
+                            strokeWidth: 0,
+                        },
+                        borderWidth: 2,
+                        borderWidthSelected: 3,
+                        opacity: 1.0,
+                        _degree: degree,
+                        _entityType: e.entity_type,
+                        _fullName: e.name,
                     };
                 });
 
@@ -223,142 +342,167 @@ export default function KnowledgeGraphPage() {
                     .filter(r => filteredIds.has(r.subject_id) && filteredIds.has(r.object_id))
                     .map(r => {
                         const color = predicateColors[r.predicate] || defaultEdgeColor;
+                        const width = 1 + r.confidence * 1.5;
                         return {
                             id: r.id,
                             from: r.subject_id,
                             to: r.object_id,
-                            label: "",  // Hide edge labels for cleaner look
                             title: r.predicate.replace(/_/g, " "),
                             color: {
-                                color: color + "80",  // 50% opacity
+                                color: color + "80",
                                 highlight: color,
-                                hover: color
+                                hover: color,
                             },
-                            width: 1.5 + (r.confidence * 1.5),
-                            arrows: {
-                                to: {
-                                    enabled: true,
-                                    scaleFactor: 0.8,
-                                    type: "arrow"
-                                }
-                            },
+                            width,
+                            arrows: { to: { enabled: true, scaleFactor: 0.5, type: "arrow" } },
                             arrowStrikethrough: false,
-                            smooth: { enabled: true, type: "curvedCW", roundness: 0.2 },
-                            dashes: r.predicate === "contradicts" ? [5, 5] : false
+                            smooth: { enabled: true, type: "continuous", roundness: 0.5 },
+                            dashes: r.predicate === "contradicts" ? [6, 4] : false,
+                            _originalColor: color,
+                            _originalWidth: width,
                         };
                     });
 
-                const data = {
-                    nodes: new DataSet(nodes),
-                    edges: new DataSet(edges)
-                };
+                const nodesDataset = new DataSet(nodes as any[]);
+                const edgesDataset = new DataSet(edges as any[]);
+                nodesDatasetRef.current = nodesDataset;
+                edgesDatasetRef.current = edgesDataset;
+
+                // Store references for hover manipulation
+                const allNodesObj: Record<string, any> = {};
+                nodes.forEach(n => { allNodesObj[n.id] = n; });
+                allNodesRef.current = allNodesObj;
+
+                const allEdgesObj: Record<string, any> = {};
+                edges.forEach(e => { allEdgesObj[e.id] = e; });
+                allEdgesRef.current = allEdgesObj;
 
                 const options: any = {
                     nodes: {
                         borderWidth: 2,
-                        borderWidthSelected: 4
+                        borderWidthSelected: 3,
+                        scaling: {
+                            label: {
+                                enabled: true,
+                                min: 10,
+                                max: 18,
+                                maxVisible: 24,
+                                drawThreshold: 6,
+                            },
+                        },
                     },
                     edges: {
                         font: {
-                            size: 11,
-                            color: theme.edgeFontColor,
-                            strokeWidth: 0,
-                            align: "middle"
+                            size: 0,
+                            color: "transparent",
                         },
                         chosen: true,
-                        hoverWidth: 0.5
+                        selectionWidth: 1,
+                        hoverWidth: 0.5,
                     },
                     physics: {
                         enabled: true,
-                        barnesHut: {
-                            gravitationalConstant: -80000,
-                            centralGravity: 0.3,
-                            springLength: 250,
-                            springConstant: 0.001,
-                            damping: 0.09,
-                            avoidOverlap: 0.8
+                        solver: "forceAtlas2Based",
+                        forceAtlas2Based: {
+                            theta: 0.5,
+                            gravitationalConstant: -120,
+                            centralGravity: 0.008,
+                            springLength: 160,
+                            springConstant: 0.06,
+                            damping: 0.45,
+                            avoidOverlap: 0.3,
                         },
                         stabilization: {
                             enabled: true,
-                            iterations: 400,
-                            updateInterval: 25
-                        }
+                            iterations: 800,
+                            updateInterval: 25,
+                        },
+                        maxVelocity: 50,
+                        minVelocity: 0.75,
                     },
                     interaction: {
                         hover: true,
-                        tooltipDelay: 100,
+                        tooltipDelay: 200,
                         hideEdgesOnDrag: false,
                         hideEdgesOnZoom: false,
                         dragNodes: true,
                         dragView: true,
-                        zoomView: true
+                        zoomView: true,
+                        multiselect: false,
+                        navigationButtons: false,
                     },
                     layout: {
                         improvedLayout: true,
-                        randomSeed: 42
-                    }
+                        randomSeed: 42,
+                    },
                 };
 
-                // Destroy existing network
+                // Destroy existing
                 if (networkRef.current) {
                     networkRef.current.destroy();
                 }
 
-                // Create new network
-                const network = new Network(containerRef.current, data, options);
+                const network = new Network(containerRef.current!, { nodes: nodesDataset, edges: edgesDataset }, options);
                 networkRef.current = network;
 
-                // Event listeners
+                // ── Events ──
+
+                // Node selection
                 network.on("selectNode", (params: any) => {
-                    if (params.nodes.length > 0) {
-                        setSelectedId(params.nodes[0]);
-                    }
+                    if (params.nodes.length > 0) setSelectedId(params.nodes[0]);
                 });
+                network.on("deselectNode", () => setSelectedId(null));
 
-                network.on("deselectNode", () => {
-                    setSelectedId(null);
-                });
-
+                // Zoom tracking
                 network.on("zoom", () => {
-                    if (networkRef.current) {
-                        const scale = networkRef.current.getScale();
-                        setZoomLevel(Math.round(scale * 100));
-                    }
+                    const scale = network.getScale();
+                    setZoomLevel(Math.round(scale * 100));
                 });
 
-                // Drag events for elastic physics
+                // Hover-to-dim
+                network.on("hoverNode", (params: any) => {
+                    highlightConnected(params.node);
+                });
+                network.on("blurNode", () => {
+                    unhighlightAll();
+                });
+
+                // Drag: re-enable physics briefly with high damping
                 let dragTimeout: NodeJS.Timeout;
                 network.on("dragStart", () => {
+                    clearTimeout(dragTimeout);
                     network.setOptions({
                         physics: {
                             enabled: true,
-                            barnesHut: {
-                                gravitationalConstant: -8000,
-                                centralGravity: 0.05,
-                                springLength: 150,
-                                springConstant: 0.01,
-                                damping: 0.4,
-                                avoidOverlap: 0.3
+                            solver: "forceAtlas2Based",
+                            forceAtlas2Based: {
+                                gravitationalConstant: -60,
+                                centralGravity: 0.005,
+                                springLength: 160,
+                                springConstant: 0.06,
+                                damping: 0.7,
+                                avoidOverlap: 0.3,
                             },
-                            maxVelocity: 50,
-                            minVelocity: 0.1,
-                            solver: 'barnesHut',
-                            timestep: 0.35
-                        }
+                            maxVelocity: 30,
+                            minVelocity: 0.75,
+                        },
                     });
                 });
-
                 network.on("dragEnd", () => {
                     clearTimeout(dragTimeout);
                     dragTimeout = setTimeout(() => {
                         network.setOptions({ physics: { enabled: false } });
-                    }, 800);
+                    }, 600);
                 });
 
-                // Disable physics after stabilization
+                // After stabilization: disable physics, fit to view
                 network.on("stabilizationIterationsDone", () => {
-                    network.fit({ animation: { duration: 500, easingFunction: "easeInOutQuad" as any } });
+                    setStabilizing(false);
                     network.setOptions({ physics: { enabled: false } });
+                    network.fit({
+                        animation: { duration: 800, easingFunction: "easeInOutQuad" as any },
+                        maxZoomLevel: 1.5,
+                    });
                 });
             });
         });
@@ -369,7 +513,7 @@ export default function KnowledgeGraphPage() {
                 networkRef.current = null;
             }
         };
-    }, [filteredEntities, relations, loading]);
+    }, [filteredEntities, relations, loading, highlightConnected, unhighlightAll]);
 
     /* ── Render ─────────────────────────────────────────── */
     return (
@@ -393,21 +537,19 @@ export default function KnowledgeGraphPage() {
                             <span className="badge badge-system">{filteredEntities.length} nodes</span>
                             <span className="badge badge-system">{relations.length} edges</span>
                             {contradictions.length > 0 && (
-                                <span className="badge badge-error">{contradictions.length} ⚡</span>
+                                <span className="badge badge-error">{contradictions.length} contradictions</span>
                             )}
                         </div>
                         <div className="flex items-center gap-2">
                             {/* Search */}
                             <div className="relative">
-                                <div className="flex items-center">
-                                    <button
-                                        onClick={() => setSearchActive(a => !a)}
-                                        className="btn btn-ghost text-xs px-2 py-1"
-                                        title="Search entities"
-                                    >
-                                        <span className="material-symbols-outlined text-sm">search</span>
-                                    </button>
-                                </div>
+                                <button
+                                    onClick={() => setSearchActive(a => !a)}
+                                    className="btn btn-ghost text-xs px-2 py-1"
+                                    title="Search entities"
+                                >
+                                    <span className="material-symbols-outlined text-sm">search</span>
+                                </button>
                                 {searchActive && (
                                     <div className="absolute right-0 top-full mt-1 w-72 z-50">
                                         <input
@@ -431,7 +573,7 @@ export default function KnowledgeGraphPage() {
                                                             onClick={() => centerOnNode(n.id)}
                                                             className="w-full text-left px-3 py-2 hover:bg-card-hover transition-colors flex items-center gap-2 text-sm"
                                                         >
-                                                            <span style={{ color: cfg.color }}>{cfg.icon}</span>
+                                                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cfg.bg }} />
                                                             <span className="text-ink truncate">{n.name}</span>
                                                             <span className="text-xs text-ink-muted ml-auto">{n.entity_type}</span>
                                                         </button>
@@ -481,17 +623,30 @@ export default function KnowledgeGraphPage() {
             ) : (
                 <div className="flex-1 relative overflow-hidden">
                     {/* Vis-Network Container */}
-                    <div ref={containerRef} className="absolute inset-0 bg-page" />
+                    <div ref={containerRef} className="absolute inset-0" style={{ background: THEME.pageBg }} />
+
+                    {/* Stabilization overlay */}
+                    {stabilizing && (
+                        <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ background: "rgba(28,26,22,0.7)" }}>
+                            <div className="flex items-center gap-3 text-ink-secondary text-sm">
+                                <span className="material-symbols-outlined animate-spin text-sage">progress_activity</span>
+                                Computing layout...
+                            </div>
+                        </div>
+                    )}
 
                     {/* Detail Panel */}
                     {selectedNode && (
-                        <div className="absolute right-4 top-4 w-80 bg-card/95 backdrop-blur-xl border border-edge rounded-xl p-5 z-20 max-h-[calc(100%-6rem)] overflow-y-auto" style={{ boxShadow: "var(--shadow-lg)" }}>
+                        <div className="absolute right-4 top-4 w-80 bg-card/95 backdrop-blur-xl border border-edge rounded-xl p-5 z-20 max-h-[calc(100%-6rem)] overflow-y-auto animate-fade-up-in" style={{ boxShadow: "var(--shadow-lg)" }}>
                             <div className="flex items-start justify-between mb-3">
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <span className="text-xl shrink-0">{(entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).icon}</span>
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    <span
+                                        className="w-3 h-3 rounded-full shrink-0"
+                                        style={{ backgroundColor: (entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).bg }}
+                                    />
                                     <h3 className="font-semibold text-sm truncate">{selectedNode.name}</h3>
                                 </div>
-                                <button onClick={() => setSelectedId(null)} className="text-ink-muted hover:text-ink transition-colors shrink-0">
+                                <button onClick={() => { setSelectedId(null); if (networkRef.current) networkRef.current.unselectAll(); }} className="text-ink-muted hover:text-ink transition-colors shrink-0">
                                     <span className="material-symbols-outlined text-lg">close</span>
                                 </button>
                             </div>
@@ -499,9 +654,9 @@ export default function KnowledgeGraphPage() {
                             <span
                                 className="badge text-xs mb-4 inline-block"
                                 style={{
-                                    backgroundColor: `${(entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).color}20`,
-                                    color: (entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).color,
-                                    borderColor: `${(entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).color}40`,
+                                    backgroundColor: (entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).dimBg,
+                                    color: (entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).bg,
+                                    borderColor: (entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg).bg + "40",
                                 }}
                             >
                                 {selectedNode.entity_type}
@@ -559,8 +714,8 @@ export default function KnowledgeGraphPage() {
                         {/* Legend */}
                         <div className="flex items-center gap-3 text-[11px] shrink-0 border-r border-edge pr-4">
                             {Object.entries(entityTypeConfig).slice(0, 6).map(([key, cfg]) => (
-                                <span key={key} className="flex items-center gap-1 text-ink-secondary">
-                                    <span className="text-xs">{cfg.icon}</span>
+                                <span key={key} className="flex items-center gap-1.5 text-ink-secondary">
+                                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cfg.bg }} />
                                     <span>{cfg.label}</span>
                                 </span>
                             ))}
@@ -580,7 +735,8 @@ export default function KnowledgeGraphPage() {
                                     onClick={() => setNodeTypeFilter(prev => prev === t ? "all" : t)}
                                     className={`chip text-[11px] ${nodeTypeFilter === t ? "chip-active" : ""}`}
                                 >
-                                    {(entityTypeConfig[t] || defaultEntityCfg).icon} {t.toLowerCase()}
+                                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: (entityTypeConfig[t] || defaultEntityCfg).bg }} />
+                                    {t.toLowerCase()}
                                 </button>
                             ))}
                         </div>
