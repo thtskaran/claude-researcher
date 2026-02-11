@@ -72,26 +72,29 @@ class DeepReportWriter:
     def __init__(self, model: str = "opus"):
         self.model = model
 
-    async def _call_claude(self, prompt: str, system_prompt: str = "") -> str:
+    async def _call_claude(self, prompt: str, system_prompt: str = "", model: str | None = None) -> str:
         """Call Claude for report generation using Claude Agent SDK.
 
         Uses claude_agent_sdk.query() which works with both API keys and OAuth
         authentication (normal Claude Code accounts).
+        Falls back to cheaper models if the primary model fails (e.g. rate limits).
         """
         # Combine system prompt with user prompt
         full_prompt = prompt
         if system_prompt:
             full_prompt = f"{system_prompt}\n\n{prompt}"
 
+        use_model = model or self.model
+
         options = ClaudeAgentOptions(
-            model=self.model,  # "opus", "sonnet", or "haiku"
+            model=use_model,
             max_turns=1,  # Single turn for report generation
             allowed_tools=[],  # No tools needed for text generation
         )
 
         response_text = ""
-        max_retries = 3
-        base_delay = 1.0
+        max_retries = 5
+        base_delay = 5.0  # Start with 5s delay for rate limit recovery
 
         for attempt in range(max_retries):
             try:
@@ -103,11 +106,19 @@ class DeepReportWriter:
                 break  # Success, exit retry loop
 
             except Exception as e:
+                error_str = str(e).lower()
+                print(f"[REPORT] Attempt {attempt + 1}/{max_retries} failed ({use_model}): {e}")
+
                 if attempt < max_retries - 1:
-                    delay = base_delay * (2 ** attempt) + random.uniform(0, 0.5)
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 2.0)
+                    print(f"[REPORT] Retrying in {delay:.1f}s...")
                     await asyncio.sleep(delay)
                     response_text = ""  # Reset for retry
                 else:
+                    # All retries exhausted with primary model — try fallback
+                    if use_model == "opus":
+                        print(f"[REPORT] Opus failed after {max_retries} attempts, falling back to sonnet...")
+                        return await self._call_claude(prompt, system_prompt, model="sonnet")
                     return f"[Error generating report section: {str(e)[:200]}]"
 
         return response_text
@@ -932,7 +943,7 @@ Output ONLY the conclusions content."""
         await _emit_progress(progress_callback, "Planned report structure", 10)
         print(f"[REPORT] Planned {len(planned_sections)} sections: {[s.title for s in planned_sections]}")
 
-        # Phase 2: Generate each section
+        # Phase 2: Generate each section (with pacing to avoid rate limits)
         for i, section in enumerate(planned_sections):
             progress = 10 + int(((i + 1) / max(1, len(planned_sections))) * 80)
             await _emit_progress(
@@ -942,6 +953,9 @@ Output ONLY the conclusions content."""
             )
             print(f"[REPORT] Generating section {i+1}/{len(planned_sections)}: {section.title}...")
             section.content = await self._generate_dynamic_section(section, session.goal, findings)
+            # Brief pause between sections to reduce rate limit pressure
+            if i < len(planned_sections) - 1:
+                await asyncio.sleep(2)
 
         # Compile the report
         await _emit_progress(progress_callback, "Compiling report...", 95)

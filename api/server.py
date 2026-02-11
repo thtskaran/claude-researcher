@@ -166,7 +166,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     "message": data
                 })
 
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError):
         print(f"📡 WebSocket disconnected for session: {session_id}")
     finally:
         # Unsubscribe from events
