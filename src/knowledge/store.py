@@ -105,13 +105,6 @@ class HybridKnowledgeGraphStore:
             )
         """)
 
-        # Migrate existing tables: add session_id if missing
-        for table in ("kg_entities", "kg_relations", "kg_contradictions"):
-            cursor.execute(f"PRAGMA table_info({table})")
-            columns = {row[1] for row in cursor.fetchall()}
-            if "session_id" not in columns:
-                cursor.execute(f"ALTER TABLE {table} ADD COLUMN session_id TEXT")
-
         # Indexes for fast queries
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_entity_type ON kg_entities(entity_type)"

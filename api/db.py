@@ -105,6 +105,7 @@ class APIDatabase:
                 kg_supporting_relations INTEGER DEFAULT 0,
                 critic_iterations INTEGER DEFAULT 0,
                 corrections_made TEXT,
+                questions_asked TEXT,
                 external_verification_used INTEGER DEFAULT 0,
                 contradictions TEXT,
                 verification_time_ms REAL,
@@ -537,6 +538,7 @@ class APIDatabase:
                 vr.kg_supporting_relations,
                 vr.critic_iterations,
                 vr.corrections_made,
+                vr.questions_asked,
                 vr.external_verification_used,
                 vr.contradictions,
                 vr.verification_time_ms,
@@ -555,18 +557,9 @@ class APIDatabase:
             (session_id, limit, offset),
         )
         rows = await cursor.fetchall()
+        import json as _json
         results = []
         for row in rows:
-            corrections = None
-            contradictions = None
-            try:
-                import json as _json
-                if row["corrections_made"]:
-                    corrections = _json.loads(row["corrections_made"])
-                if row["contradictions"]:
-                    contradictions = _json.loads(row["contradictions"])
-            except Exception:
-                pass
             results.append({
                 "id": row["id"],
                 "session_id": row["session_id"],
@@ -580,9 +573,10 @@ class APIDatabase:
                 "kg_entity_matches": row["kg_entity_matches"],
                 "kg_supporting_relations": row["kg_supporting_relations"],
                 "critic_iterations": row["critic_iterations"],
-                "corrections_made": corrections,
+                "corrections_made": _json.loads(row["corrections_made"]) if row["corrections_made"] else None,
+                "questions_asked": _json.loads(row["questions_asked"]) if row["questions_asked"] else None,
                 "external_verification_used": bool(row["external_verification_used"]),
-                "contradictions": contradictions,
+                "contradictions": _json.loads(row["contradictions"]) if row["contradictions"] else None,
                 "verification_time_ms": row["verification_time_ms"],
                 "created_at": row["created_at"],
                 "error": row["error"],
@@ -648,18 +642,9 @@ class APIDatabase:
             (session_id, limit, offset),
         )
         rows = await cursor.fetchall()
+        import json as _json
         results = []
         for row in rows:
-            inputs = None
-            metrics = None
-            try:
-                import json as _json
-                if row["inputs_json"]:
-                    inputs = _json.loads(row["inputs_json"])
-                if row["metrics_json"]:
-                    metrics = _json.loads(row["metrics_json"])
-            except Exception:
-                pass
             results.append({
                 "id": row["id"],
                 "session_id": row["session_id"],
@@ -667,8 +652,8 @@ class APIDatabase:
                 "decision_type": row["decision_type"],
                 "decision_outcome": row["decision_outcome"],
                 "reasoning": row["reasoning"],
-                "inputs": inputs,
-                "metrics": metrics,
+                "inputs": _json.loads(row["inputs_json"]) if row["inputs_json"] else None,
+                "metrics": _json.loads(row["metrics_json"]) if row["metrics_json"] else None,
                 "iteration": row["iteration"],
                 "created_at": row["created_at"],
             })

@@ -191,6 +191,7 @@ class ResearchDatabase:
                 kg_supporting_relations INTEGER DEFAULT 0,
                 critic_iterations INTEGER DEFAULT 0,
                 corrections_made TEXT,
+                questions_asked TEXT,
                 external_verification_used INTEGER DEFAULT 0,
                 contradictions TEXT,
                 verification_time_ms REAL,
@@ -523,9 +524,9 @@ class ResearchDatabase:
                     session_id, finding_id, original_confidence, verified_confidence,
                     verification_status, verification_method, consistency_score,
                     kg_support_score, kg_entity_matches, kg_supporting_relations,
-                    critic_iterations, corrections_made, external_verification_used,
+                    critic_iterations, corrections_made, questions_asked, external_verification_used,
                     contradictions, verification_time_ms, created_at, error
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -540,6 +541,7 @@ class ResearchDatabase:
                     result_dict.get("kg_supporting_relations", 0),
                     result_dict.get("critic_iterations", 0),
                     json.dumps(result_dict.get("corrections_made", [])),
+                    json.dumps(result_dict.get("questions_asked", [])),
                     1 if result_dict.get("external_verification_used") else 0,
                     json.dumps(result_dict.get("contradictions", [])),
                     result_dict.get("verification_time_ms", 0.0),
@@ -613,7 +615,7 @@ class ResearchDatabase:
             Finding(
                 id=row["id"],
                 session_id=row["session_id"],
-                topic_id=row["topic_id"] if "topic_id" in row.keys() else None,
+                topic_id=row["topic_id"],
                 content=row["content"],
                 finding_type=FindingType(row["finding_type"]),
                 source_url=row["source_url"],
@@ -622,18 +624,10 @@ class ResearchDatabase:
                 created_at=datetime.fromisoformat(row["created_at"]),
                 validated_by_manager=bool(row["validated_by_manager"]),
                 manager_notes=row["manager_notes"],
-                verification_status=row["verification_status"]
-                if "verification_status" in row.keys()
-                else None,
-                verification_method=row["verification_method"]
-                if "verification_method" in row.keys()
-                else None,
-                kg_support_score=row["kg_support_score"]
-                if "kg_support_score" in row.keys()
-                else 0.0,
-                original_confidence=row["original_confidence"]
-                if "original_confidence" in row.keys()
-                else None,
+                verification_status=row["verification_status"],
+                verification_method=row["verification_method"],
+                kg_support_score=row["kg_support_score"],
+                original_confidence=row["original_confidence"],
             )
             for row in rows
         ]

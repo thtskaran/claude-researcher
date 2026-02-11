@@ -867,6 +867,16 @@ Return ONLY the JSON."""
                                     "kg_supporting_relations": result.kg_supporting_relations,
                                     "critic_iterations": result.critic_iterations,
                                     "corrections_made": result.corrections_made,
+                                    "questions_asked": [
+                                        {
+                                            "question": q.question,
+                                            "aspect": q.aspect,
+                                            "independent_answer": q.independent_answer,
+                                            "supports_original": q.supports_original,
+                                            "confidence": q.confidence,
+                                        }
+                                        for q in result.questions_asked
+                                    ],
                                     "external_verification_used": result.external_verification_used,
                                     "contradictions": result.contradictions,
                                     "verification_time_ms": result.verification_time_ms,
@@ -1010,6 +1020,16 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
                                     "kg_supporting_relations": result.kg_supporting_relations,
                                     "critic_iterations": result.critic_iterations,
                                     "corrections_made": result.corrections_made,
+                                    "questions_asked": [
+                                        {
+                                            "question": q.question,
+                                            "aspect": q.aspect,
+                                            "independent_answer": q.independent_answer,
+                                            "supports_original": q.supports_original,
+                                            "confidence": q.confidence,
+                                        }
+                                        for q in result.questions_asked
+                                    ],
                                     "external_verification_used": result.external_verification_used,
                                     "contradictions": result.contradictions,
                                     "verification_time_ms": result.verification_time_ms,

@@ -283,13 +283,10 @@ class VerificationPipeline:
             return 0.0
 
         try:
-            # Use the KG's support scoring method
-            if hasattr(self.knowledge_graph, 'get_kg_support_score'):
-                return await self.knowledge_graph.get_kg_support_score(
-                    content=finding.content,
-                    source_url=finding.source_url,
-                )
-            return 0.0
+            return await self.knowledge_graph.get_kg_support_score(
+                content=finding.content,
+                source_url=finding.source_url,
+            )
         except Exception:
             return 0.0
 
@@ -299,11 +296,9 @@ class VerificationPipeline:
             return {"has_contradictions": False, "contradictions": []}
 
         try:
-            if hasattr(self.knowledge_graph, 'check_contradictions_detailed'):
-                return await self.knowledge_graph.check_contradictions_detailed(
-                    content=finding.content,
-                )
-            return {"has_contradictions": False, "contradictions": []}
+            return await self.knowledge_graph.check_contradictions_detailed(
+                content=finding.content,
+            )
         except Exception:
             return {"has_contradictions": False, "contradictions": []}
 

@@ -5,6 +5,14 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 
 /* ── types ─────────────────────────────────────────────── */
+interface VerificationQuestion {
+    question: string;
+    aspect: string;
+    independent_answer: string | null;
+    supports_original: boolean | null;
+    confidence: number | null;
+}
+
 interface VerificationResult {
     id: number;
     finding_id: number;
@@ -17,7 +25,8 @@ interface VerificationResult {
     kg_entity_matches: number;
     kg_supporting_relations: number;
     critic_iterations: number;
-    corrections_made: unknown | null;
+    corrections_made: string[] | null;
+    questions_asked: VerificationQuestion[] | null;
     external_verification_used: boolean;
     contradictions: unknown | null;
     verification_time_ms: number | null;
@@ -150,9 +159,9 @@ export default function VerificationPipelinePage() {
                     </div>
                 </div>
             ) : (
-                <div className="flex-1 flex max-w-7xl mx-auto w-full">
+                <div className="flex-1 flex max-w-7xl mx-auto w-full overflow-hidden">
                     {/* Left Sidebar: Queue */}
-                    <aside className="w-72 shrink-0 border-r border-edge p-4 overflow-y-auto">
+                    <aside className="w-72 shrink-0 border-r border-edge p-4 overflow-y-auto max-h-[calc(100vh-180px)]">
                         <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-4">
                             Results ({results.length})
                         </h3>
@@ -191,7 +200,7 @@ export default function VerificationPipelinePage() {
                     </aside>
 
                     {/* Main Content */}
-                    <main className="flex-1 p-8 space-y-8 overflow-y-auto">
+                    <main className="flex-1 p-8 space-y-8 overflow-y-auto max-h-[calc(100vh-180px)]">
                         {/* Stats Dashboard */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <MiniStat icon="verified" label="Verified" value={displayStats.verified} color="text-olive" />
@@ -354,6 +363,78 @@ export default function VerificationPipelinePage() {
                                         </div>
                                     );
                                 })()}
+
+                                {/* Verification Questions & Answers */}
+                                {selectedFinding.questions_asked && selectedFinding.questions_asked.length > 0 && (
+                                    <div className="card">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <span className="material-symbols-outlined text-sage">quiz</span>
+                                            <h3 className="text-sm font-semibold">Verification Questions</h3>
+                                            <span className="badge badge-system ml-auto">{selectedFinding.questions_asked.length} questions</span>
+                                        </div>
+                                        <div className="space-y-4">
+                                            {selectedFinding.questions_asked.map((q, idx) => (
+                                                <div key={idx} className="border-l-4 border-sage/30 pl-4 py-2">
+                                                    <div className="flex items-start gap-2 mb-2">
+                                                        <span className="text-xs font-mono text-ink-muted mt-0.5">Q{idx + 1}</span>
+                                                        <div className="flex-1">
+                                                            <p className="text-sm font-medium text-ink mb-1">{q.question}</p>
+                                                            <span className="badge badge-system text-[10px]">{q.aspect}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {q.independent_answer && (
+                                                        <div className="mt-2 pl-8">
+                                                            <p className="text-xs text-ink-secondary mb-2">
+                                                                <strong className="text-ink-muted">Answer:</strong> {q.independent_answer}
+                                                            </p>
+
+                                                            <div className="flex items-center gap-3 text-xs">
+                                                                {q.supports_original !== null && (
+                                                                    <span className={`flex items-center gap-1 ${q.supports_original ? "text-olive" : "text-coral"}`}>
+                                                                        <span className="material-symbols-outlined text-sm">
+                                                                            {q.supports_original ? "check_circle" : "cancel"}
+                                                                        </span>
+                                                                        {q.supports_original ? "Supports claim" : "Contradicts claim"}
+                                                                    </span>
+                                                                )}
+
+                                                                {q.confidence !== null && (
+                                                                    <span className="flex items-center gap-1 text-ink-muted">
+                                                                        <span className="material-symbols-outlined text-sm">speed</span>
+                                                                        <span className="font-mono">{Math.round(q.confidence * 100)}%</span>
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* CRITIC Corrections */}
+                                {selectedFinding.corrections_made && selectedFinding.corrections_made.length > 0 && (
+                                    <div className="card border-gold/30 bg-gold/5">
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <span className="material-symbols-outlined text-gold">edit_note</span>
+                                            <h3 className="text-sm font-semibold">CRITIC Corrections</h3>
+                                            <span className="badge badge-system ml-auto">{selectedFinding.corrections_made.length} corrections</span>
+                                        </div>
+                                        <p className="text-xs text-ink-muted mb-3">
+                                            Self-critiqued and revised through {selectedFinding.critic_iterations} iteration{selectedFinding.critic_iterations !== 1 ? "s" : ""}
+                                        </p>
+                                        <ul className="space-y-2">
+                                            {selectedFinding.corrections_made.map((correction, idx) => (
+                                                <li key={idx} className="flex items-start gap-2 text-xs text-ink-secondary">
+                                                    <span className="material-symbols-outlined text-sm text-gold mt-0.5 shrink-0">arrow_right</span>
+                                                    <span className="flex-1">{correction}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
 
                                 {/* Error */}
                                 {selectedFinding.error && (

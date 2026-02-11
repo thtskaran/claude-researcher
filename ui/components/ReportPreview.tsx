@@ -47,15 +47,22 @@ export default function ReportPreview({ sessionId }: ReportPreviewProps) {
       setError("");
       setCopied(false);
       try {
+        // Fetch report
         const response = await fetch(`/api/sessions/${sessionId}/report`);
         if (!response.ok) {
           if (response.status === 404) throw new Error("Report not generated yet");
           throw new Error("Failed to load report");
         }
         const data = await response.json();
+
+        // Fetch findings for JSON export
+        const findingsResponse = await fetch(`/api/sessions/${sessionId}/findings`);
+        const findingsData = findingsResponse.ok ? await findingsResponse.json() : { findings: [] };
+
         if (!cancelled) {
           setReport(data.report || "");
           setPath(data.path || null);
+          setFindings(findingsData.findings || []);
         }
       } catch (err: unknown) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Unable to load report");
@@ -66,7 +73,12 @@ export default function ReportPreview({ sessionId }: ReportPreviewProps) {
     return () => { cancelled = true; };
   }, [sessionId]);
 
-  const fileName = useMemo(() => `report_${sessionId}.md`, [sessionId]);
+  const [findings, setFindings] = useState<any[]>([]);
+
+  const fileName = useMemo(() => {
+    const base = `report_${sessionId}`;
+    return format === "md" ? `${base}.md` : format === "json" ? `${base}.json` : `${base}.pdf`;
+  }, [sessionId, format]);
 
   const tocItems = useMemo(() => {
     if (!report) return [];
@@ -116,16 +128,139 @@ export default function ReportPreview({ sessionId }: ReportPreviewProps) {
     }
   };
 
-  const handleDownload = () => {
-    const blob = new Blob([report], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+  const handleDownload = async () => {
+    if (format === "md") {
+      // Export as Markdown
+      const blob = new Blob([report], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } else if (format === "json") {
+      // Export findings as JSON
+      const jsonData = {
+        session_id: sessionId,
+        report_text: report,
+        findings: findings,
+        exported_at: new Date().toISOString(),
+      };
+      const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } else if (format === "pdf") {
+      // Export as PDF using browser print
+      // Create a temporary div with the markdown rendered
+      const printWindow = window.open("", "_blank");
+      if (!printWindow) {
+        alert("Please allow popups to export PDF");
+        return;
+      }
+
+      // Convert markdown to HTML for printing
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Research Report - ${sessionId}</title>
+          <style>
+            @media print {
+              @page { margin: 2cm; size: A4; }
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              line-height: 1.6;
+              color: #1a1915;
+              max-width: 800px;
+              margin: 0 auto;
+              padding: 20px;
+            }
+            h1 { font-size: 28px; margin-top: 40px; margin-bottom: 20px; page-break-after: avoid; }
+            h2 { font-size: 22px; margin-top: 32px; margin-bottom: 16px; page-break-after: avoid; }
+            h3 { font-size: 18px; margin-top: 24px; margin-bottom: 12px; page-break-after: avoid; }
+            p { margin-bottom: 16px; text-align: justify; }
+            ul, ol { margin-bottom: 16px; padding-left: 24px; }
+            li { margin-bottom: 8px; }
+            blockquote {
+              border-left: 4px solid #82af78;
+              padding-left: 20px;
+              margin: 24px 0;
+              font-style: italic;
+              background: #f5f5f0;
+              padding: 16px 16px 16px 20px;
+            }
+            code {
+              background: #f5f5f0;
+              padding: 2px 6px;
+              border-radius: 3px;
+              font-family: monospace;
+              font-size: 0.9em;
+            }
+            pre {
+              background: #f5f5f0;
+              padding: 16px;
+              border-radius: 8px;
+              overflow-x: auto;
+              margin-bottom: 16px;
+            }
+            pre code { background: none; padding: 0; }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 20px;
+            }
+            th, td {
+              border: 1px solid #ddd;
+              padding: 12px;
+              text-align: left;
+            }
+            th {
+              background: #f5f5f0;
+              font-weight: 600;
+            }
+            a { color: #82af78; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+            .page-break { page-break-before: always; }
+          </style>
+        </head>
+        <body>
+          ${report
+            .replace(/\n\n/g, "</p><p>")
+            .replace(/^# (.+)$/gm, "<h1>$1</h1>")
+            .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+            .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+            .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+            .replace(/\*(.+?)\*/g, "<em>$1</em>")
+            .replace(/\[(\d+)\]/g, '<sup>[$1]</sup>')
+            .replace(/^> (.+)$/gm, "<blockquote>$1</blockquote>")
+            .replace(/^- (.+)$/gm, "<li>$1</li>")
+            .replace(/(<li>.*<\/li>\n?)+/g, "<ul>$&</ul>")
+            .replace(/^\d+\. (.+)$/gm, "<li>$1</li>")
+            .split("\n").join("<br/>")}
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+
+      // Wait for content to load, then trigger print dialog
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.print();
+          // Don't close the window automatically - let user close it after printing
+        }, 250);
+      };
+    }
   };
 
   /** Build a heading component that includes an id for anchor links. */
