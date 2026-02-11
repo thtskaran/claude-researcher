@@ -467,32 +467,61 @@ export default function KnowledgeGraphPage() {
                     unhighlightAll();
                 });
 
-                // Drag: re-enable physics briefly with high damping
-                let dragTimeout: NodeJS.Timeout;
+                // Drag: re-enable physics with progressive damping for natural deceleration
+                let dampingRaf: number | null = null;
+                let dampingTimer: NodeJS.Timeout;
+
                 network.on("dragStart", () => {
-                    clearTimeout(dragTimeout);
+                    // Cancel any ongoing wind-down
+                    if (dampingRaf !== null) cancelAnimationFrame(dampingRaf);
+                    clearTimeout(dampingTimer);
+
                     network.setOptions({
                         physics: {
                             enabled: true,
                             solver: "forceAtlas2Based",
                             forceAtlas2Based: {
-                                gravitationalConstant: -60,
+                                gravitationalConstant: -80,
                                 centralGravity: 0.005,
                                 springLength: 160,
-                                springConstant: 0.06,
-                                damping: 0.7,
+                                springConstant: 0.055,
+                                damping: 0.4,
                                 avoidOverlap: 0.3,
                             },
-                            maxVelocity: 30,
-                            minVelocity: 0.75,
+                            maxVelocity: 40,
+                            minVelocity: 0.1,
                         },
                     });
                 });
+
                 network.on("dragEnd", () => {
-                    clearTimeout(dragTimeout);
-                    dragTimeout = setTimeout(() => {
-                        network.setOptions({ physics: { enabled: false } });
-                    }, 600);
+                    if (dampingRaf !== null) cancelAnimationFrame(dampingRaf);
+                    clearTimeout(dampingTimer);
+
+                    // Progressively increase damping for smooth deceleration
+                    let currentDamping = 0.4;
+                    const targetDamping = 0.97;
+                    const step = () => {
+                        currentDamping += (targetDamping - currentDamping) * 0.03;
+                        const progress = (currentDamping - 0.4) / (targetDamping - 0.4);
+                        const maxVel = Math.max(1, 40 * Math.pow(1 - progress, 2));
+
+                        network.setOptions({
+                            physics: {
+                                forceAtlas2Based: { damping: currentDamping },
+                                maxVelocity: maxVel,
+                            },
+                        });
+
+                        if (currentDamping < targetDamping - 0.005) {
+                            dampingRaf = requestAnimationFrame(step);
+                        } else {
+                            dampingTimer = setTimeout(() => {
+                                network.setOptions({ physics: { enabled: false } });
+                            }, 500);
+                        }
+                    };
+                    dampingRaf = requestAnimationFrame(step);
                 });
 
                 // After stabilization: disable physics, fit to view
