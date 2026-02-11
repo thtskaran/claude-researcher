@@ -1,7 +1,4 @@
-"""Knowledge graph visualization using Pyvis and Mermaid."""
-
-from pathlib import Path
-from typing import Optional
+"""Knowledge graph visualization using Mermaid diagrams."""
 
 try:
     import networkx as nx
@@ -9,124 +6,14 @@ try:
 except ImportError:
     HAS_NETWORKX = False
 
-try:
-    from pyvis.network import Network
-    HAS_PYVIS = True
-except ImportError:
-    HAS_PYVIS = False
-
 from .store import HybridKnowledgeGraphStore
 
 
 class KnowledgeGraphVisualizer:
-    """Visualize knowledge graph using Pyvis and Mermaid diagrams."""
-
-    # Color scheme by entity type
-    ENTITY_COLORS = {
-        'CONCEPT': '#6366f1',      # Indigo
-        'CLAIM': '#f59e0b',        # Amber
-        'EVIDENCE': '#10b981',     # Emerald
-        'METHOD': '#8b5cf6',       # Violet
-        'METRIC': '#ef4444',       # Red
-        'TECHNOLOGY': '#3b82f6',   # Blue
-        'SOURCE': '#6b7280',       # Gray
-        'PERSON': '#ec4899',       # Pink
-        'ORGANIZATION': '#14b8a6', # Teal
-        'AUTHOR': '#f97316',       # Orange
-        'LOCATION': '#84cc16',     # Lime
-        'DATE': '#a855f7',         # Purple
-        'DEFAULT': '#9ca3af',      # Gray
-    }
+    """Visualize knowledge graph using Mermaid diagrams and text stats."""
 
     def __init__(self, kg_store: HybridKnowledgeGraphStore):
         self.store = kg_store
-
-    def create_interactive_graph(
-        self,
-        output_path: str = "knowledge_graph.html",
-        height: str = "800px",
-        width: str = "100%",
-        show_physics_controls: bool = True
-    ) -> str | None:
-        """Create interactive Pyvis visualization.
-
-        Args:
-            output_path: Path to save HTML file
-            height: Height of the visualization
-            width: Width of the visualization
-            show_physics_controls: Whether to show physics controls
-
-        Returns:
-            Path to the generated file, or None if Pyvis not available
-        """
-        if not HAS_PYVIS or not HAS_NETWORKX:
-            return None
-
-        if self.store.graph is None or len(self.store.graph) == 0:
-            return None
-
-        # Create Pyvis network
-        net = Network(
-            height=height,
-            width=width,
-            directed=True,
-            notebook=False,
-            bgcolor="#ffffff",
-            font_color="#333333"
-        )
-
-        # Configure physics
-        net.barnes_hut(
-            gravity=-80000,
-            central_gravity=0.3,
-            spring_length=200,
-            spring_strength=0.001
-        )
-
-        if show_physics_controls:
-            net.show_buttons(filter_=['physics'])
-
-        # Add nodes
-        for node_id, data in self.store.graph.nodes(data=True):
-            entity_type = data.get('entity_type', 'DEFAULT')
-            color = self.ENTITY_COLORS.get(entity_type, self.ENTITY_COLORS['DEFAULT'])
-
-            # Size based on degree centrality
-            size = 10 + (self.store.graph.degree(node_id) * 3)
-
-            # Build hover title
-            title = self._build_node_title(node_id, data)
-
-            net.add_node(
-                node_id,
-                label=data.get('name', node_id)[:30],
-                title=title,
-                color=color,
-                size=min(size, 50),  # Cap size
-                shape='dot' if entity_type != 'CLAIM' else 'diamond'
-            )
-
-        # Add edges
-        for u, v, data in self.store.graph.edges(data=True):
-            predicate = data.get('predicate', '')
-            confidence = data.get('confidence', 1.0)
-
-            # Color edges by type
-            edge_color = self._get_edge_color(predicate)
-
-            net.add_edge(
-                u, v,
-                title=predicate,
-                label=predicate[:20] if len(predicate) <= 20 else predicate[:17] + '...',
-                color=edge_color,
-                width=1 + (confidence * 2),
-                arrows='to'
-            )
-
-        # Save to file
-        output_path = str(output_path)
-        net.save_graph(output_path)
-        return output_path
 
     def create_mermaid_diagram(self, max_nodes: int = 30) -> str:
         """Generate Mermaid diagram syntax for embedding in reports.
@@ -219,39 +106,6 @@ class KnowledgeGraphVisualizer:
 
         card += "\n+--------------------------------------------+"
         return card
-
-    def _build_node_title(self, node_id: str, data: dict) -> str:
-        """Build HTML hover title for a node."""
-        parts = [
-            f"<b>{data.get('name', node_id)}</b>",
-            f"Type: {data.get('entity_type', 'Unknown')}",
-            f"Confidence: {data.get('confidence', 1.0):.2f}",
-        ]
-
-        aliases = data.get('aliases', [])
-        if aliases:
-            parts.append(f"Aliases: {', '.join(aliases[:3])}")
-
-        sources = data.get('sources', [])
-        if sources:
-            parts.append(f"Sources: {len(sources)}")
-
-        return "<br>".join(parts)
-
-    def _get_edge_color(self, predicate: str) -> str:
-        """Get edge color based on predicate type."""
-        pred_lower = predicate.lower()
-
-        if any(p in pred_lower for p in ['supports', 'evidence', 'confirms']):
-            return '#10b981'  # Green
-        elif any(p in pred_lower for p in ['contradicts', 'refutes', 'disputes']):
-            return '#ef4444'  # Red
-        elif any(p in pred_lower for p in ['causes', 'leads to', 'results']):
-            return '#f59e0b'  # Amber
-        elif any(p in pred_lower for p in ['is_a', 'type of', 'instance']):
-            return '#6366f1'  # Indigo
-        else:
-            return '#9ca3af'  # Gray
 
     def _make_safe_id(self, node_id: str) -> str:
         """Make an ID safe for Mermaid."""

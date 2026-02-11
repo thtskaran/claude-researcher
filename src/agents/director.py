@@ -433,7 +433,6 @@ When presenting results:
         Creates: output/{slug}_{session_id}/
             - report.md       - Narrative report
             - findings.json   - Structured data
-            - knowledge_graph.html - Interactive visualization
 
         Returns:
             Path to the output directory

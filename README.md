@@ -119,7 +119,6 @@ researcher "ML in healthcare" --db ml_research.db
 Every research session saves to `output/{topic}_{session-id}/` with:
 - `report.md` -- Full narrative report with inline citations
 - `findings.json` -- All structured findings
-- `knowledge_graph.html` -- Interactive graph visualization
 
 All sessions are also persisted in SQLite, so you can view any past session in the UI at any time.
 
@@ -276,7 +275,6 @@ output/
 +-- ai-safety-research_a1b2c3d/     # {slug}_{session-id}/
     +-- report.md                    # Narrative report with inline citations
     +-- findings.json                # All findings + cost data
-    +-- knowledge_graph.html         # Interactive graph visualization
 ```
 
 ### Cost Tracking

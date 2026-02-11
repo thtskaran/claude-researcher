@@ -72,7 +72,6 @@ def main(
     Output is automatically saved to: output/{topic-slug}_{session-id}/
       - report.md         Narrative research report
       - findings.json     Structured findings data
-      - knowledge_graph.html  Interactive visualization
 
     Interactive Features:
         By default, the researcher asks 2-4 clarification questions before

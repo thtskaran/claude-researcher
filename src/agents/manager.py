@@ -1397,12 +1397,9 @@ Be thorough and insightful. Note where findings have lower confidence."""
         Returns:
             Dict with visualization paths and summary data
         """
-        from pathlib import Path
-
         from ..knowledge import KnowledgeGraphVisualizer
 
         visualizer = KnowledgeGraphVisualizer(self.kg_store)
-        output_path = Path(output_dir)
 
         exports = {
             'stats': self.kg_store.get_stats(),
@@ -1412,14 +1409,5 @@ Be thorough and insightful. Note where findings have lower confidence."""
             'mermaid_diagram': visualizer.create_mermaid_diagram(max_nodes=20),
             'stats_card': visualizer.create_summary_stats_card(),
         }
-
-        # Try to create interactive HTML visualization
-        try:
-            html_path = visualizer.create_interactive_graph(
-                str(output_path / "knowledge_graph.html")
-            )
-            exports['html_visualization'] = html_path
-        except Exception:
-            exports['html_visualization'] = None
 
         return exports

@@ -97,7 +97,7 @@ API server: `api/server.py` (FastAPI on :8080). WebSocket endpoint for real-time
 - Decision logging uses `asyncio.create_task()` (fire-and-forget, never blocks research)
 - Token estimation: `len(content) // 4` (rough but O(1))
 - Session IDs are 7-character hex strings
-- Output saved to `output/{topic_slug}_{session_id}/` with `report.md`, `findings.json`, `knowledge_graph.html`
+- Output saved to `output/{topic_slug}_{session_id}/` with `report.md`, `findings.json`
 
 ### Web Search & Scraping (Bright Data)
 
