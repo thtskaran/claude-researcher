@@ -1,8 +1,8 @@
 """Source credibility scoring system."""
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 from urllib.parse import urlparse
 
 
@@ -13,6 +13,9 @@ class CredibilityScore:
     signals: dict[str, float]
     domain: str
     url: str
+    # "academic_paper" | "preprint" | "institutional" | "news" |
+    # "blog" | "social" | "web"
+    source_classification: str = "web"
 
 
 class CredibilityScorer:
@@ -22,6 +25,8 @@ class CredibilityScorer:
     - Domain authority (institutional, academic, government)
     - Recency of publication
     - Domain reputation patterns
+    - Academic source type classification (paper, preprint, etc.)
+    - Citation count boost for academic sources
     """
 
     # High credibility domains
@@ -46,6 +51,18 @@ class CredibilityScorer:
         'nih.gov',
         'cdc.gov',
         'who.int',
+        'semanticscholar.org',
+        'doi.org',
+        'jstor.org',
+        'ncbi.nlm.nih.gov',
+        'biomedcentral.com',
+        'frontiersin.org',
+        'mdpi.com',
+        'researchgate.net',
+        'ssrn.com',
+        'openreview.net',
+        'aclweb.org',
+        'nber.org',
     ]
 
     # Medium credibility domains
@@ -81,6 +98,25 @@ class CredibilityScorer:
         'quora.com',
     ]
 
+    # Academic URL patterns that indicate scholarly content
+    ACADEMIC_URL_PATTERNS = [
+        r'arxiv\.org/abs/',
+        r'arxiv\.org/pdf/',
+        r'doi\.org/10\.',
+        r'pubmed\.ncbi\.nlm\.nih\.gov/\d+',
+        r'ncbi\.nlm\.nih\.gov/pmc/articles/',
+        r'semanticscholar\.org/paper/',
+        r'openreview\.net/forum',
+        r'aclanthology\.org/',
+        r'papers\.nips\.cc/',
+        r'proceedings\.mlr\.press/',
+        r'ieeexplore\.ieee\.org/document/',
+        r'dl\.acm\.org/doi/',
+        r'link\.springer\.com/article/',
+        r'sciencedirect\.com/science/article/',
+        r'jstor\.org/stable/',
+    ]
+
     # Credibility weights
     WEIGHTS = {
         'domain_authority': 0.35,
@@ -90,12 +126,14 @@ class CredibilityScorer:
         'path_depth': 0.10,
     }
 
-    def score_source(self, url: str, publication_date: str | None = None) -> CredibilityScore:
+    def score_source(self, url: str, publication_date: str | None = None,
+                     citation_count: int | None = None) -> CredibilityScore:
         """Score a source's credibility.
 
         Args:
             url: The source URL
             publication_date: Optional publication date (ISO format)
+            citation_count: Optional citation count from academic APIs
 
         Returns:
             CredibilityScore with overall score and component signals
@@ -138,18 +176,30 @@ class CredibilityScorer:
             if k in self.WEIGHTS
         )
 
+        # Citation count boost for academic sources
+        if citation_count is not None and citation_count > 0:
+            citation_boost = self._score_citation_count(citation_count)
+            # Blend citation boost (up to 10% bonus)
+            final_score = min(1.0, final_score + citation_boost * 0.10)
+            signals['citation_boost'] = citation_boost
+
         # Clamp to valid range
         final_score = max(0.0, min(1.0, final_score))
+
+        # Classify source type
+        source_classification = self._classify_source(url, domain)
 
         return CredibilityScore(
             score=final_score,
             signals=signals,
             domain=domain,
             url=url,
+            source_classification=source_classification,
         )
 
     def score_source_with_audit(
-        self, url: str, publication_date: str | None = None
+        self, url: str, publication_date: str | None = None,
+        citation_count: int | None = None,
     ) -> tuple["CredibilityScore", dict]:
         """Score a source's credibility and return audit data.
 
@@ -160,6 +210,7 @@ class CredibilityScorer:
         Args:
             url: The source URL
             publication_date: Optional publication date (ISO format)
+            citation_count: Optional citation count from academic APIs
 
         Returns:
             Tuple of (CredibilityScore, audit_dict)
@@ -171,8 +222,9 @@ class CredibilityScorer:
                 - path_depth_score
                 - weighted_contributions (how each signal contributed to final)
                 - credibility_label
+                - source_classification
         """
-        score = self.score_source(url, publication_date)
+        score = self.score_source(url, publication_date, citation_count)
 
         # Calculate weighted contributions
         weighted_contributions = {
@@ -189,7 +241,9 @@ class CredibilityScorer:
             "source_type_score": score.signals.get("source_type", 0.6),
             "https_score": score.signals.get("https", 0.5),
             "path_depth_score": score.signals.get("path_depth", 0.8),
+            "citation_boost": score.signals.get("citation_boost", 0.0),
             "credibility_label": self.get_credibility_label(score.score),
+            "source_classification": score.source_classification,
             "weighted_contributions": weighted_contributions,
         }
 
@@ -221,16 +275,16 @@ class CredibilityScorer:
         """Score based on inferred source type."""
         url_lower = url.lower()
 
-        # Academic papers
-        if any(x in url_lower for x in ['/paper/', '/article/', '/pdf/', '.pdf', '/doi/']):
-            return 0.9
+        # Academic papers (highest) - check structured URL patterns
+        if self._is_academic_url(url):
+            return 0.95
 
         # Documentation
         if any(x in url_lower for x in ['/docs/', '/documentation/', '/api/', '/reference/']):
             return 0.85
 
         # Blog posts (can be high or low quality)
-        if any(x in url_lower for x in ['/blog/', '/post/', '/article/']):
+        if any(x in url_lower for x in ['/blog/', '/post/']):
             return 0.65
 
         # News
@@ -268,6 +322,62 @@ class CredibilityScorer:
                 return 0.3  # Old source
         except Exception:
             return 0.5  # Could not parse, neutral score
+
+    def _score_citation_count(self, citation_count: int) -> float:
+        """Score based on citation count (for academic sources).
+
+        Returns a 0.0-1.0 score based on citation count thresholds.
+        """
+        if citation_count >= 1000:
+            return 1.0  # Landmark paper
+        elif citation_count >= 500:
+            return 0.95
+        elif citation_count >= 100:
+            return 0.85
+        elif citation_count >= 50:
+            return 0.75
+        elif citation_count >= 10:
+            return 0.6
+        elif citation_count >= 1:
+            return 0.4
+        return 0.0
+
+    def _is_academic_url(self, url: str) -> bool:
+        """Check if URL matches known academic paper patterns."""
+        for pattern in self.ACADEMIC_URL_PATTERNS:
+            if re.search(pattern, url, re.IGNORECASE):
+                return True
+        return False
+
+    def _classify_source(self, url: str, domain: str) -> str:
+        """Classify the source type for reporting."""
+        url_lower = url.lower()
+
+        if self._is_academic_url(url):
+            preprint_domains = ['arxiv.org', 'ssrn.com', 'biorxiv.org']
+            if any(domain == d or domain.endswith('.' + d) for d in preprint_domains):
+                return "preprint"
+            return "academic_paper"
+
+        institutional_patterns = ['.edu', '.gov', 'who.int']
+        if any(domain.endswith(p) for p in institutional_patterns):
+            return "institutional"
+
+        news_domains = ['reuters.com', 'apnews.com', 'bbc.com', 'nytimes.com']
+        if any(domain == d or domain.endswith('.' + d) for d in news_domains):
+            return "news"
+
+        blog_domains = ['medium.com', 'substack.com']
+        if '/blog/' in url_lower or any(
+            domain == d or domain.endswith('.' + d) for d in blog_domains
+        ):
+            return "blog"
+
+        social_domains = ['reddit.com', 'twitter.com', 'x.com', 'facebook.com']
+        if any(domain == d or domain.endswith('.' + d) for d in social_domains):
+            return "social"
+
+        return "web"
 
     def get_credibility_label(self, score: float) -> str:
         """Get a human-readable credibility label."""

@@ -50,14 +50,14 @@ Director (Sonnet) -> Manager (Opus + Extended Thinking) -> Intern Pool (3x paral
 
 - **Director** (`src/agents/director.py`): User interface layer. Session management, pre-research clarification, progress display.
 - **Manager** (`src/agents/manager.py`): Strategic brain. Decomposes goals, directs interns, critiques findings, uses KG gaps to guide research, synthesizes reports. Extended thinking for planning/synthesis.
-- **Intern** (`src/agents/intern.py`): Web search, query expansion, finding extraction. Runs in parallel pool of 3.
+- **Intern** (`src/agents/intern.py`): Web search + academic search (Semantic Scholar, arXiv), query expansion, finding extraction. Runs in parallel pool of 3.
 - **BaseAgent** (`src/agents/base.py`): ReAct (Reason->Act->Observe) loop. Contains `ModelRouter` routing tasks to Haiku/Sonnet/Opus by complexity.
 
 ### Data Flow
 
 1. Director clarifies goal -> creates session in SQLite
 2. Manager decomposes into topics -> queues work
-3. Parallel interns search web -> extract findings -> save to DB
+3. Parallel interns search web + academic APIs -> extract findings -> save to DB
 4. Knowledge graph builds incrementally (spaCy NER + LLM entity/relation extraction)
 5. Manager uses KG gaps/contradictions to guide follow-up research
 6. Verification pipeline (CoVe + CRITIC) runs on findings
@@ -101,17 +101,26 @@ API server: `api/server.py` (FastAPI on :8080). WebSocket endpoint for real-time
 
 ### Web Search & Scraping (Bright Data)
 
-All web access goes through Bright Data (`src/tools/web_search.py`):
+General web search and page scraping goes through Bright Data (`src/tools/web_search.py`):
 
 - **SERP API**: Google search via `parsed_light` format -- returns structured results (title, URL, snippet) from `organic` field. Endpoint: `https://api.brightdata.com/request` with `zone` and `data_format: "parsed_light"`.
 - **Web Unlocker**: Full page scraping with `data_format: "markdown"` -- bypasses bot detection, CAPTCHAs, anti-scraping. Returns clean markdown for LLM consumption.
 - **Retry logic**: 3 attempts with exponential backoff + jitter on both search and scrape.
 - **Zone**: Configurable via `BRIGHT_DATA_ZONE` env var (defaults to `mcp_unlocker`).
 
+### Academic Search (Direct APIs -- No Bright Data)
+
+Academic paper search uses free APIs directly, **not** Bright Data (`src/tools/academic_search.py`):
+
+- **Semantic Scholar**: 200M+ papers. Search, citation graphs, TLDRs, paper recommendations. Free tier: 100 requests per 5 minutes (no API key needed). Endpoint: `https://api.semanticscholar.org/graph/v1`.
+- **arXiv**: 2.4M+ preprints. Category-filtered search, full-text PDF access. Free, no key required. Endpoint: `https://export.arxiv.org/api/query`.
+- **Auto-detection**: Interns automatically query academic APIs in parallel with web search when the research topic contains academic indicators (e.g., "research", "study", "clinical trial").
+- **Integration**: Results are converted to `SearchResult` objects for compatibility with the existing pipeline. Academic results are prioritized at the top of merged search results.
+
 ### Dependencies Requiring Setup
 
 - **Claude Code CLI** -- **Required**. Must be installed and authenticated (`claude` command must work in terminal). This is the LLM backbone -- all three agent tiers (Director, Manager, Interns) use Claude models through it. Install: https://docs.anthropic.com/en/docs/claude-code
-- **`BRIGHT_DATA_API_TOKEN`** env var -- **Required**. Powers all web search (SERP API) and page scraping (Web Unlocker). Get a token from https://brightdata.com/. Optionally set `BRIGHT_DATA_ZONE` (defaults to `mcp_unlocker`).
+- **`BRIGHT_DATA_API_TOKEN`** env var -- **Required**. Powers general web search (SERP API) and page scraping (Web Unlocker). Academic search (Semantic Scholar, arXiv) does **not** require this. Get a token from https://brightdata.com/. Optionally set `BRIGHT_DATA_ZONE` (defaults to `mcp_unlocker`).
 - **spaCy model**: `python -m spacy download en_core_web_sm`
 - **ChromaDB**: persists vector embeddings locally
 - **BGE embeddings**: `BAAI/bge-large-en-v1.5` downloaded on first use via sentence-transformers

@@ -28,7 +28,7 @@ That's it. Two commands: `pip install -e .`, then `researcher`.
 
 1. **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)** -- must be installed and authenticated. The system uses Claude's API through the CLI, so the `claude` command must work in your terminal. This is the backbone that powers all three agent tiers (Director, Manager, Interns).
 
-2. **[Bright Data](https://brightdata.com/) API token** -- set the `BRIGHT_DATA_API_TOKEN` environment variable. This powers all web search and page scraping (see [How Web Search Works](#how-web-search-works) below). Optionally set `BRIGHT_DATA_ZONE` (defaults to `mcp_unlocker`).
+2. **[Bright Data](https://brightdata.com/) API token** -- set the `BRIGHT_DATA_API_TOKEN` environment variable. This powers general web search and page scraping (see [How Web Search Works](#how-web-search-works) below). Academic search (Semantic Scholar, arXiv) does **not** require this token. Optionally set `BRIGHT_DATA_ZONE` (defaults to `mcp_unlocker`).
 
 3. **Python 3.10+**
 
@@ -40,7 +40,7 @@ That's it. Two commands: `pip install -e .`, then `researcher`.
 
 Most AI research tools hit a wall the moment a website blocks their scraper. claude-researcher doesn't have that problem.
 
-All web access goes through [Bright Data](https://brightdata.com/)'s infrastructure, which gives the system two capabilities that generic HTTP requests can't match:
+General web search and page scraping goes through [Bright Data](https://brightdata.com/)'s infrastructure, which gives the system two capabilities that generic HTTP requests can't match:
 
 **SERP API** -- Google search results returned as structured data (titles, URLs, snippets) via Bright Data's `parsed_light` format. No HTML parsing, no breaking when Google changes their layout. The system gets clean, structured search results every time.
 
@@ -53,6 +53,16 @@ Why this matters for research quality:
 - **Scale**: 50-150+ sources per session without getting rate-limited or blocked
 
 Without Bright Data, you'd be limited to whatever Google's basic search API returns and whatever sites don't block your IP. With it, the interns can actually read the pages they find.
+
+## How Academic Search Works (Direct APIs -- No Bright Data)
+
+For academic and scholarly research, interns also query free academic APIs **directly** -- these calls do **not** go through Bright Data:
+
+**[Semantic Scholar](https://api.semanticscholar.org/)** -- 200M+ papers with citation graphs, TLDRs, and paper recommendations. Free tier (100 requests per 5 minutes, no API key needed). Returns structured metadata: titles, abstracts, authors, citation counts, venues, DOIs, and open-access PDF links.
+
+**[arXiv](https://info.arxiv.org/help/api/)** -- 2.4M+ preprints across physics, math, CS, biology, economics, and more. Free, no API key required. Supports category-filtered search and provides full-text PDF access.
+
+When the research topic contains academic indicators (e.g., "research", "study", "clinical trial", "algorithm"), interns automatically query these APIs **in parallel** with the Bright Data web search. Academic results are prioritized at the top of merged search results and converted to `SearchResult` objects for seamless integration with the existing pipeline.
 
 ---
 
@@ -162,7 +172,7 @@ Director (Sonnet) -- user interface, session management
     |
 Manager (Opus + Extended Thinking) -- strategy, critique, synthesis
     |
-Intern Pool (3x Sonnet, parallel) -- web search, finding extraction
+Intern Pool (3x Sonnet, parallel) -- web + academic search, finding extraction
 ```
 
 The Director talks to you. The Manager thinks. The Interns search.
@@ -171,7 +181,7 @@ The Director talks to you. The Manager thinks. The Interns search.
 
 1. **Clarification** -- Director asks 2-4 questions to refine your goal (skip with `--no-clarify`)
 2. **Decomposition** -- Manager breaks your question into 3+ parallel research threads
-3. **Parallel search** -- 3 interns simultaneously search the web, extract findings, save to DB
+3. **Parallel search** -- 3 interns simultaneously search the web + academic APIs (Semantic Scholar, arXiv), extract findings, save to DB
 4. **Knowledge graph** -- Entities and relations extracted in real-time (spaCy NER + LLM)
 5. **Critique loop** -- Manager reviews findings, identifies gaps and contradictions, queues follow-up research
 6. **Deep dive** -- Iterative cycles of search/critique/follow-up until time runs out
@@ -298,7 +308,7 @@ claude-researcher/
 |   +-- interaction/      # User clarification, mid-research guidance
 |   +-- costs/            # API cost tracking
 |   +-- audit/            # Agent decision logging
-|   +-- tools/            # Web search & scraping (Bright Data API)
+|   +-- tools/            # Web search (Bright Data) + academic search (Semantic Scholar, arXiv)
 |   +-- models/           # Pydantic data models
 |   +-- storage/          # SQLite persistence
 |   +-- main.py           # CLI entry point
@@ -328,7 +338,7 @@ claude-researcher/
 
 ## Credits
 
-Built with [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), [Claude Agent SDK](https://docs.anthropic.com/), [Bright Data](https://brightdata.com/) (SERP API + Web Unlocker), [Rich](https://github.com/Textualize/rich), [NetworkX](https://networkx.org/), [Sentence Transformers](https://sbert.net/), [ChromaDB](https://www.trychroma.com/), [FastAPI](https://fastapi.tiangolo.com/), [Next.js](https://nextjs.org/).
+Built with [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), [Claude Agent SDK](https://docs.anthropic.com/), [Bright Data](https://brightdata.com/) (SERP API + Web Unlocker), [Semantic Scholar API](https://api.semanticscholar.org/), [arXiv API](https://info.arxiv.org/help/api/), [Rich](https://github.com/Textualize/rich), [NetworkX](https://networkx.org/), [Sentence Transformers](https://sbert.net/), [ChromaDB](https://www.trychroma.com/), [FastAPI](https://fastapi.tiangolo.com/), [Next.js](https://nextjs.org/).
 
 Inspired by [Gemini Deep Research](https://gemini.google/overview/deep-research/), [Perplexity](https://www.perplexity.ai/), [GPT Researcher](https://github.com/assafelovic/gpt-researcher), [Stanford STORM](https://arxiv.org/abs/2402.14207).
 

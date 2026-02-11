@@ -39,6 +39,21 @@ if TYPE_CHECKING:
     from ..verification import VerificationPipeline
 
 
+def _is_academic_topic(topic: str) -> bool:
+    """Detect if a topic would benefit from academic search."""
+    academic_indicators = [
+        "research", "study", "paper", "journal", "scientific",
+        "evidence", "theory", "hypothesis", "experiment", "analysis",
+        "review", "survey", "methodology", "framework", "algorithm",
+        "clinical", "trial", "treatment", "disease", "medical",
+        "mechanism", "model", "simulation", "data", "statistical",
+        "peer-reviewed", "published", "findings", "literature",
+        "thesis", "dissertation", "academic", "scholar", "university",
+    ]
+    topic_lower = topic.lower()
+    return any(indicator in topic_lower for indicator in academic_indicators)
+
+
 class InternAgent(BaseAgent):
     """The Intern agent searches the web and reports findings to the Manager.
 
@@ -67,6 +82,17 @@ class InternAgent(BaseAgent):
         self.suggested_followups: list[str] = []
         self.verification_pipeline = verification_pipeline
         self.deduplicator = get_deduplicator()
+
+        # Initialize academic search (free APIs, no keys required)
+        try:
+            from ..tools.academic_search import AcademicSearchTool
+            self.academic_search = AcademicSearchTool(max_results=10)
+        except Exception as e:
+            self.academic_search = None
+            if console:
+                console.print(
+                    f"[dim]Academic search unavailable: {e}[/dim]"
+                )
 
         # Initialize query expander
         self.query_expander = QueryExpander(
@@ -129,6 +155,14 @@ SEARCH STRATEGY:
 - Use specific terms, dates ({current_year}), and key phrases
 - Search for recent developments, not general knowledge
 - Look for primary sources, research papers, official announcements
+- Academic papers from arXiv, Semantic Scholar, and PubMed are automatically searched when relevant
+
+SOURCE PRIORITIZATION:
+- Peer-reviewed papers and preprints (highest priority)
+- Government and institutional sources (.edu, .gov)
+- Reputable news organizations
+- Technical documentation
+- Blog posts and social media (lowest priority)
 
 FINDING TYPES:
 - FACT: Verified, specific information (dates, numbers, events)
@@ -332,7 +366,32 @@ Be brief - just state your decision and reason."""
 
         # Execute searches in parallel
         tasks = [self.search_tool.search(q) for q in queries]
+
+        # Also search academic databases if the topic seems academic
+        academic_results = []
+        if self.academic_search and _is_academic_topic(topic):
+            self._log(
+                "[Academic Search] Querying Semantic Scholar + arXiv",
+                style="cyan",
+            )
+            tasks.append(self.academic_search.search(topic))
+
         results_list = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Separate academic results if they were included
+        if self.academic_search and _is_academic_topic(topic):
+            academic_result = results_list[-1]
+            results_list = list(results_list[:-1])
+            if isinstance(academic_result, tuple) and len(academic_result) >= 1:
+                ar = academic_result[0]
+                academic_results = ar if isinstance(ar, list) else []
+                if academic_results:
+                    self._log(
+                        f"[Academic Search] Found {len(academic_results)} papers",
+                        style="cyan",
+                    )
+        else:
+            results_list = list(results_list)
 
         # Merge results using RRF
         merged_results, merge_summary = merge_search_results(
@@ -341,6 +400,14 @@ Be brief - just state your decision and reason."""
             k=60,
             max_results=15,
         )
+
+        # Append academic results (prioritized at top since they're high quality)
+        if academic_results:
+            # Add academic results that aren't already in merged results
+            existing_urls = {r.url for r in merged_results}
+            new_academic = [r for r in academic_results if r.url not in existing_urls]
+            merged_results = new_academic[:5] + merged_results  # Top 5 academic papers first
+            queries.append(f"[academic] {topic}")  # Track that academic search was used
 
         # Log query merge decision
         await self._log_decision(
