@@ -301,7 +301,7 @@ class ArxivSearch:
     API docs: https://info.arxiv.org/help/api/
     """
 
-    BASE_URL = "http://export.arxiv.org/api/query"
+    BASE_URL = "https://export.arxiv.org/api/query"
     NS = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
 
     def __init__(self):

@@ -275,20 +275,16 @@ class CredibilityScorer:
         """Score based on inferred source type."""
         url_lower = url.lower()
 
-        # Academic papers (highest)
+        # Academic papers (highest) - check structured URL patterns
         if self._is_academic_url(url):
             return 0.95
-
-        # Academic papers by URL pattern
-        if any(x in url_lower for x in ['/paper/', '/article/', '/pdf/', '.pdf', '/doi/']):
-            return 0.9
 
         # Documentation
         if any(x in url_lower for x in ['/docs/', '/documentation/', '/api/', '/reference/']):
             return 0.85
 
         # Blog posts (can be high or low quality)
-        if any(x in url_lower for x in ['/blog/', '/post/', '/article/']):
+        if any(x in url_lower for x in ['/blog/', '/post/']):
             return 0.65
 
         # News
@@ -358,20 +354,27 @@ class CredibilityScorer:
         url_lower = url.lower()
 
         if self._is_academic_url(url):
-            if 'arxiv.org' in domain or 'ssrn.com' in domain or 'biorxiv.org' in domain:
+            preprint_domains = ['arxiv.org', 'ssrn.com', 'biorxiv.org']
+            if any(domain == d or domain.endswith('.' + d) for d in preprint_domains):
                 return "preprint"
             return "academic_paper"
 
-        if any(p in domain for p in ['.edu', '.gov', 'who.int']):
+        institutional_patterns = ['.edu', '.gov', 'who.int']
+        if any(domain.endswith(p) for p in institutional_patterns):
             return "institutional"
 
-        if any(p in domain for p in ['reuters.com', 'apnews.com', 'bbc.com', 'nytimes.com']):
+        news_domains = ['reuters.com', 'apnews.com', 'bbc.com', 'nytimes.com']
+        if any(domain == d or domain.endswith('.' + d) for d in news_domains):
             return "news"
 
-        if any(x in url_lower for x in ['/blog/', 'medium.com', 'substack.com']):
+        blog_domains = ['medium.com', 'substack.com']
+        if '/blog/' in url_lower or any(
+            domain == d or domain.endswith('.' + d) for d in blog_domains
+        ):
             return "blog"
 
-        if any(p in domain for p in ['reddit.com', 'twitter.com', 'x.com', 'facebook.com']):
+        social_domains = ['reddit.com', 'twitter.com', 'x.com', 'facebook.com']
+        if any(domain == d or domain.endswith('.' + d) for d in social_domains):
             return "social"
 
         return "web"

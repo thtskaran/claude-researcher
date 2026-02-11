@@ -87,8 +87,12 @@ class InternAgent(BaseAgent):
         try:
             from ..tools.academic_search import AcademicSearchTool
             self.academic_search = AcademicSearchTool(max_results=10)
-        except Exception:
+        except Exception as e:
             self.academic_search = None
+            if console:
+                console.print(
+                    f"[dim]Academic search unavailable: {e}[/dim]"
+                )
 
         # Initialize query expander
         self.query_expander = QueryExpander(
