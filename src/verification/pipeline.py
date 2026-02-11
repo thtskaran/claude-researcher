@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Optional
 from .confidence import ConfidenceCalibrator
 from .cove import ChainOfVerification
 from .critic import CRITICVerifier, HighStakesDetector
+from .hhem import HHEMScorer
 from .metrics import VerificationMetricsTracker
 from .models import (
     BatchVerificationResult,
@@ -59,11 +60,13 @@ class VerificationPipeline:
         self.calibrator = ConfidenceCalibrator(self.config)
         self.high_stakes_detector = HighStakesDetector()
         self.metrics = VerificationMetricsTracker()
+        self.hhem = HHEMScorer() if self.config.enable_hhem else None
 
     async def verify_intern_finding(
         self,
         finding: "Finding",
         session_id: str,
+        source_content: str | None = None,
     ) -> VerificationResult:
         """Streaming verification when intern submits a finding.
 
@@ -73,18 +76,39 @@ class VerificationPipeline:
         Args:
             finding: The finding to verify
             session_id: Current session ID
+            source_content: Original source text the finding was extracted from
 
         Returns:
             VerificationResult with calibrated confidence
         """
+        finding_id = str(finding.id or hash(finding.content))
+
         if not self.config.enable_streaming_verification:
             return VerificationResult(
-                finding_id=str(finding.id or hash(finding.content)),
+                finding_id=finding_id,
                 original_confidence=finding.confidence,
                 verified_confidence=finding.confidence,
                 verification_status=VerificationStatus.SKIPPED,
                 verification_method=VerificationMethod.STREAMING,
             )
+
+        # HHEM source-grounding check (runs before CoVe to enable early reject)
+        hhem_score = -1.0
+        if self.hhem and source_content:
+            hhem_score = await self.hhem.score(source_content, finding.content)
+
+            # Early reject if clearly not grounded in source
+            if 0 <= hhem_score < self.config.hhem_reject_threshold:
+                result = VerificationResult(
+                    finding_id=finding_id,
+                    original_confidence=finding.confidence,
+                    verified_confidence=max(0.0, finding.confidence - 0.15),
+                    verification_status=VerificationStatus.REJECTED,
+                    verification_method=VerificationMethod.STREAMING,
+                    hhem_grounding_score=hhem_score,
+                )
+                await self.metrics.record_result(result)
+                return result
 
         # Quick KG match if available
         kg_support_score = 0.0
@@ -94,20 +118,23 @@ class VerificationPipeline:
         # Run streaming CoVe
         result = await self.cove.verify_streaming(
             finding_content=finding.content,
-            finding_id=str(finding.id or hash(finding.content)),
+            finding_id=finding_id,
             original_confidence=finding.confidence,
             source_url=finding.source_url,
             search_query=finding.search_query,
         )
 
-        # Apply KG boost if matched
-        if kg_support_score > 0:
+        # Attach HHEM score
+        result.hhem_grounding_score = hhem_score
+
+        # Recalibrate with all signals (KG + HHEM)
+        if kg_support_score > 0 or hhem_score >= 0:
             result.kg_support_score = kg_support_score
-            # Recalibrate with KG
             calibration = self.calibrator.calibrate(
                 original_confidence=finding.confidence,
                 cove_consistency_score=result.consistency_score,
                 kg_support_score=kg_support_score,
+                hhem_grounding_score=hhem_score,
             )
             result.verified_confidence = calibration.calibrated_confidence
             result.verification_status = calibration.status
@@ -151,7 +178,7 @@ class VerificationPipeline:
         all_contradictions = []
 
         for i in range(0, len(findings), self.config.parallel_batch_size):
-            batch = findings[i:i + self.config.parallel_batch_size]
+            batch = findings[i : i + self.config.parallel_batch_size]
             batch_results = await self._verify_batch_parallel(batch, session_id)
             results.extend(batch_results)
 
@@ -191,10 +218,7 @@ class VerificationPipeline:
         session_id: str,
     ) -> list[VerificationResult]:
         """Verify a batch of findings in parallel."""
-        tasks = [
-            self._verify_single_batch(finding, session_id)
-            for finding in findings
-        ]
+        tasks = [self._verify_single_batch(finding, session_id) for finding in findings]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Handle any exceptions - convert to skipped results
@@ -203,14 +227,16 @@ class VerificationPipeline:
             if isinstance(result, Exception):
                 # Create a fallback result for failed verification
                 finding = findings[i]
-                processed_results.append(VerificationResult(
-                    finding_id=str(finding.id or hash(finding.content)),
-                    original_confidence=finding.confidence,
-                    verified_confidence=finding.confidence,
-                    verification_status=VerificationStatus.SKIPPED,
-                    verification_method=VerificationMethod.BATCH,
-                    error=str(result),
-                ))
+                processed_results.append(
+                    VerificationResult(
+                        finding_id=str(finding.id or hash(finding.content)),
+                        original_confidence=finding.confidence,
+                        verified_confidence=finding.confidence,
+                        verification_status=VerificationStatus.SKIPPED,
+                        verification_method=VerificationMethod.BATCH,
+                        error=str(result),
+                    )
+                )
             else:
                 processed_results.append(result)
 

@@ -21,6 +21,7 @@ from .critic import (
     CRITICVerifier,
     HighStakesDetector,
 )
+from .hhem import HHEMScorer
 from .metrics import (
     LatencyMetrics,
     VerificationMetricsTracker,
@@ -48,22 +49,19 @@ __all__ = [
     "BatchVerificationResult",
     "VerificationConfig",
     "ContradictionDetail",
-
     # Confidence
     "ConfidenceCalibrator",
     "CalibrationResult",
-
     # CoVe
     "ChainOfVerification",
-
     # CRITIC
     "CRITICVerifier",
     "HighStakesDetector",
-
+    # HHEM
+    "HHEMScorer",
     # Metrics
     "VerificationMetricsTracker",
     "LatencyMetrics",
-
     # Pipeline
     "VerificationPipeline",
     "create_verification_pipeline",

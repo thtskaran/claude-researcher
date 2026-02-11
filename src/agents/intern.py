@@ -1,6 +1,3 @@
-
-
-
 import json
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
@@ -42,13 +39,40 @@ if TYPE_CHECKING:
 def _is_academic_topic(topic: str) -> bool:
     """Detect if a topic would benefit from academic search."""
     academic_indicators = [
-        "research", "study", "paper", "journal", "scientific",
-        "evidence", "theory", "hypothesis", "experiment", "analysis",
-        "review", "survey", "methodology", "framework", "algorithm",
-        "clinical", "trial", "treatment", "disease", "medical",
-        "mechanism", "model", "simulation", "data", "statistical",
-        "peer-reviewed", "published", "findings", "literature",
-        "thesis", "dissertation", "academic", "scholar", "university",
+        "research",
+        "study",
+        "paper",
+        "journal",
+        "scientific",
+        "evidence",
+        "theory",
+        "hypothesis",
+        "experiment",
+        "analysis",
+        "review",
+        "survey",
+        "methodology",
+        "framework",
+        "algorithm",
+        "clinical",
+        "trial",
+        "treatment",
+        "disease",
+        "medical",
+        "mechanism",
+        "model",
+        "simulation",
+        "data",
+        "statistical",
+        "peer-reviewed",
+        "published",
+        "findings",
+        "literature",
+        "thesis",
+        "dissertation",
+        "academic",
+        "scholar",
+        "university",
     ]
     topic_lower = topic.lower()
     return any(indicator in topic_lower for indicator in academic_indicators)
@@ -86,13 +110,12 @@ class InternAgent(BaseAgent):
         # Initialize academic search (free APIs, no keys required)
         try:
             from ..tools.academic_search import AcademicSearchTool
+
             self.academic_search = AcademicSearchTool(max_results=10)
         except Exception as e:
             self.academic_search = None
             if console:
-                console.print(
-                    f"[dim]Academic search unavailable: {e}[/dim]"
-                )
+                console.print(f"[dim]Academic search unavailable: {e}[/dim]")
 
         # Initialize query expander
         self.query_expander = QueryExpander(
@@ -110,7 +133,7 @@ class InternAgent(BaseAgent):
 
     async def _query_expansion_callback(self, prompt: str) -> str:
         """Callback for QueryExpander to call the LLM."""
-        return await self.call_claude(prompt, task_type='query_expansion')
+        return await self.call_claude(prompt, task_type="query_expansion")
 
     async def _expansion_decision_logger(
         self,
@@ -183,7 +206,9 @@ When generating a search query, output ONLY the query text, nothing else."""
             return f"Starting research on: {directive.topic}. Need to perform web search for latest information."
 
         # For subsequent iterations, assess progress
-        findings_summary = ", ".join([f.content[:50] for f in self.findings[-3:]]) if self.findings else "none yet"
+        findings_summary = (
+            ", ".join([f.content[:50] for f in self.findings[-3:]]) if self.findings else "none yet"
+        )
 
         prompt = f"""Research topic: {directive.topic}
 Searches done: {self.searches_performed}/{directive.max_searches}
@@ -209,7 +234,10 @@ Be brief - just state your decision and reason."""
                 decision_outcome="stop",
                 reasoning=thought[:500],
                 inputs={"topic": directive.topic, "max_searches": directive.max_searches},
-                metrics={"searches_done": self.searches_performed, "findings_count": len(self.findings)},
+                metrics={
+                    "searches_done": self.searches_performed,
+                    "findings_count": len(self.findings),
+                },
             )
             return {
                 "action": "compile_report",
@@ -235,7 +263,9 @@ Be brief - just state your decision and reason."""
         if search_summary:
             self._log("─" * 60, style="dim")
             self._log("[Search Summary]", style="bold cyan")
-            summary_preview = search_summary[:1500] + "..." if len(search_summary) > 1500 else search_summary
+            summary_preview = (
+                search_summary[:1500] + "..." if len(search_summary) > 1500 else search_summary
+            )
             self.console.print(summary_preview)
             self._log("─" * 60, style="dim")
 
@@ -352,7 +382,7 @@ Be brief - just state your decision and reason."""
         if expansion.is_sufficient:
             self._log(
                 f"[Query Expansion] Sufficiency reached: {expansion.sufficiency_score:.0%}",
-                style="magenta"
+                style="magenta",
             )
             return [], "Sufficient information gathered", []
 
@@ -362,7 +392,9 @@ Be brief - just state your decision and reason."""
 
         self._log(f"[Query Expansion] Executing {len(queries)} queries", style="cyan")
         for i, q in enumerate(queries, 1):
-            self._log(f"  {i}. {q[:80]}...", style="dim") if len(q) > 80 else self._log(f"  {i}. {q}", style="dim")
+            self._log(f"  {i}. {q[:80]}...", style="dim") if len(q) > 80 else self._log(
+                f"  {i}. {q}", style="dim"
+            )
 
         # Execute searches in parallel
         tasks = [self.search_tool.search(q) for q in queries]
@@ -497,7 +529,7 @@ Create a search query that:
 
 Output ONLY the search query (15-25 words max), nothing else."""
 
-        response = await self.call_claude(prompt, task_type='query_expansion')
+        response = await self.call_claude(prompt, task_type="query_expansion")
         query = response.strip().strip('"').strip("'")
 
         # Determine expansion strategy
@@ -514,7 +546,10 @@ Output ONLY the search query (15-25 words max), nothing else."""
                 decision_outcome="expanded" if not used_fallback else "fallback",
                 reasoning=f"Expanded '{topic}' -> '{query[:100]}'",
                 inputs={"original_topic": topic, "year": year},
-                metrics={"search_number": self.searches_performed + 1, "used_fallback": used_fallback},
+                metrics={
+                    "search_number": self.searches_performed + 1,
+                    "used_fallback": used_fallback,
+                },
             )
 
         return query
@@ -543,10 +578,9 @@ Output ONLY the search query (15-25 words max), nothing else."""
             return []
 
         # Format results for Claude to analyze
-        results_text = "\n\n".join([
-            f"Title: {r.title}\nURL: {r.url}\nSnippet: {r.snippet}"
-            for r in results[:10]
-        ])
+        results_text = "\n\n".join(
+            [f"Title: {r.title}\nURL: {r.url}\nSnippet: {r.snippet}" for r in results[:10]]
+        )
 
         # Include the search summary if available
         summary_section = ""
@@ -595,7 +629,7 @@ Format your response as JSON:
                             self._log(
                                 f"[DEDUP] Skipping duplicate ({dedup_result.match_type}, "
                                 f"sim={dedup_result.similarity:.0%})",
-                                style="dim"
+                                style="dim",
                             )
                             # Log dedup skip decision
                             await self._log_decision(
@@ -622,14 +656,28 @@ Format your response as JSON:
                     verification_result = None
                     if self.verification_pipeline:
                         try:
-                            verification_result = await self.verification_pipeline.verify_intern_finding(
-                                finding, session_id
+                            # Find matching source snippet for HHEM grounding check
+                            source_snippet = None
+                            if source_url:
+                                for r in results:
+                                    if r.url == source_url and r.snippet:
+                                        source_snippet = r.snippet
+                                        break
+
+                            verification_result = (
+                                await self.verification_pipeline.verify_intern_finding(
+                                    finding, session_id, source_content=source_snippet
+                                )
                             )
                             # Update finding with verification results
                             finding.original_confidence = finding.confidence
                             finding.confidence = verification_result.verified_confidence
-                            finding.verification_status = verification_result.verification_status.value
-                            finding.verification_method = verification_result.verification_method.value
+                            finding.verification_status = (
+                                verification_result.verification_status.value
+                            )
+                            finding.verification_method = (
+                                verification_result.verification_method.value
+                            )
                             finding.kg_support_score = verification_result.kg_support_score
 
                         except Exception as e:
@@ -658,29 +706,34 @@ Format your response as JSON:
                             agent=self.role.value,
                             content=content[:300],  # Truncate for display
                             source=source_url,
-                            confidence=finding.confidence
+                            confidence=finding.confidence,
                         )
 
                     # Add to deduplication index after saving
                     if self.deduplicator.enabled:
-                        finding_id = str(finding.id) if finding.id else f"{session_id}_{len(self.findings)}"
+                        finding_id = (
+                            str(finding.id) if finding.id else f"{session_id}_{len(self.findings)}"
+                        )
                         self.deduplicator.add(finding_id, content)
 
                 for followup in data.get("followups", []):
                     # Filter out meta-questions/clarifying questions that aren't real topics
                     followup_lower = followup.lower()
-                    is_meta_question = any(phrase in followup_lower for phrase in [
-                        "please provide",
-                        "what information",
-                        "could you clarify",
-                        "what are you looking for",
-                        "what topic",
-                        "what subject",
-                        "what would you like",
-                        "can you specify",
-                        "please specify",
-                        "more details",
-                    ])
+                    is_meta_question = any(
+                        phrase in followup_lower
+                        for phrase in [
+                            "please provide",
+                            "what information",
+                            "could you clarify",
+                            "what are you looking for",
+                            "what topic",
+                            "what subject",
+                            "what would you like",
+                            "can you specify",
+                            "please specify",
+                            "more details",
+                        ]
+                    )
                     if not is_meta_question and followup not in self.suggested_followups:
                         self.suggested_followups.append(followup)
 
@@ -721,13 +774,19 @@ Format your response as JSON:
                     verification_result = None
                     if self.verification_pipeline:
                         try:
-                            verification_result = await self.verification_pipeline.verify_intern_finding(
-                                finding, session_id
+                            verification_result = (
+                                await self.verification_pipeline.verify_intern_finding(
+                                    finding, session_id, source_content=r.snippet
+                                )
                             )
                             finding.original_confidence = finding.confidence
                             finding.confidence = verification_result.verified_confidence
-                            finding.verification_status = verification_result.verification_status.value
-                            finding.verification_method = verification_result.verification_method.value
+                            finding.verification_status = (
+                                verification_result.verification_status.value
+                            )
+                            finding.verification_method = (
+                                verification_result.verification_method.value
+                            )
                             finding.kg_support_score = verification_result.kg_support_score
                         except Exception:
                             pass
@@ -750,7 +809,9 @@ Format your response as JSON:
 
                     # Add to deduplication index
                     if self.deduplicator.enabled:
-                        finding_id = str(finding.id) if finding.id else f"{session_id}_{len(self.findings)}"
+                        finding_id = (
+                            str(finding.id) if finding.id else f"{session_id}_{len(self.findings)}"
+                        )
                         self.deduplicator.add(finding_id, content)
 
         return findings
@@ -775,9 +836,7 @@ Format your response as JSON:
         self.state = type(self.state)()
         self._pending_expanded_queries = []
 
-    async def execute_directive(
-        self, directive: ManagerDirective, session_id: str
-    ) -> InternReport:
+    async def execute_directive(self, directive: ManagerDirective, session_id: str) -> InternReport:
         """Execute a directive from the Manager and return a report."""
         self.reset()
         self.current_directive = directive
