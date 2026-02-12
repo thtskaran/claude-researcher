@@ -5,7 +5,6 @@ This bridges the CLI's interaction system with WebSocket communication.
 """
 import asyncio
 from dataclasses import dataclass
-from typing import Optional
 
 from api.events import emit_event
 
@@ -20,7 +19,7 @@ class PendingQuestion:
     options: list[str]
     timeout: int
     response_event: asyncio.Event
-    response: Optional[str] = None
+    response: str | None = None
 
 
 class QuestionManager:
@@ -93,7 +92,7 @@ class QuestionManager:
 
             return response
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Emit timeout event
             await emit_event(
                 session_id=session_id,
@@ -126,7 +125,7 @@ class QuestionManager:
         pending.response_event.set()
         return True
 
-    def get_pending_question(self, session_id: str) -> Optional[PendingQuestion]:
+    def get_pending_question(self, session_id: str) -> PendingQuestion | None:
         """Get the current pending question for a session, if any."""
         for pending in self._pending_questions.values():
             if pending.session_id == session_id:
@@ -135,7 +134,7 @@ class QuestionManager:
 
 
 # Global question manager instance
-_question_manager: Optional[QuestionManager] = None
+_question_manager: QuestionManager | None = None
 
 
 def get_question_manager() -> QuestionManager:

@@ -8,8 +8,7 @@ entity types (CONCEPT, CLAIM, EVIDENCE, METHOD, etc.).
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 try:
     import spacy
@@ -357,7 +356,6 @@ class FastNER:
         Returns:
             List of Entity objects ready for knowledge graph
         """
-        import json
         import uuid
 
         # First, fast extraction with spaCy

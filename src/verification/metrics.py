@@ -4,7 +4,6 @@ import asyncio
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 from .models import (
     BatchVerificationResult,

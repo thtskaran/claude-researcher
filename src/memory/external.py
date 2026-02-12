@@ -5,7 +5,6 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import aiosqlite
 
@@ -173,7 +172,6 @@ class ExternalMemoryStore:
         try:
             loop = asyncio.get_running_loop()
             # If we're in an async context, we need to use run_coroutine_threadsafe
-            import concurrent.futures
             future = asyncio.run_coroutine_threadsafe(
                 self.store(session_id, content, memory_type, tags, metadata),
                 loop

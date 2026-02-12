@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -19,7 +19,7 @@ from claude_agent_sdk import (
 )
 from rich.console import Console
 
-from ..audit import DecisionLogger, DecisionType, get_decision_logger
+from ..audit import DecisionType, get_decision_logger
 from ..costs.tracker import get_cost_tracker
 from ..events import emit_action, emit_agent_event, emit_error, emit_thinking
 from ..models.findings import AgentMessage, AgentRole
@@ -341,7 +341,7 @@ class BaseAgent(ABC):
         use_thinking: bool = False,
         task_type: str | None = None,
         output_format: dict | None = None,
-    ) -> str | dict | list:
+    ) -> str | dict | list | None:
         """Call Claude via the Agent SDK.
 
         Args:

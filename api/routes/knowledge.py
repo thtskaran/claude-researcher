@@ -3,7 +3,7 @@ Knowledge graph API routes.
 
 Serves graph data for the Knowledge Graph visualization page.
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from api.kg import get_kg
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/sessions", tags=["knowledge"])
 async def get_knowledge_graph(
     session_id: str,
     entity_type: str | None = None,
-    limit: int = 500,
+    limit: int = Query(default=500, ge=1, le=1000),
 ):
     """Get entities and relations for graph visualization."""
     kg = get_kg()

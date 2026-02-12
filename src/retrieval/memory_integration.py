@@ -8,13 +8,12 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
 
 import aiosqlite
 
 from ..memory.external import ExternalMemoryStore, StoredMemory
-from .embeddings import EmbeddingConfig, EmbeddingService
-from .hybrid import HybridConfig, HybridRetriever, RetrievalResult
+from .embeddings import EmbeddingConfig
+from .hybrid import HybridConfig, HybridRetriever
 from .vectorstore import Document
 
 
@@ -165,7 +164,7 @@ class SemanticMemoryStore:
             return [
                 SemanticSearchResult(
                     memory=m,
-                    score=1.0 - (i * 0.05),  # Approximate score
+                    score=max(0.0, 1.0 - (i * 0.05)),  # Approximate score
                     retrieval_method="fts",
                 )
                 for i, m in enumerate(memories)
@@ -370,7 +369,6 @@ def create_semantic_memory(
     Returns:
         Configured SemanticMemoryStore
     """
-    from .reranker import RerankerConfig
 
     config = HybridConfig(
         embedding=EmbeddingConfig(model_name=embedding_model),

@@ -4,10 +4,9 @@ This module provides specialized retrieval for research findings,
 integrated with the knowledge graph and manager agent workflow.
 """
 
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Optional
 
 from ..models.findings import Finding, FindingType
 from .embeddings import EmbeddingConfig
@@ -79,7 +78,9 @@ class FindingsRetriever:
         )
 
         self._retriever = HybridRetriever(config)
-        self._finding_cache: dict[str, Finding] = {}  # id -> Finding
+        # [HARDENED] PERF-002: Use OrderedDict with max size to prevent unbounded growth
+        self._finding_cache: OrderedDict[str, Finding] = OrderedDict()
+        self._MAX_CACHE_SIZE = 5000
 
     def add_finding(
         self,
@@ -126,6 +127,9 @@ class FindingsRetriever:
 
         # Cache the finding object
         self._finding_cache[finding_id] = finding
+        # [HARDENED] PERF-002: Evict oldest entry if cache exceeds max size
+        if len(self._finding_cache) > self._MAX_CACHE_SIZE:
+            self._finding_cache.popitem(last=False)
 
         # Add to retriever
         self._retriever.add_texts(
@@ -188,6 +192,9 @@ class FindingsRetriever:
 
             # Cache
             self._finding_cache[finding_id] = finding
+            # [HARDENED] PERF-002: Evict oldest entry if cache exceeds max size
+            if len(self._finding_cache) > self._MAX_CACHE_SIZE:
+                self._finding_cache.popitem(last=False)
 
             documents.append(Document(
                 id=finding_id,
@@ -291,12 +298,14 @@ class FindingsRetriever:
         except (ValueError, KeyError):
             finding_type = FindingType.FACT
 
+        # [HARDENED] BUG-006: Include session_id in reconstructed Finding
         return Finding(
             content=result.document.content.split("\n\nContext:")[0],  # Extract main content
             finding_type=finding_type,
             confidence=float(metadata.get("confidence", 0.5)),
             source_url=metadata.get("source_url"),
             source_title=metadata.get("source_title"),
+            session_id=metadata.get("session_id", ""),
         )
 
     def find_similar(
@@ -351,9 +360,9 @@ class FindingsRetriever:
         Returns:
             List of findings from that source
         """
-        # Use metadata filter
+        # [HARDENED] BUG-005: Use source_url as query text instead of empty string
         results = self._retriever.search(
-            query="",  # Empty query, rely on filter
+            query=source_url,
             k=limit,
             filter={"source_url": source_url},
             use_reranker=False,  # No need for reranking with filter-only
@@ -383,8 +392,9 @@ class FindingsRetriever:
         Returns:
             List of findings
         """
+        # [HARDENED] BUG-007: Use empty query instead of biased "research findings"
         results = self._retriever.search(
-            query="research findings",  # Generic query
+            query="",
             k=limit,
             filter={"session_id": session_id},
             use_reranker=False,

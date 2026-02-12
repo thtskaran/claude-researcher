@@ -4,7 +4,7 @@ Agent transparency API routes.
 Serves agent decision logs, topic hierarchy, and agent status for the
 Agent Transparency page.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from api.db import get_db
 
@@ -14,8 +14,8 @@ router = APIRouter(prefix="/api/sessions", tags=["agents"])
 @router.get("/{session_id}/agents/decisions")
 async def list_agent_decisions(
     session_id: str,
-    limit: int = 200,
-    offset: int = 0,
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
 ):
     """List agent decision logs — reasoning traces and outcomes."""
     db = await get_db()

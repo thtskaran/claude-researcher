@@ -93,9 +93,9 @@ async def run_research_background(session_id: str, goal: str, max_iterations: in
 
     try:
         print("📦 Importing ResearchHarness...")
+        from api.ui_interaction import UIInteraction
         from src.agents.director import ResearchHarness
         from src.interaction import InteractionConfig
-        from api.ui_interaction import UIInteraction
         print("✓ Import successful")
 
         # Update session status to running

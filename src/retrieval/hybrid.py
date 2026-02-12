@@ -10,11 +10,8 @@ Research shows this combination improves recall by 15-30% over single methods.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
-
-import numpy as np
+from typing import Any
 
 from .bm25 import BM25Config, BM25Index
 from .embeddings import EmbeddingConfig, EmbeddingService

@@ -3,8 +3,6 @@
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
-from datetime import datetime
-from typing import Any, Optional
 
 from rich.console import Console
 from rich.panel import Panel

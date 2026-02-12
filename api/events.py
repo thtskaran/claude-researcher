@@ -56,7 +56,6 @@ class EventEmitter:
     """
 
     _instance: Optional['EventEmitter'] = None
-    _lock = asyncio.Lock()
 
     def __new__(cls):
         if cls._instance is None:

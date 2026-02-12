@@ -22,8 +22,8 @@ os.environ.setdefault("CLAUDE_RESEARCHER_IN_API", "1")
 from api.db import close_db, get_db
 from api.events import emit_event, get_event_emitter
 from api.models import HealthResponse
-from api.routes import events, findings, report, research, sessions
 from api.routes import agents as agents_routes
+from api.routes import events, findings, report, research, sessions
 from api.routes import knowledge as knowledge_routes
 from api.routes import verification as verification_routes
 
@@ -110,6 +110,10 @@ async def test_emit_event(session_id: str, event_type: str = "test", message: st
 
     Useful for testing WebSocket functionality without running actual research.
     """
+    # [HARDENED] SEC-003: Only allow in debug mode to prevent arbitrary event injection
+    if not os.environ.get("CLAUDE_RESEARCHER_DEBUG"):
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+
     emitter = get_event_emitter()
 
     await emit_event(

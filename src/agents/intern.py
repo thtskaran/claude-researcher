@@ -22,11 +22,10 @@ from ..models.findings import (
     InternReport,
     ManagerDirective,
 )
-from ..retrieval.deduplication import FindingDeduplicator, get_deduplicator
+from ..retrieval.deduplication import get_deduplicator
 from ..retrieval.query_expansion import (
     QueryExpander,
     QueryExpansionConfig,
-    QueryExpansionResult,
     merge_search_results,
 )
 from ..storage.database import ResearchDatabase

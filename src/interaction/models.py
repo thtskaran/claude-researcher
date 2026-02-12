@@ -1,7 +1,6 @@
 """Data models for user interaction features."""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 

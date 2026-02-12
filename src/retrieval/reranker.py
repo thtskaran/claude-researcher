@@ -8,7 +8,6 @@ Research shows reranking improves retrieval quality by 10-20%.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 

@@ -3,12 +3,12 @@ UI-compatible interaction handler.
 
 This adapts the CLI's UserInteraction system to work with WebSocket communication.
 """
-from typing import Callable, Any
-
-from src.interaction.config import InteractionConfig
-from src.interaction.models import UserMessage
+from collections.abc import Callable
+from typing import Any
 
 from api.question_manager import get_question_manager
+from src.interaction.config import InteractionConfig
+from src.interaction.models import UserMessage
 
 
 class UIInteraction:

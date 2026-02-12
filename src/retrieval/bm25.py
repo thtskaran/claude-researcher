@@ -7,11 +7,12 @@ BM25 (Best Matching 25) is a probabilistic ranking function that excels at:
 """
 
 import hashlib
-import pickle
+import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 import numpy as np
 
@@ -368,8 +369,17 @@ class BM25Index:
         path = Path(self.config.persist_path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
+        # [HARDENED] SEC-001: Use JSON instead of pickle to prevent arbitrary code execution
         state = {
-            "documents": self._documents,
+            "documents": {
+                doc_id: {
+                    "id": doc.id,
+                    "content": doc.content,
+                    "tokens": doc.tokens,
+                    "metadata": doc.metadata,
+                }
+                for doc_id, doc in self._documents.items()
+            },
             "doc_ids": self._doc_ids,
             "idf": self._idf,
             "doc_len": self._doc_len,
@@ -377,8 +387,8 @@ class BM25Index:
             "term_freqs": self._term_freqs,
         }
 
-        with open(path, "wb") as f:
-            pickle.dump(state, f)
+        with open(path, "w") as f:
+            json.dump(state, f)
 
     def load(self) -> None:
         """Load index from disk."""
@@ -389,15 +399,29 @@ class BM25Index:
         if not path.exists():
             return
 
-        with open(path, "rb") as f:
-            state = pickle.load(f)
+        # [HARDENED] SEC-001: Use JSON instead of pickle to prevent arbitrary code execution
+        with open(path) as f:
+            try:
+                state = json.load(f)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                # Old pickle format or corrupted file — rebuild from scratch
+                print(f"[BM25] Could not load index from {path}, rebuilding")
+                return
 
-        self._documents = state["documents"]
-        self._doc_ids = state["doc_ids"]
-        self._idf = state["idf"]
-        self._doc_len = state["doc_len"]
-        self._avgdl = state["avgdl"]
-        self._term_freqs = state["term_freqs"]
+        self._documents = {
+            doc_id: IndexedDocument(
+                id=doc_data["id"],
+                content=doc_data["content"],
+                tokens=doc_data["tokens"],
+                metadata=doc_data.get("metadata", {}),
+            )
+            for doc_id, doc_data in state.get("documents", {}).items()
+        }
+        self._doc_ids = state.get("doc_ids", [])
+        self._idf = state.get("idf", {})
+        self._doc_len = state.get("doc_len", {})
+        self._avgdl = state.get("avgdl", 0.0)
+        self._term_freqs = state.get("term_freqs", {})
 
     def stats(self) -> dict:
         """Get index statistics."""

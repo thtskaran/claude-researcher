@@ -83,6 +83,9 @@ class ManagerAgent(BaseAgent):
 
         # Locks for thread-safe state access (prevents race conditions in parallel execution)
         self._state_lock = asyncio.Lock()  # Protects topics_queue, all_findings, all_reports
+        # [HARDENED] BUG-001: Lock to prevent race condition on self.config.model
+        # when multiple callbacks run concurrently during parallel intern execution
+        self._model_switch_lock = asyncio.Lock()
 
         # User interaction support
         self.interaction = interaction
@@ -150,12 +153,14 @@ class ManagerAgent(BaseAgent):
         **kwargs,
     ) -> str | dict | list:
         """LLM callback for knowledge graph extraction (uses faster model)."""
-        original_model = self.config.model
-        self.config.model = "sonnet"
-        try:
-            return await self.call_claude(prompt, **kwargs)
-        finally:
-            self.config.model = original_model
+        # [HARDENED] BUG-001: Use lock to prevent race on shared self.config.model
+        async with self._model_switch_lock:
+            original_model = self.config.model
+            self.config.model = "sonnet"
+            try:
+                return await self.call_claude(prompt, **kwargs)
+            finally:
+                self.config.model = original_model
 
     async def _save_credibility_audit(self, audit_data: dict) -> None:
         """Save credibility audit to database (fire-and-forget)."""
@@ -182,12 +187,14 @@ class ManagerAgent(BaseAgent):
 
     async def _memory_llm_callback(self, prompt: str) -> str:
         """LLM callback for memory summarization (uses faster model)."""
-        original_model = self.config.model
-        self.config.model = "haiku"  # Fast model for summarization
-        try:
-            return await self.call_claude(prompt)
-        finally:
-            self.config.model = original_model
+        # [HARDENED] BUG-001: Use lock to prevent race on shared self.config.model
+        async with self._model_switch_lock:
+            original_model = self.config.model
+            self.config.model = "haiku"  # Fast model for summarization
+            try:
+                return await self.call_claude(prompt)
+            finally:
+                self.config.model = original_model
 
     async def _verification_llm_callback(
         self,
@@ -202,12 +209,14 @@ class ManagerAgent(BaseAgent):
             model: Model to use (e.g. "haiku", "sonnet")
             output_format: Optional JSON schema for structured output
         """
-        original_model = self.config.model
-        self.config.model = model
-        try:
-            return await self.call_claude(prompt, output_format=output_format)
-        finally:
-            self.config.model = original_model
+        # [HARDENED] BUG-001: Use lock to prevent race on shared self.config.model
+        async with self._model_switch_lock:
+            original_model = self.config.model
+            self.config.model = model
+            try:
+                return await self.call_claude(prompt, output_format=output_format)
+            finally:
+                self.config.model = original_model
 
     async def _verification_search_callback(self, query: str) -> list[dict]:
         """Web search callback for CoVe/CRITIC independent verification.
@@ -1668,7 +1677,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
             clear_memory: If True, also clear hybrid memory
         """
         self.research_goal = ""
-        self.session_id = 0
+        self.session_id = ""  # [HARDENED] BUG-008: Was integer 0, must be str
         self.topics_queue = []
         self.completed_topics = []
         self.all_findings = []

@@ -3,14 +3,12 @@ Knowledge graph query wrapper for API endpoints.
 
 Reads from the research_kg.db SQLite database (synchronous) via asyncio executor.
 """
+import asyncio
 import json
 import sqlite3
 from functools import partial
 from pathlib import Path
 from typing import Any
-
-import asyncio
-
 
 # Default KG database path (relative to project root)
 _DEFAULT_KG_PATH = Path("research_kg.db")

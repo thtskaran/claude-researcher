@@ -7,7 +7,7 @@ so connected WebSocket clients can receive them in real time.
 import json
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from api.db import get_db
@@ -44,7 +44,11 @@ async def emit_event_endpoint(payload: EventEmitRequest):
 
 
 @router.get("/{session_id}")
-async def list_session_events(session_id: str, limit: int = 500, order: str = "desc"):
+async def list_session_events(
+    session_id: str,
+    limit: int = Query(default=500, ge=1, le=1000),
+    order: str = "desc",
+):
     """List persisted events for a session."""
     db = await get_db()
     rows = await db.list_events(session_id, limit=limit, order=order)

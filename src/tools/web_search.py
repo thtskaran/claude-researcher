@@ -5,7 +5,6 @@ import os
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 from urllib.parse import quote
 
 from dotenv import load_dotenv

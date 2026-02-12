@@ -7,10 +7,8 @@ Supports multiple embedding models optimized for different use cases:
 """
 
 import hashlib
-from dataclasses import dataclass, field
-from functools import lru_cache
-from pathlib import Path
-from typing import Optional
+from collections import OrderedDict
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -59,7 +57,9 @@ class EmbeddingService:
         self.config = config or EmbeddingConfig()
         self._model = None
         self._dimension: int | None = None
-        self._embedding_cache: dict[str, np.ndarray] = {}
+        # [HARDENED] PERF-003: Use OrderedDict with max size to prevent unbounded growth
+        self._embedding_cache: OrderedDict[str, np.ndarray] = OrderedDict()
+        self._MAX_CACHE_SIZE = 10000
 
     def _get_device(self) -> str:
         """Determine best available device."""
@@ -137,6 +137,9 @@ class EmbeddingService:
         )
 
         self._embedding_cache[cache_key] = embedding
+        # [HARDENED] PERF-003: Evict oldest entry if cache exceeds max size
+        if len(self._embedding_cache) > self._MAX_CACHE_SIZE:
+            self._embedding_cache.popitem(last=False)
         return embedding
 
     def embed_document(self, document: str) -> np.ndarray:
@@ -164,6 +167,9 @@ class EmbeddingService:
         )
 
         self._embedding_cache[cache_key] = embedding
+        # [HARDENED] PERF-003: Evict oldest entry if cache exceeds max size
+        if len(self._embedding_cache) > self._MAX_CACHE_SIZE:
+            self._embedding_cache.popitem(last=False)
         return embedding
 
     def embed_documents(self, documents: list[str]) -> np.ndarray:
@@ -201,10 +207,14 @@ class EmbeddingService:
                 show_progress_bar=len(uncached_docs) > 100,
             )
 
-            # Cache and collect results
-            for idx, doc, emb in zip(uncached_indices, documents, new_embeddings):
-                cache_key = self._cache_key(doc, is_query=False)
+            # [HARDENED] BUG-004: Use uncached_indices to look up original doc text,
+            # not the full documents list, to avoid zip misalignment when some are cached.
+            for idx, emb in zip(uncached_indices, new_embeddings):
+                cache_key = self._cache_key(documents[idx], is_query=False)
                 self._embedding_cache[cache_key] = emb
+                # [HARDENED] PERF-003: Evict oldest entry if cache exceeds max size
+                if len(self._embedding_cache) > self._MAX_CACHE_SIZE:
+                    self._embedding_cache.popitem(last=False)
                 embeddings.append((idx, emb))
 
         # Sort by original index and stack

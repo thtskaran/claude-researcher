@@ -4,8 +4,6 @@ import asyncio
 import sys
 import threading
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
 
 from rich.console import Console
 from rich.prompt import Prompt

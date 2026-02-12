@@ -5,20 +5,18 @@ import json
 import re
 import uuid
 from collections.abc import Callable
-from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 try:
-    import numpy as np
+    import numpy as np  # noqa: F401  — imported for HAS_NUMPY detection
     HAS_NUMPY = True
 except ImportError:
     HAS_NUMPY = False
 
 from .credibility import CredibilityScorer
-from .fast_ner import FastNER, get_fast_ner
+from .fast_ner import get_fast_ner
 from .models import ENTITY_TYPES, Contradiction, Entity, KGFinding, Relation
 from .store import HybridKnowledgeGraphStore
-
 
 # Canonical predicate mapping — normalizes free-form predicates to a fixed set
 # for better graph connectivity. ~130 synonyms → ~20 canonical forms.
@@ -1147,7 +1145,8 @@ Return as JSON array:
 
     def _generate_id(self) -> str:
         """Generate unique ID."""
-        return str(uuid.uuid4())[:8]
+        # [HARDENED] BUG-010: Use 16 chars to reduce collision probability
+        return str(uuid.uuid4())[:16]
 
     def _parse_json_array(self, text: str | dict | list) -> list:
         """Parse JSON array from LLM response with multiple fallbacks."""

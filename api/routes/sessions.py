@@ -3,7 +3,7 @@ Research session routes.
 
 Handles CRUD operations for research sessions.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from api.db import get_db
 from api.models import ResearchSessionCreate, ResearchSessionResponse
@@ -40,7 +40,7 @@ async def create_session(session: ResearchSessionCreate):
 
 
 @router.get("/", response_model=list[ResearchSessionResponse])
-async def list_sessions(limit: int = 100):
+async def list_sessions(limit: int = Query(default=100, ge=1, le=1000)):
     """List all research sessions from the database."""
     db = await get_db()
     sessions = await db.list_sessions(limit)

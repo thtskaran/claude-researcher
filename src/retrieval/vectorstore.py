@@ -8,11 +8,10 @@ ChromaDB provides:
 """
 
 import hashlib
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 

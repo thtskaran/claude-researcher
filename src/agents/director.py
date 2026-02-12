@@ -3,14 +3,14 @@
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from ..costs.tracker import CostSummary, get_cost_tracker, reset_cost_tracker
+from ..costs.tracker import get_cost_tracker, reset_cost_tracker
 from ..events import emit_synthesis
 from ..interaction import InteractionConfig, UserInteraction
 from ..models.findings import AgentRole, ManagerReport, ResearchSession

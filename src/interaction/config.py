@@ -1,7 +1,6 @@
 """Configuration for user interaction features."""
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass

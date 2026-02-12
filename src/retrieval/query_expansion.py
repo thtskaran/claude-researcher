@@ -4,11 +4,13 @@ This module provides multi-query generation, contextual expansion using
 knowledge graph gaps, and FAIR-RAG sufficiency evaluation.
 """
 
-import asyncio
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..knowledge.query import ManagerQueryInterface
@@ -236,6 +238,8 @@ class QueryExpander:
             return expanded
 
         except Exception:
+            # [HARDENED] ERR-003: Log before falling back
+            logger.warning("Multi-query expansion failed, using fallback", exc_info=True)
             return [ExpandedQuery(
                 query=f"{query} {year} latest research developments",
                 strategy="temporal",
@@ -340,6 +344,8 @@ class QueryExpander:
             return expanded
 
         except Exception:
+            # [HARDENED] ERR-003: Log before falling back
+            logger.warning("Contextual expansion failed", exc_info=True)
             return []
 
     async def _evaluate_sufficiency(
@@ -431,6 +437,8 @@ class QueryExpander:
             return is_sufficient and score >= self.config.sufficiency_threshold, score
 
         except Exception:
+            # [HARDENED] ERR-003: Log before falling back
+            logger.warning("Sufficiency evaluation failed", exc_info=True)
             return False, 0.0
 
     def _summarize_findings(self, findings: list, max_findings: int = 5) -> str:

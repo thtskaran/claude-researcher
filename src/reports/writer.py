@@ -8,12 +8,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
 
 from ..models.findings import Finding, ResearchSession
-from ..verification import BatchVerificationResult, VerificationMetricsTracker
 
 
 class SectionType(str, Enum):
@@ -487,8 +485,6 @@ Choose themes that:
         # Parse themes
         themes = []
         try:
-            import json
-
             # Find JSON array in response
             match = re.search(r"\[.*\]", themes_response, re.DOTALL)
             if match:
@@ -1008,14 +1004,11 @@ Output ONLY the comparison content."""
     ) -> str:
         """Generate chronological timeline view."""
         # Find findings with dates/years
+        # [HARDENED] CONF-003: Generate year range dynamically
+        current_year = datetime.now().year
+        year_keywords = [str(y) for y in range(current_year - 5, current_year + 1)]
         temporal_keywords = [
-            "2020",
-            "2021",
-            "2022",
-            "2023",
-            "2024",
-            "2025",
-            "2026",
+            *year_keywords,
             "january",
             "february",
             "march",
@@ -1282,15 +1275,9 @@ Output ONLY the conclusions content."""
 
         # Build source index for inline citations [N]
         self._source_index: dict[str, int] = {}
-        self._source_details: dict[str, dict] = {}
         for i, src in enumerate(sources, 1):
             url = src["url"]
             self._source_index[url] = i
-            self._source_details[url] = {
-                "ref_num": i,
-                "domain": src["domain"],
-                "title": src["title"],
-            }
 
         # Phase 1: Plan the report structure
         await _emit_progress(progress_callback, "Planning report structure...", 5)

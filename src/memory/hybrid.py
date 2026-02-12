@@ -1,11 +1,10 @@
 """Hybrid memory management with buffer + summary pattern."""
 
 import asyncio
-import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass

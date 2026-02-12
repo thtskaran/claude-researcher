@@ -1,7 +1,6 @@
 """Manager query interface for knowledge graph analysis."""
 
 import sqlite3
-from typing import Optional
 
 try:
     import networkx as nx
