@@ -139,7 +139,11 @@ class ResearchDatabase:
                 status TEXT DEFAULT 'active',
                 total_findings INTEGER DEFAULT 0,
                 total_searches INTEGER DEFAULT 0,
-                depth_reached INTEGER DEFAULT 0
+                depth_reached INTEGER DEFAULT 0,
+                elapsed_seconds REAL DEFAULT 0.0,
+                paused_at TEXT,
+                iteration_count INTEGER DEFAULT 0,
+                phase TEXT DEFAULT 'init'
             );
 
             CREATE TABLE IF NOT EXISTS topics (
@@ -315,6 +319,10 @@ class ResearchDatabase:
             total_findings=row["total_findings"],
             total_searches=row["total_searches"],
             depth_reached=row["depth_reached"],
+            elapsed_seconds=row["elapsed_seconds"] or 0.0,
+            paused_at=datetime.fromisoformat(row["paused_at"]) if row["paused_at"] else None,
+            iteration_count=row["iteration_count"] or 0,
+            phase=row["phase"] or "init",
         )
 
     async def update_session(self, session: ResearchSession) -> None:
@@ -327,7 +335,11 @@ class ResearchDatabase:
                     ended_at = ?,
                     total_findings = ?,
                     total_searches = ?,
-                    depth_reached = ?
+                    depth_reached = ?,
+                    elapsed_seconds = ?,
+                    paused_at = ?,
+                    iteration_count = ?,
+                    phase = ?
                 WHERE id = ?
                 """,
                 (
@@ -336,6 +348,10 @@ class ResearchDatabase:
                     session.total_findings,
                     session.total_searches,
                     session.depth_reached,
+                    session.elapsed_seconds,
+                    session.paused_at.isoformat() if session.paused_at else None,
+                    session.iteration_count,
+                    session.phase,
                     session.id,
                 ),
             )
@@ -412,6 +428,45 @@ class ResearchDatabase:
                 WHERE id = ?
                 """,
                 (status, completed_at, findings_count, topic_id),
+            )
+            await self._connection.commit()
+        except Exception:
+            await self._connection.rollback()
+            raise
+
+    async def get_all_topics(self, session_id: str) -> list[ResearchTopic]:
+        """Get all topics for a session (for state reconstruction on resume)."""
+        cursor = await self._connection.execute(
+            """
+            SELECT * FROM topics
+            WHERE session_id = ?
+            ORDER BY priority DESC, depth ASC
+            """,
+            (session_id,),
+        )
+        rows = await cursor.fetchall()
+        return [
+            ResearchTopic(
+                id=row["id"],
+                session_id=row["session_id"],
+                topic=row["topic"],
+                parent_topic_id=row["parent_topic_id"],
+                depth=row["depth"],
+                status=row["status"],
+                priority=row["priority"],
+            )
+            for row in rows
+        ]
+
+    async def reset_in_progress_topics(self, session_id: str) -> None:
+        """Reset any in_progress topics back to pending (for resume after pause/crash)."""
+        try:
+            await self._connection.execute(
+                """
+                UPDATE topics SET status = 'pending', assigned_at = NULL
+                WHERE session_id = ? AND status = 'in_progress'
+                """,
+                (session_id,),
             )
             await self._connection.commit()
         except Exception:

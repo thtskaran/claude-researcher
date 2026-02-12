@@ -139,6 +139,10 @@
     @apply bg-gold-soft text-gold border-gold/20;
   }
 
+  .badge-warning {
+    @apply bg-gold-soft text-gold border-gold/20;
+  }
+
   .badge-error {
     @apply bg-coral-soft text-coral border-coral/20;
   }

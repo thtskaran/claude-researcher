@@ -22,6 +22,7 @@ from ..models.findings import (
     InternReport,
     ManagerDirective,
     ManagerReport,
+    ResearchSession,
     ResearchTopic,
 )
 from ..retrieval import get_findings_retriever
@@ -324,6 +325,9 @@ Think step by step about the best next action."""
 
     async def act(self, thought: str, context: dict[str, Any]) -> dict[str, Any]:
         """Execute management actions based on thinking."""
+        # Periodic checkpoint for crash recovery
+        await self._maybe_periodic_checkpoint()
+
         time_remaining = self.time_limit_minutes - self._get_elapsed_minutes()
 
         # Check if we should synthesize and stop
@@ -510,6 +514,16 @@ Think step by step about the best next action."""
             "action": "synthesize",
             "report": report,
         }
+
+    async def _maybe_periodic_checkpoint(self) -> None:
+        """Fire-and-forget checkpoint every 2 iterations for crash recovery."""
+        if self.state.iteration % 2 == 0 and self.session_id:
+            try:
+                session = await self.db.get_session(self.session_id)
+                if session:
+                    asyncio.create_task(self._periodic_checkpoint(session))
+            except Exception:
+                pass
 
     async def observe(self, action_result: dict[str, Any]) -> str:
         """Process the result of a management action."""
@@ -1261,12 +1275,101 @@ Be thorough and insightful. Note where findings have lower confidence."""
         # Compress memory if needed
         await self.memory.maybe_compress()
 
+    async def checkpoint_state(self, session: ResearchSession) -> None:
+        """Save Manager orchestration state to DB for pause/crash recovery."""
+        elapsed = self._get_elapsed_minutes() * 60  # Convert to seconds
+        session.elapsed_seconds = elapsed
+        session.iteration_count = self.state.iteration
+        session.phase = self._current_phase
+        session.paused_at = datetime.now()
+        session.status = "paused"
+        await self.db.update_session(session)
+        self._log(
+            f"[CHECKPOINT] Saved state: elapsed={elapsed:.0f}s, "
+            f"iteration={self.state.iteration}, phase={self._current_phase}"
+        )
+
+    async def _periodic_checkpoint(self, session: ResearchSession) -> None:
+        """Update elapsed time and iteration in DB (fire-and-forget)."""
+        try:
+            elapsed = self._get_elapsed_minutes() * 60
+            session.elapsed_seconds = elapsed
+            session.iteration_count = self.state.iteration
+            session.phase = self._current_phase
+            await self.db.update_session(session)
+        except Exception:
+            pass  # Non-critical
+
+    async def restore_state(self, session: ResearchSession) -> None:
+        """Rebuild Manager state from DB for resume after pause/crash."""
+        self._log("[RESTORE] Rebuilding Manager state from database...")
+
+        # Reload all findings
+        self.all_findings = await self.db.get_session_findings(session.id)
+        self._log(f"[RESTORE] Loaded {len(self.all_findings)} findings")
+
+        # Reset in_progress topics to pending (they were mid-execution)
+        await self.db.reset_in_progress_topics(session.id)
+
+        # Reconstruct topics from DB
+        all_topics = await self.db.get_all_topics(session.id)
+        self.topics_queue = [t for t in all_topics if t.status == "pending"]
+        self.completed_topics = [t for t in all_topics if t.status == "completed"]
+        self._log(
+            f"[RESTORE] Queue: {len(self.topics_queue)} pending, "
+            f"{len(self.completed_topics)} completed"
+        )
+
+        # Restore timing: set start_time so _get_elapsed_minutes() returns correct total
+        from datetime import timedelta
+        self.start_time = datetime.now() - timedelta(seconds=session.elapsed_seconds)
+
+        # Restore iteration count
+        self.state.iteration = session.iteration_count
+
+        # Compute current depth from completed topics
+        self.current_depth = max((t.depth for t in self.completed_topics), default=0)
+
+        # Re-initialize decision logger
+        await init_decision_logger(self.db)
+
+        # Re-initialize memory context
+        await self.memory.add_message(
+            role="system",
+            content=(
+                f"Resumed research session. "
+                f"{len(self.all_findings)} findings loaded, "
+                f"{len(self.topics_queue)} topics pending."
+            ),
+            metadata={"type": "resume", "session_id": session.id}
+        )
+
+        # Index existing findings for retrieval
+        if self.all_findings:
+            try:
+                self.findings_retriever.add_findings(
+                    findings=self.all_findings,
+                    session_id=session.id,
+                )
+            except Exception:
+                pass  # Non-critical
+
+        # KG auto-loads from its SQLite DB, just set session_id
+        self.knowledge_graph.session_id = session.id
+
+        # Clear pause flag
+        self._pause_requested = False
+
+        self._log("[RESTORE] State restoration complete")
+
     async def run_research(
         self,
         goal: str,
         session_id: str,
         time_limit_minutes: int = 60,
         use_parallel_init: bool = True,
+        resume: bool = False,
+        session: ResearchSession | None = None,
     ) -> ManagerReport:
         """Run a complete research session.
 
@@ -1275,37 +1378,51 @@ Be thorough and insightful. Note where findings have lower confidence."""
             session_id: Session ID for persistence (7-char hex)
             time_limit_minutes: Time budget for research
             use_parallel_init: If True, start with parallel decomposition phase
+            resume: If True, restore state from DB and continue
+            session: Existing session object (required if resume=True)
         """
         self.research_goal = goal
         self.session_id = session_id
         self.knowledge_graph.session_id = session_id
         self.time_limit_minutes = time_limit_minutes
-        self.start_time = datetime.now()
+        self._current_phase = "init"
 
-        # Initialize decision logger for audit trail
-        await init_decision_logger(self.db)
+        if resume and session:
+            # Resume from checkpoint
+            await self.restore_state(session)
+            session.paused_at = None
+            session.status = "running"
+            await self.db.update_session(session)
+            self._current_phase = "react_loop"
+        else:
+            # Fresh start
+            self.start_time = datetime.now()
 
-        # Initialize memory for this session
-        await self.memory.add_message(
-            role="user",
-            content=f"Research goal: {goal}",
-            metadata={"session_id": session_id}
-        )
+            # Initialize decision logger for audit trail
+            await init_decision_logger(self.db)
 
-        # Phase 1: Parallel initial research (if enabled and pool available)
-        if use_parallel_init and self.intern_pool:
-            await self._run_parallel_initial_research(goal, max_aspects=self.pool_size)
-
-        # Initialize with the main goal as the first topic (if not enough findings yet)
-        if len(self.all_findings) < 5:
-            initial_topic = await self.db.create_topic(
-                session_id=session_id,
-                topic=goal,
-                depth=0,
-                priority=10,
+            # Initialize memory for this session
+            await self.memory.add_message(
+                role="user",
+                content=f"Research goal: {goal}",
+                metadata={"session_id": session_id}
             )
-            async with self._state_lock:
-                self.topics_queue.append(initial_topic)
+
+            # Phase 1: Parallel initial research (if enabled and pool available)
+            if use_parallel_init and self.intern_pool:
+                self._current_phase = "parallel_init"
+                await self._run_parallel_initial_research(goal, max_aspects=self.pool_size)
+
+            # Initialize with the main goal as the first topic (if not enough findings yet)
+            if len(self.all_findings) < 5:
+                initial_topic = await self.db.create_topic(
+                    session_id=session_id,
+                    topic=goal,
+                    depth=0,
+                    priority=10,
+                )
+                async with self._state_lock:
+                    self.topics_queue.append(initial_topic)
 
         context = {
             "goal": goal,
@@ -1313,7 +1430,31 @@ Be thorough and insightful. Note where findings have lower confidence."""
         }
 
         # Phase 2: ReAct loop for deeper research
-        result = await self.run(context)
+        self._current_phase = "react_loop"
+
+        # Load session for periodic checkpoints
+        if not session:
+            session = await self.db.get_session(session_id)
+
+        result = await self.run(context, resume=resume)
+
+        # Check if we paused
+        if result.get("paused"):
+            self._current_phase = "react_loop"
+            await self.checkpoint_state(session)
+            # Return partial report
+            return ManagerReport(
+                summary="Research paused. Progress has been saved and can be resumed.",
+                key_findings=self.all_findings[:20],
+                topics_explored=[t.topic for t in self.completed_topics],
+                topics_remaining=[t.topic for t in self.topics_queue],
+                quality_assessment="",
+                recommended_next_steps=["Resume research to continue"],
+                time_elapsed_minutes=self._get_elapsed_minutes(),
+                time_remaining_minutes=self.time_limit_minutes - self._get_elapsed_minutes(),
+            )
+
+        self._current_phase = "done"
 
         # Store final summary in external memory
         await self.external_memory.store(

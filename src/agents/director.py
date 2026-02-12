@@ -166,14 +166,16 @@ When presenting results:
         time_limit_minutes: int = 60,
         skip_clarification: bool = False,
         existing_session_id: str | None = None,
+        resume: bool = False,
     ) -> ManagerReport:
-        """Start a new research session.
+        """Start a new research session or resume a paused/crashed one.
 
         Args:
             goal: The research goal/question to investigate
             time_limit_minutes: Maximum time for the research session
             skip_clarification: Skip pre-research clarification questions
             existing_session_id: Optional existing session ID to use (for UI/API)
+            resume: If True, resume a paused or crashed session
 
         Returns:
             ManagerReport with findings and recommendations
@@ -182,27 +184,41 @@ When presenting results:
         self.interaction.reset()
         reset_cost_tracker()
 
-        # Clarify goal if enabled (skip when using existing session from UI)
-        if not skip_clarification and self.interaction_config.enable_clarification and not existing_session_id:
-            effective_goal = await self.clarify_research_goal(goal)
+        if resume and existing_session_id:
+            # Resume flow: load session, skip clarification
+            self.current_session = await self.db.get_session(existing_session_id)
+            if not self.current_session:
+                raise ValueError(f"Session {existing_session_id} not found")
+            if self.current_session.status not in ("paused", "crashed"):
+                raise ValueError(
+                    f"Session {existing_session_id} is "
+                    f"{self.current_session.status}, not paused/crashed"
+                )
+            effective_goal = self.current_session.goal
+            time_limit_minutes = self.current_session.time_limit_minutes
         else:
-            effective_goal = goal
+            # Clarify goal if enabled (skip when using existing session from UI)
+            if not skip_clarification and self.interaction_config.enable_clarification and not existing_session_id:
+                effective_goal = await self.clarify_research_goal(goal)
+            else:
+                effective_goal = goal
 
         # Start input listener AFTER clarification is done
         await self._start_input_listener()
 
-        # Use existing session or create new one
-        if existing_session_id:
-            # Load existing session from database (created by API)
-            self.current_session = await self.db.get_session(existing_session_id)
-            if not self.current_session:
-                raise ValueError(f"Session {existing_session_id} not found")
-        else:
-            # Create new session (CLI flow)
-            self.current_session = await self.db.create_session(
-                goal=effective_goal,
-                time_limit_minutes=time_limit_minutes,
-            )
+        if not resume:
+            # Use existing session or create new one
+            if existing_session_id:
+                # Load existing session from database (created by API)
+                self.current_session = await self.db.get_session(existing_session_id)
+                if not self.current_session:
+                    raise ValueError(f"Session {existing_session_id} not found")
+            else:
+                # Create new session (CLI flow)
+                self.current_session = await self.db.create_session(
+                    goal=effective_goal,
+                    time_limit_minutes=time_limit_minutes,
+                )
 
         # Set session ID on all agents for WebSocket events
         self.session_id = self.current_session.id
@@ -213,12 +229,20 @@ When presenting results:
 
         # Run research with progress display
         try:
-            report = await self._run_with_progress(effective_goal, time_limit_minutes)
+            report = await self._run_with_progress(
+                effective_goal, time_limit_minutes, resume=resume
+            )
+
+            # Check if we paused (don't mark as completed)
+            if self.current_session.status == "paused":
+                self.console.print("\n[yellow]Research paused. Progress saved.[/yellow]")
+                return report
 
             # Update session
             self.current_session.status = "completed"
             self.current_session.ended_at = datetime.now()
             self.current_session.total_findings = len(report.key_findings)
+            self.current_session.phase = "done"
             await self.db.update_session(self.current_session)
 
             # Display results
@@ -249,8 +273,14 @@ When presenting results:
             if self._owns_db and self.db:
                 await self.db.close()
 
+    def pause_research(self) -> None:
+        """Request the research to pause gracefully (saves state for resume)."""
+        self.manager.pause()
+        self.intern.pause()
+        self._log("Pause requested - finishing current operation")
+
     async def _run_with_progress(
-        self, goal: str, time_limit_minutes: int
+        self, goal: str, time_limit_minutes: int, resume: bool = False
     ) -> ManagerReport:
         """Run research with progress display."""
         self._progress = Progress(
@@ -262,8 +292,9 @@ When presenting results:
         )
 
         with self._progress as progress:
+            label = "Resuming" if resume else "Researching"
             task = progress.add_task(
-                f"[cyan]Researching: {goal[:50]}...",
+                f"[cyan]{label}: {goal[:50]}...",
                 total=None,
             )
 
@@ -283,9 +314,17 @@ When presenting results:
                 goal=goal,
                 session_id=self.current_session.id,
                 time_limit_minutes=time_limit_minutes,
+                resume=resume,
+                session=self.current_session if resume else None,
             )
 
-            progress.update(task, description="[green]Research complete!")
+            # Check if paused
+            if self.manager._pause_requested:
+                progress.update(task, description="[yellow]Research paused")
+                # Refresh session from DB (checkpoint_state updated it)
+                self.current_session = await self.db.get_session(self.current_session.id)
+            else:
+                progress.update(task, description="[green]Research complete!")
             self._progress = None
 
             return report
@@ -584,6 +623,7 @@ class ResearchHarness:
         goal: str,
         time_limit_minutes: int = 60,
         existing_session_id: str | None = None,
+        resume: bool = False,
     ) -> ManagerReport:
         """Run a research session.
 
@@ -591,6 +631,7 @@ class ResearchHarness:
             goal: The research question or topic to investigate
             time_limit_minutes: Maximum time for the session (default: 60)
             existing_session_id: Optional existing session ID (for UI/API)
+            resume: If True, resume a paused/crashed session
 
         Returns:
             ManagerReport with findings and analysis
@@ -601,7 +642,8 @@ class ResearchHarness:
         return await self.director.start_research(
             goal,
             time_limit_minutes,
-            existing_session_id=existing_session_id
+            existing_session_id=existing_session_id,
+            resume=resume,
         )
 
     def stop(self) -> None:

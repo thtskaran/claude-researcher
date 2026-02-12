@@ -20,9 +20,11 @@ class ResearchSessionResponse(BaseModel):
     session_id: str
     goal: str
     time_limit: int
-    status: str  # 'running', 'completed', 'paused', 'error'
+    status: str  # 'running', 'completed', 'paused', 'crashed', 'error'
     created_at: datetime
     completed_at: datetime | None = None
+    elapsed_seconds: float = 0.0
+    paused_at: datetime | None = None
 
 
 class AgentEvent(BaseModel):

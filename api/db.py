@@ -23,6 +23,10 @@ class SessionRecord(BaseModel):
     total_findings: int = 0
     total_searches: int = 0
     depth_reached: int = 0
+    elapsed_seconds: float = 0.0
+    paused_at: datetime | None = None
+    iteration_count: int = 0
+    phase: str = "init"
 
 
 class APIDatabase:
@@ -53,7 +57,11 @@ class APIDatabase:
                 status TEXT DEFAULT 'active',
                 total_findings INTEGER DEFAULT 0,
                 total_searches INTEGER DEFAULT 0,
-                depth_reached INTEGER DEFAULT 0
+                depth_reached INTEGER DEFAULT 0,
+                elapsed_seconds REAL DEFAULT 0.0,
+                paused_at TEXT,
+                iteration_count INTEGER DEFAULT 0,
+                phase TEXT DEFAULT 'init'
             );
 
             CREATE TABLE IF NOT EXISTS topics (
@@ -211,6 +219,10 @@ class APIDatabase:
                 total_findings=row["total_findings"],
                 total_searches=row["total_searches"],
                 depth_reached=row["depth_reached"],
+                elapsed_seconds=row["elapsed_seconds"] or 0.0,
+                paused_at=datetime.fromisoformat(row["paused_at"]) if row["paused_at"] else None,
+                iteration_count=row["iteration_count"] or 0,
+                phase=row["phase"] or "init",
             ))
 
         return sessions
@@ -235,6 +247,10 @@ class APIDatabase:
             total_findings=row["total_findings"],
             total_searches=row["total_searches"],
             depth_reached=row["depth_reached"],
+            elapsed_seconds=row["elapsed_seconds"] or 0.0,
+            paused_at=datetime.fromisoformat(row["paused_at"]) if row["paused_at"] else None,
+            iteration_count=row["iteration_count"] or 0,
+            phase=row["phase"] or "init",
         )
 
     async def create_session(self, goal: str, time_limit: int = 60) -> SessionRecord:

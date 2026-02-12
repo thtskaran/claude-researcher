@@ -17,6 +17,8 @@ interface Session {
   status: string;
   created_at: string;
   completed_at?: string | null;
+  elapsed_seconds?: number;
+  paused_at?: string | null;
 }
 
 const tabs = [
@@ -61,11 +63,14 @@ export default function SessionDetail() {
   }, []);
 
   useEffect(() => {
-    if (!session || session.status === "completed" || session.status === "error") return;
+    if (!session) return;
+    // Keep polling for running, paused (might be transitioning), and crashed sessions
+    const terminalStatuses = ["completed", "error", "interrupted"];
+    if (terminalStatuses.includes(session.status)) return;
     const interval = setInterval(() => {
       fetchSession();
       fetchStats();
-    }, 10000);
+    }, 5000);
     return () => clearInterval(interval);
   }, [session?.status]);
 
@@ -121,6 +126,41 @@ export default function SessionDetail() {
     }
   };
 
+  const [actionPending, setActionPending] = useState(false);
+
+  const handlePause = async () => {
+    setActionPending(true);
+    try {
+      const res = await fetch(`/api/research/${sessionId}/pause`, { method: "POST" });
+      if (res.ok) {
+        // Poll until status changes to paused
+        const poll = setInterval(async () => {
+          await fetchSession();
+        }, 2000);
+        setTimeout(() => clearInterval(poll), 30000);
+      }
+    } catch (err) {
+      console.error("Failed to pause:", err);
+    } finally {
+      setActionPending(false);
+    }
+  };
+
+  const handleResume = async () => {
+    setActionPending(true);
+    try {
+      const res = await fetch(`/api/research/${sessionId}/resume`, { method: "POST" });
+      if (res.ok) {
+        // Start polling for updates
+        await fetchSession();
+      }
+    } catch (err) {
+      console.error("Failed to resume:", err);
+    } finally {
+      setActionPending(false);
+    }
+  };
+
   const handleQuestionSubmit = (response: string) => {
     console.log("Question answered:", response);
     setPendingQuestion(null);
@@ -155,10 +195,20 @@ export default function SessionDetail() {
   }
 
   const isRunning = session.status === "running" || session.status === "pending";
+  const isPaused = session.status === "paused";
+  const isCrashed = session.status === "crashed";
+  const isResumable = isPaused || isCrashed;
+
   const elapsed = isRunning
     ? getElapsedTime(session.created_at, nowTick)
-    : getDuration(session.created_at, session.completed_at || null);
-  const remaining = getRemainingTime(session.created_at, session.time_limit, nowTick);
+    : session.elapsed_seconds && session.elapsed_seconds > 0
+      ? formatSeconds(session.elapsed_seconds)
+      : getDuration(session.created_at, session.completed_at || null);
+  const remaining = isRunning
+    ? getRemainingTimeWithElapsed(session.time_limit, session.elapsed_seconds || 0, session.created_at, nowTick)
+    : isResumable && session.elapsed_seconds
+      ? formatSeconds(session.time_limit * 60 - session.elapsed_seconds)
+      : getRemainingTime(session.created_at, session.time_limit, nowTick);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -200,10 +250,60 @@ export default function SessionDetail() {
                 )}
                 {session.status}
               </span>
+              {isRunning && (
+                <button onClick={handlePause} disabled={actionPending} className="btn btn-secondary text-xs py-1 px-3">
+                  <span className="material-symbols-outlined text-sm">pause</span>
+                  Pause
+                </button>
+              )}
+              {isResumable && (
+                <button onClick={handleResume} disabled={actionPending} className="btn btn-primary text-xs py-1 px-3">
+                  <span className="material-symbols-outlined text-sm">play_arrow</span>
+                  Resume
+                </button>
+              )}
             </div>
           </div>
         </div>
       </header>
+
+      {/* Crash Banner */}
+      {isCrashed && (
+        <div className="border-b border-coral/30 bg-coral-soft">
+          <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-coral">warning</span>
+              <div>
+                <p className="text-sm font-medium text-coral">This research session crashed unexpectedly</p>
+                <p className="text-xs text-ink-secondary">Progress was saved. You can resume from the last checkpoint.</p>
+              </div>
+            </div>
+            <button onClick={handleResume} disabled={actionPending} className="btn btn-primary text-xs py-1 px-3">
+              <span className="material-symbols-outlined text-sm">play_arrow</span>
+              Resume Research
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Paused Banner */}
+      {isPaused && (
+        <div className="border-b border-gold/30 bg-gold-soft">
+          <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-gold">pause_circle</span>
+              <div>
+                <p className="text-sm font-medium text-gold">Research is paused</p>
+                <p className="text-xs text-ink-secondary">All progress has been saved. Resume when ready.</p>
+              </div>
+            </div>
+            <button onClick={handleResume} disabled={actionPending} className="btn btn-primary text-xs py-1 px-3">
+              <span className="material-symbols-outlined text-sm">play_arrow</span>
+              Resume
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="border-b border-edge bg-card/20">
@@ -391,7 +491,10 @@ function getStatusBadgeClass(status: string): string {
     case "completed":
       return "badge-success";
     case "error":
+    case "crashed":
       return "badge-error";
+    case "paused":
+      return "badge-warning";
     default:
       return "badge-system";
   }
@@ -441,4 +544,29 @@ function getDuration(startDateString: string, endDateString: string | null): str
   if (diffSecs < 60) return `${diffSecs}s`;
   if (diffMins < 60) return `${diffMins}m ${diffSecs % 60}s`;
   return `${diffHours}h ${diffMins % 60}m`;
+}
+
+function formatSeconds(totalSecs: number): string {
+  const secs = Math.max(0, Math.floor(totalSecs));
+  const mins = Math.floor(secs / 60);
+  const hrs = Math.floor(mins / 60);
+
+  if (hrs > 0) return `${hrs}h ${mins % 60}m`;
+  if (mins > 0) return `${mins}m ${secs % 60}s`;
+  return `${secs}s`;
+}
+
+function getRemainingTimeWithElapsed(limitMins: number, elapsedSecs: number, startDate: string, nowMs: number): string {
+  // For a running session that was previously resumed, account for both
+  // the accumulated elapsed_seconds and the time since the current run started
+  const start = new Date(startDate);
+  const currentRunSecs = (nowMs - start.getTime()) / 1000;
+  // The elapsed_seconds from DB already includes previous runs. During a running session,
+  // the manager adjusts start_time so _get_elapsed_minutes works correctly,
+  // but the DB elapsed_seconds may lag. Use whichever is greater.
+  const totalElapsed = Math.max(elapsedSecs, currentRunSecs);
+  const remainSecs = Math.max(0, limitMins * 60 - totalElapsed);
+  const mins = Math.floor(remainSecs / 60);
+  const secs = Math.floor(remainSecs % 60);
+  return `${mins}:${String(secs).padStart(2, "0")}`;
 }

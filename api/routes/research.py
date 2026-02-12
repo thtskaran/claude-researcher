@@ -17,8 +17,9 @@ if src_path not in sys.path:
 
 router = APIRouter(prefix="/api/research", tags=["research"])
 
-# Track running research sessions
+# Track running research sessions and their harnesses
 running_research: dict[str, asyncio.Task] = {}
+running_harnesses: dict[str, object] = {}  # session_id -> ResearchHarness
 
 
 class StartResearchRequest(BaseModel):
@@ -120,6 +121,9 @@ async def run_research_background(session_id: str, goal: str, time_limit: int, a
         ) as harness:
             print("✓ Harness initialized")
 
+            # Save harness reference so pause endpoint can signal it
+            running_harnesses[session_id] = harness
+
             # Replace CLI interaction with UI interaction if mid-questions enabled
             if enable_mid_questions:
                 print("🔄 Setting up UI interaction handler...")
@@ -141,6 +145,12 @@ async def run_research_background(session_id: str, goal: str, time_limit: int, a
                 time_limit_minutes=time_limit,
                 existing_session_id=session_id
             )
+
+            # Check if research was paused (don't overwrite status)
+            session = await db.get_session(session_id)
+            if session and session.status == "paused":
+                print("⏸️  Research paused. State saved.")
+                return result
 
             print("✅ Research completed successfully!")
             findings_count = len(result.key_findings) if hasattr(result, 'key_findings') else 'N/A'
@@ -176,6 +186,9 @@ async def run_research_background(session_id: str, goal: str, time_limit: int, a
         if session_id in running_research:
             del running_research[session_id]
             print("   ✓ Removed from running_research")
+        if session_id in running_harnesses:
+            del running_harnesses[session_id]
+            print("   ✓ Removed from running_harnesses")
 
 
 @router.post("/start", response_model=ResearchStatusResponse)
@@ -278,6 +291,118 @@ async def stop_research(session_id: str):
     del running_research[session_id]
 
     return {"status": "stopped", "session_id": session_id}
+
+
+@router.post("/{session_id}/pause")
+async def pause_research(session_id: str):
+    """Pause a running research session. State is saved for later resume."""
+    harness = running_harnesses.get(session_id)
+    if not harness or not hasattr(harness, "director"):
+        raise HTTPException(status_code=404, detail="No running research found for this session")
+
+    harness.director.pause_research()
+    return {"status": "pausing", "session_id": session_id}
+
+
+async def run_research_resume_background(session_id: str):
+    """Resume a paused or crashed research session in the background."""
+    print(f"\n{'='*60}")
+    print("🔄 RESUMING BACKGROUND RESEARCH")
+    print(f"   Session ID: {session_id}")
+    print(f"{'='*60}\n")
+
+    try:
+        from api.db import get_db
+        from src.agents.director import ResearchHarness
+        from src.interaction import InteractionConfig
+
+        db = await get_db()
+        session = await db.get_session(session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+
+        # Update status to running
+        await db.update_session_status(session_id, "running")
+
+        interaction_config = InteractionConfig(
+            enable_clarification=False,
+            autonomous_mode=True,
+        )
+
+        async with ResearchHarness(
+            db_path="research.db",
+            interaction_config=interaction_config,
+        ) as harness:
+            # Save harness reference
+            running_harnesses[session_id] = harness
+
+            print(f"🔍 Resuming research: {session.goal}")
+
+            result = await harness.research(
+                goal=session.goal,
+                time_limit_minutes=session.time_limit_minutes,
+                existing_session_id=session_id,
+                resume=True,
+            )
+
+            # Check if paused again
+            refreshed = await db.get_session(session_id)
+            if refreshed and refreshed.status == "paused":
+                print("⏸️  Research paused again. State saved.")
+                return result
+
+            print("✅ Resumed research completed successfully!")
+
+            from datetime import datetime
+            await db.update_session_status(session_id, "completed", ended_at=datetime.now())
+            return result
+
+    except Exception as e:
+        print(f"❌ ERROR resuming research for {session_id}: {e}")
+        import traceback
+        traceback.print_exc()
+
+        try:
+            from api.db import get_db
+            db = await get_db()
+            await db.update_session_status(session_id, "error")
+        except Exception:
+            pass
+        raise
+
+    finally:
+        print(f"🧹 Cleaning up resumed session {session_id}")
+        if session_id in running_research:
+            del running_research[session_id]
+        if session_id in running_harnesses:
+            del running_harnesses[session_id]
+
+
+@router.post("/{session_id}/resume", response_model=ResearchStatusResponse)
+async def resume_research(session_id: str):
+    """Resume a paused or crashed research session."""
+    from api.db import get_db
+
+    db = await get_db()
+    session = await db.get_session(session_id)
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.status not in ("paused", "crashed"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Session is '{session.status}', not 'paused' or 'crashed'"
+        )
+
+    # Start research resume in background
+    task = asyncio.create_task(run_research_resume_background(session_id))
+    running_research[session_id] = task
+
+    return ResearchStatusResponse(
+        session_id=session_id,
+        status="running",
+        message=f"Research resuming. Connect to WebSocket /ws/{session_id} for live updates.",
+    )
 
 
 class AnswerQuestionRequest(BaseModel):

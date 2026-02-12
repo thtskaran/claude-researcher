@@ -27,7 +27,9 @@ async def create_session(session: ResearchSessionCreate):
         time_limit=db_session.time_limit_minutes,
         status=db_session.status,
         created_at=db_session.started_at,
-        completed_at=db_session.ended_at
+        completed_at=db_session.ended_at,
+        elapsed_seconds=db_session.elapsed_seconds,
+        paused_at=db_session.paused_at,
     )
 
 
@@ -44,7 +46,9 @@ async def list_sessions(limit: int = 100):
             time_limit=s.time_limit_minutes,
             status=s.status,
             created_at=s.started_at,
-            completed_at=s.ended_at
+            completed_at=s.ended_at,
+            elapsed_seconds=s.elapsed_seconds,
+            paused_at=s.paused_at,
         )
         for s in sessions
     ]
@@ -65,7 +69,9 @@ async def get_session(session_id: str):
         time_limit=session.time_limit_minutes,
         status=session.status,
         created_at=session.started_at,
-        completed_at=session.ended_at
+        completed_at=session.ended_at,
+        elapsed_seconds=session.elapsed_seconds,
+        paused_at=session.paused_at,
     )
 
 

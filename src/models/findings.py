@@ -73,10 +73,16 @@ class ResearchSession(BaseModel):
     time_limit_minutes: int = 60
     started_at: datetime = Field(default_factory=datetime.now)
     ended_at: datetime | None = None
-    status: str = "active"  # active, paused, completed, timeout
+    status: str = "active"  # active, running, paused, crashed, completed, error, interrupted
     total_findings: int = 0
     total_searches: int = 0
     depth_reached: int = 0
+
+    # Pause/resume/crash recovery fields
+    elapsed_seconds: float = 0.0  # Accumulated research time across pause/resume cycles
+    paused_at: datetime | None = None  # Timestamp when last paused (None if running)
+    iteration_count: int = 0  # Manager ReAct loop iteration for resume
+    phase: str = "init"  # init | parallel_init | react_loop | synthesis | done
 
 
 class AgentMessage(BaseModel):

@@ -152,6 +152,7 @@ class BaseAgent(ABC):
         self.console = console or Console()
         self.state = AgentState()
         self._stop_requested = False
+        self._pause_requested = False
         self._callbacks: list[Callable] = []
         self.session_id = session_id  # For WebSocket events
 
@@ -181,16 +182,23 @@ class BaseAgent(ABC):
         """Check if the agent has completed its task."""
         pass
 
-    async def run(self, initial_context: dict[str, Any]) -> dict[str, Any]:
-        """Run the ReAct loop until completion or max iterations."""
-        context = initial_context.copy()
-        self.state = AgentState()
+    async def run(self, initial_context: dict[str, Any], resume: bool = False) -> dict[str, Any]:
+        """Run the ReAct loop until completion or max iterations.
 
-        self._log(f"Starting {self.role.value} agent")
+        Args:
+            initial_context: Context dict for the loop
+            resume: If True, skip state reset (preserves iteration count etc.)
+        """
+        context = initial_context.copy()
+        if not resume:
+            self.state = AgentState()
+
+        self._log(f"{'Resuming' if resume else 'Starting'} {self.role.value} agent")
 
         while (
             not self.is_done(context)
             and not self._stop_requested
+            and not self._pause_requested
             and self.state.iteration < self.config.max_iterations
         ):
             self.state.iteration += 1
@@ -263,8 +271,16 @@ class BaseAgent(ABC):
 
                 break
 
-        self.state.is_complete = self.is_done(context)
-        self._log(f"Agent completed: iterations={self.state.iteration}, actions={self.state.total_actions}")
+        if self._pause_requested:
+            context["paused"] = True
+            self._log("Agent paused")
+        else:
+            self.state.is_complete = self.is_done(context)
+        status = "paused" if self._pause_requested else "completed"
+        self._log(
+            f"Agent {status}: iterations={self.state.iteration}, "
+            f"actions={self.state.total_actions}"
+        )
 
         return context
 
@@ -272,6 +288,11 @@ class BaseAgent(ABC):
         """Request the agent to stop."""
         self._stop_requested = True
         self._log("Stop requested")
+
+    def pause(self) -> None:
+        """Request the agent to pause after the current iteration."""
+        self._pause_requested = True
+        self._log("Pause requested")
 
     def add_callback(self, callback: Callable) -> None:
         """Add a callback to be called after each iteration."""

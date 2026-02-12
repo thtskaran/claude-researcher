@@ -37,8 +37,9 @@ export default function Home() {
     fetchSessions();
   }, []);
 
-  const activeSessions = sessions.filter((s) => s.status === "running" || s.status === "pending");
-  const completedSessions = sessions.filter((s) => s.status !== "running" && s.status !== "pending");
+  const activeStatuses = ["running", "pending", "paused", "crashed"];
+  const activeSessions = sessions.filter((s) => activeStatuses.includes(s.status));
+  const completedSessions = sessions.filter((s) => !activeStatuses.includes(s.status));
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -165,17 +166,27 @@ export default function Home() {
 
 function SessionCard({ session, onClick }: { session: Session; onClick: () => void }) {
   const isActive = session.status === "running" || session.status === "pending";
+  const isPaused = session.status === "paused";
+  const isCrashed = session.status === "crashed";
   const timeDisplay = isActive
     ? getElapsedTime(session.created_at)
     : getDuration(session.created_at, session.completed_at);
+
+  const dotColor = isCrashed ? "bg-coral" : isPaused ? "bg-gold" : "bg-olive";
+  const textColor = isCrashed ? "text-coral" : isPaused ? "text-gold" : isActive ? "text-olive" : "text-ink-muted";
+  const topBarColor = isCrashed
+    ? "from-coral/40 via-coral to-coral/40"
+    : isPaused
+      ? "from-gold/40 via-gold to-gold/40"
+      : "from-sage/40 via-sage to-sage/40";
 
   return (
     <button
       onClick={onClick}
       className="card card-hover text-left w-full group relative overflow-hidden"
     >
-      {isActive && (
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-sage/40 via-sage to-sage/40" />
+      {(isActive || isPaused || isCrashed) && (
+        <div className={`absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r ${topBarColor}`} />
       )}
 
       <div className="flex items-start justify-between gap-3 mb-3">
@@ -185,10 +196,12 @@ function SessionCard({ session, onClick }: { session: Session; onClick: () => vo
               <span className="animate-soft-pulse absolute inline-flex h-full w-full rounded-full bg-olive opacity-75" />
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-olive" />
             </span>
+          ) : isPaused || isCrashed ? (
+            <span className={`status-dot ${dotColor}`} />
           ) : (
             <span className="status-dot status-dot-idle" />
           )}
-          <span className={`text-xs font-mono font-medium ${isActive ? "text-olive" : "text-ink-muted"}`}>
+          <span className={`text-xs font-mono font-medium ${textColor}`}>
             {session.status}
           </span>
         </div>
@@ -203,7 +216,7 @@ function SessionCard({ session, onClick }: { session: Session; onClick: () => vo
 
       <div className="flex items-center justify-between text-xs text-ink-muted font-mono">
         <span className="flex items-center gap-1">
-          <span className="material-symbols-outlined text-[14px]">{isActive ? "schedule" : "timer"}</span>
+          <span className="material-symbols-outlined text-[14px]">{isActive ? "schedule" : isPaused ? "pause" : isCrashed ? "warning" : "timer"}</span>
           {timeDisplay}
         </span>
         <span className="flex items-center gap-1">
