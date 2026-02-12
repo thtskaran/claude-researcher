@@ -218,7 +218,7 @@ class BaseAgent(ABC):
                         thought=thought[:500]  # Truncate for display
                     )
 
-                if self._stop_requested:
+                if self._stop_requested or self._pause_requested:
                     break
 
                 # Act
@@ -237,7 +237,7 @@ class BaseAgent(ABC):
                         details={"iteration": self.state.iteration}
                     )
 
-                if self._stop_requested:
+                if self._stop_requested or self._pause_requested:
                     break
 
                 # Observe

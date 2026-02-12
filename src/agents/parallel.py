@@ -63,6 +63,8 @@ class ParallelInternPool:
         self.console = console or Console()
         self.verification_pipeline = verification_pipeline
         self._current_session_id: str | None = None
+        self._pause_requested = False
+        self._active_interns: list[InternAgent] = []
 
         # Note: We no longer store intern instances - they are created fresh per directive
         # to prevent state corruption from concurrent access
@@ -84,6 +86,13 @@ class ParallelInternPool:
         start_time = datetime.now()
         self._current_session_id = session_id
 
+        # Check if already paused before starting
+        if self._pause_requested:
+            return ParallelResearchResult(
+                reports=[], total_findings=[], total_searches=0,
+                execution_time_seconds=0, errors=["Paused before start"],
+            )
+
         # Limit directives to pool size
         active_directives = directives[:self.pool_size]
 
@@ -92,6 +101,7 @@ class ParallelInternPool:
         # Create tasks for parallel execution
         # Each task gets a FRESH intern instance to prevent state corruption
         tasks = []
+        self._active_interns = []
         for i, directive in enumerate(active_directives):
             # Create a fresh intern for each directive with unique ID
             intern = InternAgent(
@@ -101,11 +111,16 @@ class ParallelInternPool:
                 self.verification_pipeline,
                 agent_id=f"intern_{i}"  # Unique ID for each intern
             )
+            # Propagate pause flag to new interns
+            if self._pause_requested:
+                intern._pause_requested = True
+            self._active_interns.append(intern)
             task = self._execute_with_error_handling(intern, directive, session_id, i)
             tasks.append(task)
 
         # Execute all tasks in parallel
         results = await asyncio.gather(*tasks, return_exceptions=True)
+        self._active_interns = []
 
         # Aggregate results
         reports = []
@@ -282,9 +297,17 @@ Return ONLY a JSON array of {max_aspects} aspects:
                 )
             )
 
+    def pause(self) -> None:
+        """Request all active interns to pause."""
+        self._pause_requested = True
+        for intern in self._active_interns:
+            intern.pause()
+        self._log("Pause requested for all active interns")
+
     def reset_all(self) -> None:
-        """Reset method - no-op since interns are created fresh per directive."""
-        pass  # Interns are created fresh per directive, no state to reset
+        """Reset method - clears pause flag since interns are created fresh."""
+        self._pause_requested = False
+        self._active_interns = []
 
     def set_verification_pipeline(self, pipeline: "VerificationPipeline") -> None:
         """Set the verification pipeline for future intern instances.

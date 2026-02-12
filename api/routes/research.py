@@ -301,6 +301,19 @@ async def pause_research(session_id: str):
         raise HTTPException(status_code=404, detail="No running research found for this session")
 
     harness.director.pause_research()
+
+    # Immediately emit a WebSocket event so the UI gets feedback
+    try:
+        from src.events import emit_agent_event
+        await emit_agent_event(
+            session_id=session_id,
+            event_type="system",
+            agent="director",
+            data={"message": "Pause requested - finishing current operation..."},
+        )
+    except Exception:
+        pass
+
     return {"status": "pausing", "session_id": session_id}
 
 
@@ -321,8 +334,8 @@ async def run_research_resume_background(session_id: str):
         if not session:
             raise ValueError(f"Session {session_id} not found")
 
-        # Update status to running
-        await db.update_session_status(session_id, "running")
+        # Don't update status here - the Director's resume flow handles it
+        # after loading and validating the session status
 
         interaction_config = InteractionConfig(
             enable_clarification=False,

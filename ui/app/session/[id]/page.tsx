@@ -127,20 +127,28 @@ export default function SessionDetail() {
   };
 
   const [actionPending, setActionPending] = useState(false);
+  const [isPausing, setIsPausing] = useState(false);
+
+  // Clear isPausing when status actually changes to paused
+  useEffect(() => {
+    if (session?.status === "paused" || session?.status === "crashed") {
+      setIsPausing(false);
+    }
+  }, [session?.status]);
 
   const handlePause = async () => {
     setActionPending(true);
+    setIsPausing(true);
     try {
-      const res = await fetch(`/api/research/${sessionId}/pause`, { method: "POST" });
-      if (res.ok) {
-        // Poll until status changes to paused
-        const poll = setInterval(async () => {
-          await fetchSession();
-        }, 2000);
-        setTimeout(() => clearInterval(poll), 30000);
+      const res = await fetch(`/api/research/${sessionId}/pause`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        setIsPausing(false);
       }
     } catch (err) {
       console.error("Failed to pause:", err);
+      setIsPausing(false);
     } finally {
       setActionPending(false);
     }
@@ -149,9 +157,10 @@ export default function SessionDetail() {
   const handleResume = async () => {
     setActionPending(true);
     try {
-      const res = await fetch(`/api/research/${sessionId}/resume`, { method: "POST" });
+      const res = await fetch(`/api/research/${sessionId}/resume`, {
+        method: "POST",
+      });
       if (res.ok) {
-        // Start polling for updates
         await fetchSession();
       }
     } catch (err) {
@@ -250,15 +259,35 @@ export default function SessionDetail() {
                 )}
                 {session.status}
               </span>
-              {isRunning && (
-                <button onClick={handlePause} disabled={actionPending} className="btn btn-secondary text-xs py-1 px-3">
-                  <span className="material-symbols-outlined text-sm">pause</span>
+              {isRunning && !isPausing && (
+                <button
+                  onClick={handlePause}
+                  disabled={actionPending}
+                  className="btn btn-secondary text-xs py-1 px-3"
+                >
+                  <span className="material-symbols-outlined text-sm">
+                    pause
+                  </span>
                   Pause
                 </button>
               )}
+              {isPausing && !isPaused && (
+                <button disabled className="btn btn-secondary text-xs py-1 px-3 opacity-70">
+                  <span className="material-symbols-outlined text-sm animate-spin">
+                    progress_activity
+                  </span>
+                  Pausing...
+                </button>
+              )}
               {isResumable && (
-                <button onClick={handleResume} disabled={actionPending} className="btn btn-primary text-xs py-1 px-3">
-                  <span className="material-symbols-outlined text-sm">play_arrow</span>
+                <button
+                  onClick={handleResume}
+                  disabled={actionPending}
+                  className="btn btn-primary text-xs py-1 px-3"
+                >
+                  <span className="material-symbols-outlined text-sm">
+                    play_arrow
+                  </span>
                   Resume
                 </button>
               )}

@@ -277,6 +277,8 @@ When presenting results:
         """Request the research to pause gracefully (saves state for resume)."""
         self.manager.pause()
         self.intern.pause()
+        if self.manager.intern_pool:
+            self.manager.intern_pool.pause()
         self._log("Pause requested - finishing current operation")
 
     async def _run_with_progress(

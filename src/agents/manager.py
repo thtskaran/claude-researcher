@@ -325,6 +325,10 @@ Think step by step about the best next action."""
 
     async def act(self, thought: str, context: dict[str, Any]) -> dict[str, Any]:
         """Execute management actions based on thinking."""
+        # Check if pause was requested before starting any long operation
+        if self._pause_requested:
+            return {"action": "paused"}
+
         # Periodic checkpoint for crash recovery
         await self._maybe_periodic_checkpoint()
 
@@ -347,6 +351,10 @@ Think step by step about the best next action."""
                 self._log(f"  Instructions: {directive.instructions}", style="dim")
                 self._log(f"  Priority: {directive.priority}/10 | Max Searches: {directive.max_searches}", style="dim")
                 self._log("═" * 70, style="bold blue")
+
+                # Check pause before long intern operation
+                if self._pause_requested:
+                    return {"action": "paused"}
 
                 # Execute the directive via the intern
                 intern_report = await self.intern.execute_directive(
@@ -409,6 +417,13 @@ Think step by step about the best next action."""
                     metrics={"findings_count": len(self.all_findings), "completed_topics": len(self.completed_topics)},
                 )
 
+                # Check pause before long parallel operation
+                if self._pause_requested:
+                    # Put topics back in queue
+                    async with self._state_lock:
+                        self.topics_queue = topics_to_run + self.topics_queue
+                    return {"action": "paused"}
+
                 self._log("═" * 70, style="bold blue")
                 self._log(f"[PARALLEL TOPICS] Running {len(topics_to_run)} topics in parallel", style="bold green")
                 for t in topics_to_run:
@@ -456,6 +471,13 @@ Think step by step about the best next action."""
                 priority=topic.priority,
                 max_searches=5,
             )
+
+            # Check pause before long intern operation
+            if self._pause_requested:
+                # Put topic back in queue
+                async with self._state_lock:
+                    self.topics_queue.insert(0, topic)
+                return {"action": "paused"}
 
             self._log("═" * 70, style="bold blue")
             self._log(f"[QUEUED TOPIC] Depth {topic.depth}: {topic.topic}", style="bold green")
@@ -528,6 +550,9 @@ Think step by step about the best next action."""
     async def observe(self, action_result: dict[str, Any]) -> str:
         """Process the result of a management action."""
         action = action_result.get("action")
+
+        if action == "paused":
+            return "Research paused by user request"
 
         if action == "synthesize":
             report: ManagerReport = action_result.get("report")
@@ -1174,6 +1199,10 @@ Be thorough and insightful. Note where findings have lower confidence."""
             for aspect in aspects
         ]
 
+        # Check pause before long parallel operation
+        if self._pause_requested:
+            return
+
         # Execute in parallel
         result = await self.intern_pool.research_parallel(directives, self.session_id)
 
@@ -1234,6 +1263,10 @@ Be thorough and insightful. Note where findings have lower confidence."""
             max_parallel: Maximum number to run at once
         """
         if not self.intern_pool or not topics:
+            return
+
+        # Check pause before starting
+        if self._pause_requested:
             return
 
         # Create directives from topics
@@ -1357,8 +1390,11 @@ Be thorough and insightful. Note where findings have lower confidence."""
         # KG auto-loads from its SQLite DB, just set session_id
         self.knowledge_graph.session_id = session.id
 
-        # Clear pause flag
+        # Clear pause flags
         self._pause_requested = False
+        self.intern._pause_requested = False
+        if self.intern_pool:
+            self.intern_pool._pause_requested = False
 
         self._log("[RESTORE] State restoration complete")
 
@@ -1386,6 +1422,12 @@ Be thorough and insightful. Note where findings have lower confidence."""
         self.knowledge_graph.session_id = session_id
         self.time_limit_minutes = time_limit_minutes
         self._current_phase = "init"
+
+        # Eagerly initialize external memory DB
+        try:
+            await self.external_memory._ensure_initialized()
+        except Exception:
+            pass  # Non-critical
 
         if resume and session:
             # Resume from checkpoint
