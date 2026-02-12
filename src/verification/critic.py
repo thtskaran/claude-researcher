@@ -31,8 +31,11 @@ CRITIQUE_SCHEMA = {
         "issue_type": {
             "type": "string",
             "enum": [
-                "factual", "logical", "temporal",
-                "quantitative", "attribution",
+                "factual",
+                "logical",
+                "temporal",
+                "quantitative",
+                "attribution",
             ],
         },
         "severity": {
@@ -106,31 +109,41 @@ class CRITICVerifier:
         questions_asked = cove_result.questions_asked if cove_result else []
 
         try:
+            # Pre-fetch initial evidence so the first critique is grounded
+            initial_evidence = None
+            if self.search_callback:
+                initial_evidence = await self._external_verify(current_content[:150])
+                if initial_evidence:
+                    external_verification_used = True
+
             while iteration < self.config.max_critic_iterations:
                 iteration += 1
 
-                # Step 1: Critique the current content
+                # Step 1: Critique the content with evidence context
+                evidence_for_critique = initial_evidence if iteration == 1 else None
                 critique = await self._generate_critique(
-                    current_content, source_url
+                    current_content,
+                    source_url,
+                    external_evidence=evidence_for_critique,
                 )
 
-                if not critique.get("needs_correction"):
-                    # Critique says it's fine, we're done
-                    break
-
-                # Step 2: Optionally verify with external search
-                if self.search_callback and critique.get("verify_externally"):
-                    search_results = await self._external_verify(
-                        critique.get("search_query", current_content[:100])
-                    )
+                # Step 2: Always fetch fresh evidence for correction decisions.
+                # Don't let the LLM decide whether to search — external
+                # evidence is the whole point of CRITIC. Without it, CRITIC
+                # degrades into unreliable self-correction.
+                if self.search_callback:
+                    search_query = critique.get("search_query", current_content[:100])
+                    search_results = await self._external_verify(search_query)
                     if search_results:
                         external_verification_used = True
                         critique["external_evidence"] = search_results
 
+                if not critique.get("needs_correction"):
+                    # Critique says it's fine (after seeing evidence), we're done
+                    break
+
                 # Step 3: Generate correction
-                corrected = await self._generate_correction(
-                    current_content, critique
-                )
+                corrected = await self._generate_correction(current_content, critique)
 
                 if corrected and corrected != current_content:
                     corrections.append(
@@ -158,7 +171,9 @@ class CRITICVerifier:
                 original_confidence=original_confidence,
                 verified_confidence=calibration.calibrated_confidence,
                 verification_status=calibration.status,
-                verification_method=VerificationMethod.CRITIC if not cove_result else VerificationMethod.COVE_CRITIC,
+                verification_method=VerificationMethod.CRITIC
+                if not cove_result
+                else VerificationMethod.COVE_CRITIC,
                 questions_asked=questions_asked,
                 consistency_score=consistency_score,
                 kg_support_score=kg_support,
@@ -185,31 +200,47 @@ class CRITICVerifier:
         self,
         content: str,
         source_url: str | None,
+        external_evidence: str | None = None,
     ) -> dict:
-        """Generate critique of the finding content."""
+        """Generate critique of the finding content.
+
+        When external evidence is provided (from web search), the critique
+        is grounded in real data rather than just the LLM's parametric
+        knowledge.
+        """
         source_context = f"\nSource: {source_url}" if source_url else ""
+        evidence_block = ""
+        if external_evidence:
+            evidence_block = (
+                f"\n\nWEB EVIDENCE (use this to evaluate the finding):\n{external_evidence}\n"
+            )
 
         prompt = (
             "Critically analyze this research finding for potential "
             "issues.\n\n"
-            f"FINDING: {content}{source_context}\n\n"
+            f"FINDING: {content}{source_context}"
+            f"{evidence_block}\n\n"
             "Check for:\n"
             "1. Factual accuracy - Are the stated facts verifiable?\n"
             "2. Logical consistency - Are there contradictions?\n"
             "3. Temporal accuracy - Are dates/timeframes plausible?\n"
             "4. Quantitative claims - Are numbers reasonable?\n"
-            "5. Source attribution - Is the claim properly attributed?"
+            "5. Source attribution - Is the claim properly attributed?\n\n"
+            "Always provide a search_query that could verify the core "
+            "claim, even if you think it's correct."
         )
 
         schema_fmt = {"type": "json_schema", "schema": CRITIQUE_SCHEMA}
         try:
             response = await self.llm_callback(
-                prompt, self.config.batch_model,
+                prompt,
+                self.config.batch_model,
                 output_format=schema_fmt,
             )
         except TypeError:
             response = await self.llm_callback(
-                prompt, self.config.batch_model,
+                prompt,
+                self.config.batch_model,
             )
 
         if isinstance(response, dict):
@@ -227,10 +258,12 @@ class CRITICVerifier:
             if results:
                 # Format results for LLM consumption
                 if isinstance(results, list):
-                    return "\n".join([
-                        f"- {r.get('title', '')}: {r.get('snippet', '')[:200]}"
-                        for r in results[:5]
-                    ])
+                    return "\n".join(
+                        [
+                            f"- {r.get('title', '')}: {r.get('snippet', '')[:200]}"
+                            for r in results[:5]
+                        ]
+                    )
                 return str(results)[:1000]
         except Exception:
             pass
@@ -281,8 +314,8 @@ Return ONLY the corrected finding text, no explanation."""
             return None
 
         # Strip markdown code blocks
-        cleaned = re.sub(r'```(?:json)?\s*', '', response).strip()
-        cleaned = re.sub(r'```\s*$', '', cleaned).strip()
+        cleaned = re.sub(r"```(?:json)?\s*", "", response).strip()
+        cleaned = re.sub(r"```\s*$", "", cleaned).strip()
 
         # Strategy 1: Try parsing the whole cleaned response
         try:
@@ -293,7 +326,7 @@ Return ONLY the corrected finding text, no explanation."""
             pass
 
         # Strategy 2: Greedy regex - match from first { to last }
-        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group())
@@ -301,17 +334,17 @@ Return ONLY the corrected finding text, no explanation."""
                 pass
 
         # Strategy 3: Find balanced braces
-        start = cleaned.find('{')
+        start = cleaned.find("{")
         if start >= 0:
             depth = 0
             for i in range(start, len(cleaned)):
-                if cleaned[i] == '{':
+                if cleaned[i] == "{":
                     depth += 1
-                elif cleaned[i] == '}':
+                elif cleaned[i] == "}":
                     depth -= 1
                     if depth == 0:
                         try:
-                            return json.loads(cleaned[start:i + 1])
+                            return json.loads(cleaned[start : i + 1])
                         except json.JSONDecodeError:
                             break
 
@@ -331,40 +364,36 @@ class HighStakesDetector:
 
     HIGH_STAKES_PATTERNS = [
         # Quantitative
-        r'\d+%',
-        r'\$\d+',
-        r'\d+\s*(million|billion|trillion)',
-        r'increased by \d+',
-        r'decreased by \d+',
-
+        r"\d+%",
+        r"\$\d+",
+        r"\d+\s*(million|billion|trillion)",
+        r"increased by \d+",
+        r"decreased by \d+",
         # Causal
-        r'causes',
-        r'leads to',
-        r'results in',
-        r'prevents',
-        r'because of',
-
+        r"causes",
+        r"leads to",
+        r"results in",
+        r"prevents",
+        r"because of",
         # Medical
-        r'treat(s|ed|ment)',
-        r'cures?',
-        r'disease',
-        r'symptom',
-        r'diagnos',
-        r'mortality',
-
+        r"treat(s|ed|ment)",
+        r"cures?",
+        r"disease",
+        r"symptom",
+        r"diagnos",
+        r"mortality",
         # Financial
-        r'invest(ment)?',
-        r'profit',
-        r'revenue',
-        r'stock',
-        r'market cap',
-
+        r"invest(ment)?",
+        r"profit",
+        r"revenue",
+        r"stock",
+        r"market cap",
         # Safety
-        r'danger(ous)?',
-        r'risk',
-        r'harm',
-        r'safe(ty)?',
-        r'warning',
+        r"danger(ous)?",
+        r"risk",
+        r"harm",
+        r"safe(ty)?",
+        r"warning",
     ]
 
     def __init__(self):
@@ -379,15 +408,15 @@ class HighStakesDetector:
         stakes_types = []
         content_lower = content.lower()
 
-        if any(p in content_lower for p in ['%', 'million', 'billion', 'increased', 'decreased']):
+        if any(p in content_lower for p in ["%", "million", "billion", "increased", "decreased"]):
             stakes_types.append("quantitative")
-        if any(p in content_lower for p in ['causes', 'leads to', 'results in', 'prevents']):
+        if any(p in content_lower for p in ["causes", "leads to", "results in", "prevents"]):
             stakes_types.append("causal")
-        if any(p in content_lower for p in ['treat', 'cure', 'disease', 'diagnos', 'mortality']):
+        if any(p in content_lower for p in ["treat", "cure", "disease", "diagnos", "mortality"]):
             stakes_types.append("medical")
-        if any(p in content_lower for p in ['invest', 'profit', 'revenue', 'stock']):
+        if any(p in content_lower for p in ["invest", "profit", "revenue", "stock"]):
             stakes_types.append("financial")
-        if any(p in content_lower for p in ['danger', 'risk', 'harm', 'safe', 'warning']):
+        if any(p in content_lower for p in ["danger", "risk", "harm", "safe", "warning"]):
             stakes_types.append("safety")
 
         return stakes_types

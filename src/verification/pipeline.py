@@ -58,7 +58,9 @@ class VerificationPipeline:
         # independently verify claims via web search instead of relying
         # solely on the LLM's parametric knowledge.
         self.cove = ChainOfVerification(
-            llm_callback, self.config, search_callback=search_callback,
+            llm_callback,
+            self.config,
+            search_callback=search_callback,
         )
         self.critic = CRITICVerifier(llm_callback, search_callback, self.config)
         self.calibrator = ConfidenceCalibrator(self.config)
@@ -104,11 +106,7 @@ class VerificationPipeline:
         # false low scores and mass-rejection.
         hhem_score = -1.0
         min_source_len_for_hhem = 500
-        if (
-            self.hhem
-            and source_content
-            and len(source_content) >= min_source_len_for_hhem
-        ):
+        if self.hhem and source_content and len(source_content) >= min_source_len_for_hhem:
             hhem_score = await self.hhem.score(source_content, finding.content)
 
             # Early reject only if clearly not grounded AND we had enough source
@@ -130,9 +128,11 @@ class VerificationPipeline:
         kg_entity_matches = 0
         kg_supporting_relations = 0
         if self.knowledge_graph and self.config.enable_kg_verification:
-            kg_support_score, kg_entity_matches, kg_supporting_relations = (
-                await self._get_kg_support(finding)
-            )
+            (
+                kg_support_score,
+                kg_entity_matches,
+                kg_supporting_relations,
+            ) = await self._get_kg_support(finding)
 
         # Run streaming CoVe
         result = await self.cove.verify_streaming(
@@ -287,9 +287,11 @@ class VerificationPipeline:
         contradictions = []
 
         if self.knowledge_graph and self.config.enable_kg_verification:
-            kg_support_score, kg_entity_matches, kg_supporting_relations = (
-                await self._get_kg_support(finding)
-            )
+            (
+                kg_support_score,
+                kg_entity_matches,
+                kg_supporting_relations,
+            ) = await self._get_kg_support(finding)
             contradiction_result = await self._check_kg_contradictions(finding)
             has_contradictions = contradiction_result.get("has_contradictions", False)
             if has_contradictions:
@@ -319,14 +321,20 @@ class VerificationPipeline:
         cove_result.kg_supporting_relations = kg_supporting_relations
 
         # Check if CRITIC is needed:
-        # - Low confidence OR contradictions found, AND high-stakes content
-        use_critic = (
-            self.config.enable_critic
-            and (
-                cove_result.verified_confidence < self.config.critic_confidence_threshold
-                or has_contradictions
-            )
-            and self.high_stakes_detector.is_high_stakes(finding.content)
+        # - Low CoVe consistency (verification questions contradicted the claim)
+        # - Low confidence after calibration
+        # - KG contradictions detected
+        # High-stakes detection is used as a boost (run CRITIC at higher threshold)
+        # but NOT as a gate — any finding with low consistency or contradictions
+        # gets CRITIC regardless of content domain.
+        low_consistency = (
+            cove_result.consistency_score is not None and cove_result.consistency_score < 0.5
+        )
+        low_confidence = cove_result.verified_confidence < self.config.critic_confidence_threshold
+        is_high_stakes = self.high_stakes_detector.is_high_stakes(finding.content)
+
+        use_critic = self.config.enable_critic and (
+            low_consistency or has_contradictions or (low_confidence and is_high_stakes)
         )
 
         if use_critic:

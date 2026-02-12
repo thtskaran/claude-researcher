@@ -1,7 +1,6 @@
 """Confidence calibration for verification results."""
 
 from dataclasses import dataclass
-from typing import Optional
 
 from .models import VerificationConfig, VerificationStatus
 
@@ -58,14 +57,17 @@ class ConfidenceCalibrator:
         # CoVe consistency adjustment
         # Score of -1 means "not scored / skipped", 0+ is a real signal
         if cove_consistency_score >= 0:
-            # High consistency boosts confidence, low consistency reduces it
-            # 0.5 is neutral; below penalises, above boosts
-            # Asymmetric: boost up to +8%, penalize up to -5%
+            # High consistency boosts confidence, low consistency reduces it.
+            # 0.5 is neutral; below penalises, above boosts.
+            # The penalty must be strong enough that contradicting evidence
+            # actually moves a high-confidence finding below the accept
+            # threshold.  Previous values (+8%/-5%) were far too weak —
+            # a consistency of 0.20 barely moved confidence at all.
             delta = cove_consistency_score - 0.5
             if delta >= 0:
-                cove_delta = delta * 0.16  # +8% max boost
+                cove_delta = delta * 0.20  # +10% max boost
             else:
-                cove_delta = delta * 0.10  # -5% max penalty
+                cove_delta = delta * 0.50  # -25% max penalty
             calibrated += cove_delta
             if abs(cove_delta) > 0.01:
                 adjustments.append(("cove_consistency", cove_delta))
@@ -115,8 +117,8 @@ class ConfidenceCalibrator:
         # Clamp to valid range
         calibrated = max(0.0, min(1.0, calibrated))
 
-        # Determine status based on thresholds
-        status = self._determine_status(calibrated)
+        # Determine status based on thresholds and consistency
+        status = self._determine_status(calibrated, cove_consistency_score)
 
         return CalibrationResult(
             original_confidence=original_confidence,
@@ -125,8 +127,24 @@ class ConfidenceCalibrator:
             adjustments=adjustments,
         )
 
-    def _determine_status(self, confidence: float) -> VerificationStatus:
-        """Determine verification status from calibrated confidence."""
+    def _determine_status(
+        self,
+        confidence: float,
+        cove_consistency_score: float = -1.0,
+    ) -> VerificationStatus:
+        """Determine verification status from calibrated confidence and consistency.
+
+        A finding should not be auto-accepted ("verified") if its CoVe
+        consistency score is low — that means verification questions
+        contradicted the claim, regardless of what the confidence number says.
+        """
+        # Low consistency overrides high confidence — force flag/reject
+        if cove_consistency_score >= 0 and cove_consistency_score < 0.4:
+            # Majority of verification answers contradict the claim
+            if confidence < self.config.flag_threshold:
+                return VerificationStatus.REJECTED
+            return VerificationStatus.FLAGGED
+
         if confidence >= self.config.auto_accept_threshold:
             return VerificationStatus.VERIFIED
         elif confidence >= self.config.flag_threshold:

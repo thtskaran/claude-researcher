@@ -37,8 +37,11 @@ QUESTIONS_SCHEMA = {
                     "aspect": {
                         "type": "string",
                         "enum": [
-                            "factual", "temporal", "source",
-                            "quantitative", "causal",
+                            "factual",
+                            "temporal",
+                            "source",
+                            "quantitative",
+                            "causal",
                         ],
                     },
                 },
@@ -142,9 +145,7 @@ class ChainOfVerification:
                 )
 
             # Step 2: Answer questions independently (parallel for speed)
-            answered_questions = await self._answer_questions_parallel(
-                questions, finding_content
-            )
+            answered_questions = await self._answer_questions_parallel(questions, finding_content)
 
             # Step 3: Calculate consistency and calibrate
             consistency_score = self._calculate_consistency(answered_questions)
@@ -280,7 +281,8 @@ class ChainOfVerification:
         )
 
         return await self._call_for_questions(
-            prompt, self.config.streaming_model,
+            prompt,
+            self.config.streaming_model,
             max_q=self.config.max_cove_questions_streaming,
         )
 
@@ -308,12 +310,16 @@ class ChainOfVerification:
         )
 
         return await self._call_for_questions(
-            prompt, self.config.batch_model,
+            prompt,
+            self.config.batch_model,
             max_q=self.config.max_cove_questions_batch,
         )
 
     async def _call_for_questions(
-        self, prompt: str, model: str, max_q: int,
+        self,
+        prompt: str,
+        model: str,
+        max_q: int,
     ) -> list[VerificationQuestion]:
         """Call LLM for verification questions using structured output.
 
@@ -326,7 +332,9 @@ class ChainOfVerification:
 
         try:
             response = await self.llm_callback(
-                prompt, model, output_format=schema_fmt,
+                prompt,
+                model,
+                output_format=schema_fmt,
             )
         except TypeError:
             # Callback doesn't support output_format kwarg -- fall back
@@ -354,6 +362,9 @@ class ChainOfVerification:
     async def _search_for_evidence(self, question: str) -> str:
         """Search the web for evidence to answer a verification question.
 
+        Uses the search callback to find relevant evidence. Formats results
+        with titles, URLs, and snippets for the LLM to evaluate.
+
         Returns formatted evidence string, or empty string if unavailable.
         """
         if not self.search_callback:
@@ -364,14 +375,19 @@ class ChainOfVerification:
             if not results:
                 return ""
             if isinstance(results, list):
-                snippets = []
-                for r in results[:3]:
+                evidence_parts = []
+                for r in results[:5]:
                     title = r.get("title", "") if isinstance(r, dict) else ""
                     snippet = r.get("snippet", "") if isinstance(r, dict) else str(r)
-                    if snippet:
-                        snippets.append(f"- {title}: {snippet[:300]}")
-                return "\n".join(snippets) if snippets else ""
-            return str(results)[:800]
+                    url = r.get("url", "") if isinstance(r, dict) else ""
+                    # Include full page content if available (scrape callback)
+                    content = r.get("content", "") if isinstance(r, dict) else ""
+                    if content:
+                        evidence_parts.append(f"SOURCE [{title}] ({url}):\n{content[:800]}")
+                    elif snippet:
+                        evidence_parts.append(f"SOURCE [{title}] ({url}): {snippet[:400]}")
+                return "\n\n".join(evidence_parts) if evidence_parts else ""
+            return str(results)[:1200]
         except Exception:
             return ""
 
@@ -390,11 +406,7 @@ class ChainOfVerification:
         Step 1: Search web for evidence, then answer the question independently.
         Step 2: Compare the independent answer against the original claim.
         """
-        model = (
-            self.config.batch_model
-            if use_batch_model
-            else self.config.streaming_model
-        )
+        model = self.config.batch_model if use_batch_model else self.config.streaming_model
         answer_schema = {"type": "json_schema", "schema": INDEPENDENT_ANSWER_SCHEMA}
         compare_schema = {"type": "json_schema", "schema": COMPARISON_SCHEMA}
 
@@ -408,29 +420,43 @@ class ChainOfVerification:
                 # --- Step 1b: Independent answer with evidence context ---
                 evidence_block = ""
                 if evidence:
-                    evidence_block = (
-                        "\n\nWEB EVIDENCE (use this to inform your answer):\n"
-                        f"{evidence}\n"
+                    evidence_block = f"\n\nWEB EVIDENCE:\n{evidence}\n"
+                    answer_prompt = (
+                        "Based on the web evidence below, answer this "
+                        "factual question. Your answer MUST be based on "
+                        "what the evidence says — quote or reference "
+                        "specific parts. Do NOT say you need to search "
+                        "or access a source — the evidence is already "
+                        "provided.\n\n"
+                        f"QUESTION: {q.question}\n"
+                        f"ASPECT: {q.aspect}"
+                        f"{evidence_block}\n\n"
+                        "Respond with:\n"
+                        '- "answer": your factual answer based on the '
+                        "evidence above\n"
+                        '- "confidence": 0.0-1.0 (how strongly the '
+                        "evidence supports your answer)"
                     )
-
-                answer_prompt = (
-                    "Answer this factual question. Use the web evidence "
-                    "if provided, otherwise use your knowledge. You MUST "
-                    "always provide your best answer even if uncertain — "
-                    "never say you cannot answer or need access to a "
-                    "source.\n\n"
-                    f"QUESTION: {q.question}\n"
-                    f"ASPECT: {q.aspect}"
-                    f"{evidence_block}\n\n"
-                    "Respond with:\n"
-                    '- "answer": your best factual answer\n'
-                    '- "confidence": 0.0-1.0 (use lower confidence if '
-                    "you're unsure, but always answer)"
-                )
+                else:
+                    answer_prompt = (
+                        "Answer this factual question using your "
+                        "knowledge. Provide your best assessment of "
+                        "whether the stated fact is likely true, false, "
+                        "or uncertain. Do NOT say you need to search or "
+                        "cannot verify — just give your best answer.\n\n"
+                        f"QUESTION: {q.question}\n"
+                        f"ASPECT: {q.aspect}\n\n"
+                        "Respond with:\n"
+                        '- "answer": your best factual answer\n'
+                        '- "confidence": 0.0-1.0 (use lower confidence '
+                        "if uncertain, but always answer)"
+                    )
 
                 try:
                     answer_resp = await self.llm_callback(
-                        answer_prompt, model, output_format=answer_schema,
+                        answer_prompt,
+                        model,
+                        output_format=answer_schema,
                     )
                 except TypeError:
                     answer_resp = await self.llm_callback(answer_prompt, model)
@@ -463,11 +489,30 @@ class ChainOfVerification:
                 # If the LLM still says it can't verify, treat as neutral
                 # (not a contradiction) with low confidence
                 _refusal_markers = [
-                    "cannot access", "can't access", "cannot verify",
-                    "can't verify", "not provided", "no access",
-                    "unable to verify", "unable to access",
-                    "don't have access", "without access",
-                    "not available", "cannot be determined",
+                    "cannot access",
+                    "can't access",
+                    "cannot verify",
+                    "can't verify",
+                    "not provided",
+                    "no access",
+                    "unable to verify",
+                    "unable to access",
+                    "don't have access",
+                    "without access",
+                    "not available",
+                    "cannot be determined",
+                    "i'll search",
+                    "i will search",
+                    "let me search",
+                    "let me use",
+                    "i need to search",
+                    "i would need",
+                    "i need access",
+                    "need to look up",
+                    "search for",
+                    "look up the",
+                    "use the web search",
+                    "web search tool",
                 ]
                 answer_lower = q.independent_answer.lower()
                 if any(m in answer_lower for m in _refusal_markers):
@@ -477,24 +522,33 @@ class ChainOfVerification:
 
                 # --- Step 2: Compare independent answer against claim ---
                 compare_prompt = (
-                    "Compare this independent answer against a claim and "
-                    "determine if they are consistent.\n\n"
+                    "Does this independent answer broadly support or "
+                    "contradict the claim below?\n\n"
                     f"CLAIM: {original_finding}\n\n"
                     f"QUESTION: {q.question}\n"
                     f"INDEPENDENT ANSWER: {q.independent_answer}\n\n"
+                    "IMPORTANT: Only mark as contradicts if the answer "
+                    "directly opposes the claim's core conclusion. "
+                    "Differences in wording, framing, or level of detail "
+                    "are NOT contradictions — if the overall direction "
+                    "agrees, that counts as support.\n\n"
                     "Respond with:\n"
-                    '- "supports": true if the answer is consistent with '
-                    "the claim, false if it contradicts the claim\n"
+                    '- "supports": true if the answer broadly agrees with '
+                    "the claim's main point, false ONLY if it directly "
+                    "contradicts or refutes the claim\n"
                     '- "reasoning": brief explanation of why'
                 )
 
                 try:
                     compare_resp = await self.llm_callback(
-                        compare_prompt, model, output_format=compare_schema,
+                        compare_prompt,
+                        model,
+                        output_format=compare_schema,
                     )
                 except TypeError:
                     compare_resp = await self.llm_callback(
-                        compare_prompt, model,
+                        compare_prompt,
+                        model,
                     )
 
                 if isinstance(compare_resp, dict):
@@ -517,19 +571,16 @@ class ChainOfVerification:
             return q
 
         # Run all questions in parallel
-        answered = await asyncio.gather(
-            *[answer_and_compare(q) for q in questions]
-        )
+        answered = await asyncio.gather(*[answer_and_compare(q) for q in questions])
         return list(answered)
 
-    def _calculate_consistency(
-        self, questions: list[VerificationQuestion]
-    ) -> float:
+    def _calculate_consistency(self, questions: list[VerificationQuestion]) -> float:
         """Calculate consistency score from answered questions.
 
         Returns 0-1 score based on:
-        - How many questions explicitly support vs contradict
-        - Average confidence of answers
+        - Support ratio: how many questions support vs contradict (primary signal)
+        - Answered ratio: penalty for unanswered questions (data quality)
+        - LLM confidence: minor weight (LLMs are systematically overconfident)
         - Questions with unknown support (None) are treated as neutral
         """
         if not questions:
@@ -562,9 +613,13 @@ class ChainOfVerification:
             support_ratio = 0.5
 
         avg_confidence = total_confidence / answered_count
+        answered_ratio = answered_count / len(questions)
 
-        # Consistency = (support_ratio * 0.6) + (avg_confidence * 0.4)
-        return (support_ratio * 0.6) + (avg_confidence * 0.4)
+        # Weighted consistency score:
+        # - 80% support ratio (the actual verify/contradict signal)
+        # - 10% answered ratio (penalty for unanswered questions)
+        # - 10% LLM confidence (unreliable, kept at low weight)
+        return (support_ratio * 0.80) + (answered_ratio * 0.10) + (avg_confidence * 0.10)
 
     def _parse_questions(self, response: str) -> list[VerificationQuestion]:
         """Parse verification questions from LLM response."""
@@ -573,10 +628,12 @@ class ChainOfVerification:
         if data:
             for item in data:
                 if isinstance(item, dict) and item.get("question"):
-                    questions.append(VerificationQuestion(
-                        question=item["question"],
-                        aspect=item.get("aspect", "factual"),
-                    ))
+                    questions.append(
+                        VerificationQuestion(
+                            question=item["question"],
+                            aspect=item.get("aspect", "factual"),
+                        )
+                    )
 
         # Limit to configured max
         max_questions = self.config.max_cove_questions_batch
@@ -588,8 +645,8 @@ class ChainOfVerification:
             return None
 
         # Strip markdown code blocks
-        cleaned = re.sub(r'```(?:json)?\s*', '', response).strip()
-        cleaned = re.sub(r'```\s*$', '', cleaned).strip()
+        cleaned = re.sub(r"```(?:json)?\s*", "", response).strip()
+        cleaned = re.sub(r"```\s*$", "", cleaned).strip()
 
         # Strategy 1: Try parsing the whole cleaned response as JSON
         try:
@@ -600,7 +657,7 @@ class ChainOfVerification:
             pass
 
         # Strategy 2: Greedy regex - match from first [ to last ]
-        match = re.search(r'\[.*\]', cleaned, re.DOTALL)
+        match = re.search(r"\[.*\]", cleaned, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group())
@@ -608,17 +665,17 @@ class ChainOfVerification:
                 pass
 
         # Strategy 3: Find balanced brackets
-        start = cleaned.find('[')
+        start = cleaned.find("[")
         if start >= 0:
             depth = 0
             for i in range(start, len(cleaned)):
-                if cleaned[i] == '[':
+                if cleaned[i] == "[":
                     depth += 1
-                elif cleaned[i] == ']':
+                elif cleaned[i] == "]":
                     depth -= 1
                     if depth == 0:
                         try:
-                            return json.loads(cleaned[start:i + 1])
+                            return json.loads(cleaned[start : i + 1])
                         except json.JSONDecodeError:
                             break
 
@@ -630,8 +687,8 @@ class ChainOfVerification:
             return None
 
         # Strip markdown code blocks
-        cleaned = re.sub(r'```(?:json)?\s*', '', response).strip()
-        cleaned = re.sub(r'```\s*$', '', cleaned).strip()
+        cleaned = re.sub(r"```(?:json)?\s*", "", response).strip()
+        cleaned = re.sub(r"```\s*$", "", cleaned).strip()
 
         # Strategy 1: Try parsing the whole cleaned response
         try:
@@ -642,7 +699,7 @@ class ChainOfVerification:
             pass
 
         # Strategy 2: Greedy regex - match from first { to last }
-        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group())
@@ -650,17 +707,17 @@ class ChainOfVerification:
                 pass
 
         # Strategy 3: Find balanced braces
-        start = cleaned.find('{')
+        start = cleaned.find("{")
         if start >= 0:
             depth = 0
             for i in range(start, len(cleaned)):
-                if cleaned[i] == '{':
+                if cleaned[i] == "{":
                     depth += 1
-                elif cleaned[i] == '}':
+                elif cleaned[i] == "}":
                     depth -= 1
                     if depth == 0:
                         try:
-                            return json.loads(cleaned[start:i + 1])
+                            return json.loads(cleaned[start : i + 1])
                         except json.JSONDecodeError:
                             break
 

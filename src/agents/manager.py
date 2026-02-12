@@ -88,7 +88,7 @@ class ManagerAgent(BaseAgent):
         self.interaction = interaction
 
         # Knowledge graph integration
-        self.kg_store = HybridKnowledgeGraphStore(db_path=str(db.db_path).replace('.db', '_kg.db'))
+        self.kg_store = HybridKnowledgeGraphStore(db_path=str(db.db_path).replace(".db", "_kg.db"))
         self.knowledge_graph = IncrementalKnowledgeGraph(
             llm_callback=self._kg_llm_callback,
             store=self.kg_store,
@@ -101,12 +101,16 @@ class ManagerAgent(BaseAgent):
         # Parallel execution pool
         self.use_parallel = use_parallel
         self.pool_size = pool_size
-        self.intern_pool = ParallelInternPool(
-            db=db,
-            pool_size=pool_size,
-            config=config,
-            console=console,
-        ) if use_parallel else None
+        self.intern_pool = (
+            ParallelInternPool(
+                db=db,
+                pool_size=pool_size,
+                config=config,
+                console=console,
+            )
+            if use_parallel
+            else None
+        )
 
         # Hybrid memory for long research sessions
         self.memory = HybridMemory(
@@ -115,12 +119,12 @@ class ManagerAgent(BaseAgent):
             llm_callback=self._memory_llm_callback,
         )
         self.external_memory = ExternalMemoryStore(
-            db_path=str(db.db_path).replace('.db', '_memory.db')
+            db_path=str(db.db_path).replace(".db", "_memory.db")
         )
 
         # Hybrid retrieval for semantic search over findings
         self.findings_retriever = get_findings_retriever(
-            persist_dir=str(db.db_path).replace('.db', '_retrieval'),
+            persist_dir=str(db.db_path).replace(".db", "_retrieval"),
             use_reranker=True,  # Quality is priority
         )
 
@@ -141,7 +145,9 @@ class ManagerAgent(BaseAgent):
         self.last_batch_verification: BatchVerificationResult | None = None
 
     async def _kg_llm_callback(
-        self, prompt: str, **kwargs,
+        self,
+        prompt: str,
+        **kwargs,
     ) -> str | dict | list:
         """LLM callback for knowledge graph extraction (uses faster model)."""
         original_model = self.config.model
@@ -171,6 +177,7 @@ class ManagerAgent(BaseAgent):
             # Log error but don't stop processing
             self._log(f"[Credibility Audit Error] Failed to save audit: {e}", style="bold red")
             import traceback
+
             traceback.print_exc()
 
     async def _memory_llm_callback(self, prompt: str) -> str:
@@ -208,13 +215,35 @@ class ManagerAgent(BaseAgent):
         Uses the intern's search tool (Bright Data) to fetch evidence so
         the verification pipeline can ground answers in real web data
         instead of relying solely on parametric knowledge.
+
+        Scrapes the top result's full page content for richer evidence
+        when available, so the LLM can evaluate actual source material
+        rather than just search snippets.
         """
         try:
             results, _ = await self.intern.search_tool.search(query)
-            return [
-                {"title": r.title, "url": r.url, "snippet": r.snippet}
-                for r in results[:5]
-            ]
+            if not results:
+                return []
+
+            output = []
+            for r in results[:5]:
+                output.append(
+                    {
+                        "title": r.title,
+                        "url": r.url,
+                        "snippet": r.snippet,
+                    }
+                )
+
+            # Scrape the top result for richer evidence context
+            try:
+                page_content = await self.intern.search_tool.fetch_page(results[0].url)
+                if page_content and len(page_content) > 100:
+                    output[0]["content"] = page_content[:1500]
+            except Exception:
+                pass  # Snippet fallback is fine
+
+            return output
         except Exception:
             return []
 
@@ -270,10 +299,18 @@ Provide structured analysis with clear reasoning. When creating directives:
             messages = self.interaction.get_pending_messages()
             if messages:
                 guidance_texts = [m.content for m in messages]
-                user_guidance = "USER GUIDANCE (please incorporate this into your research):\n" + "\n".join(f"- {g}" for g in guidance_texts)
-                self._log(f"[USER GUIDANCE] Received {len(messages)} message(s)", style="bold yellow")
+                user_guidance = (
+                    "USER GUIDANCE (please incorporate this into your research):\n"
+                    + "\n".join(f"- {g}" for g in guidance_texts)
+                )
+                self._log(
+                    f"[USER GUIDANCE] Received {len(messages)} message(s)", style="bold yellow"
+                )
                 for m in messages:
-                    self._log(f"  → {m.content[:100]}{'...' if len(m.content) > 100 else ''}", style="yellow")
+                    self._log(
+                        f"  → {m.content[:100]}{'...' if len(m.content) > 100 else ''}",
+                        style="yellow",
+                    )
 
         # Summarize current state
         findings_summary = self._summarize_findings()
@@ -315,7 +352,7 @@ Current Status:
 - Current depth: {self.current_depth}/{self.max_depth}
 
 Last report from Intern:
-{context.get('last_report_summary', 'No report yet')}
+{context.get("last_report_summary", "No report yet")}
 
 Findings summary:
 {findings_summary}
@@ -325,7 +362,7 @@ Findings summary:
 {kg_summary}
 
 Suggested research directions from knowledge analysis:
-{chr(10).join(['- ' + d for d in research_directions[:5]]) if research_directions else 'None yet'}
+{chr(10).join(["- " + d for d in research_directions[:5]]) if research_directions else "None yet"}
 
 {f"Session Memory Context:{chr(10)}{memory_context}" if memory_context else ""}
 
@@ -344,7 +381,7 @@ Think step by step about the best next action."""
         await self.memory.add_message(
             role="assistant",
             content=f"Reasoning: {thought[:500]}...",
-            metadata={"type": "thought", "iteration": self.state.iteration}
+            metadata={"type": "thought", "iteration": self.state.iteration},
         )
 
         # Compress memory if needed
@@ -376,9 +413,14 @@ Think step by step about the best next action."""
             directive = await self._create_directive(thought)
             if directive:
                 self._log("═" * 70, style="bold blue")
-                self._log(f"[DIRECTIVE] {directive.action.upper()}: {directive.topic}", style="bold green")
+                self._log(
+                    f"[DIRECTIVE] {directive.action.upper()}: {directive.topic}", style="bold green"
+                )
                 self._log(f"  Instructions: {directive.instructions}", style="dim")
-                self._log(f"  Priority: {directive.priority}/10 | Max Searches: {directive.max_searches}", style="dim")
+                self._log(
+                    f"  Priority: {directive.priority}/10 | Max Searches: {directive.max_searches}",
+                    style="dim",
+                )
                 self._log("═" * 70, style="bold blue")
 
                 # Check pause before long intern operation
@@ -386,9 +428,7 @@ Think step by step about the best next action."""
                     return {"action": "paused"}
 
                 # Execute the directive via the intern
-                intern_report = await self.intern.execute_directive(
-                    directive, self.session_id
-                )
+                intern_report = await self.intern.execute_directive(directive, self.session_id)
                 async with self._state_lock:
                     self.all_reports.append(intern_report)
                     self.all_findings.extend(intern_report.findings)
@@ -410,7 +450,10 @@ Think step by step about the best next action."""
 
                 # Show follow-up topics added
                 if intern_report.suggested_followups:
-                    self._log(f"[Follow-up Topics Added: {len(intern_report.suggested_followups)}]", style="cyan")
+                    self._log(
+                        f"[Follow-up Topics Added: {len(intern_report.suggested_followups)}]",
+                        style="cyan",
+                    )
                     for ft in intern_report.suggested_followups[:3]:
                         self._log(f"  → {ft}", style="cyan")
 
@@ -443,7 +486,10 @@ Think step by step about the best next action."""
                         "selected_topics": [t.topic for t in topics_to_run],
                         "depths": [t.depth for t in topics_to_run],
                     },
-                    metrics={"findings_count": len(self.all_findings), "completed_topics": len(self.completed_topics)},
+                    metrics={
+                        "findings_count": len(self.all_findings),
+                        "completed_topics": len(self.completed_topics),
+                    },
                 )
 
                 # Check pause before long parallel operation
@@ -454,7 +500,10 @@ Think step by step about the best next action."""
                     return {"action": "paused"}
 
                 self._log("═" * 70, style="bold blue")
-                self._log(f"[PARALLEL TOPICS] Running {len(topics_to_run)} topics in parallel", style="bold green")
+                self._log(
+                    f"[PARALLEL TOPICS] Running {len(topics_to_run)} topics in parallel",
+                    style="bold green",
+                )
                 for t in topics_to_run:
                     self._log(f"  • {t.topic}", style="dim")
                 self._log("═" * 70, style="bold blue")
@@ -465,7 +514,7 @@ Think step by step about the best next action."""
                 await self.memory.add_message(
                     role="system",
                     content=f"Completed parallel research on {len(topics_to_run)} topics",
-                    metadata={"topics": [t.topic for t in topics_to_run]}
+                    metadata={"topics": [t.topic for t in topics_to_run]},
                 )
 
                 return {
@@ -490,7 +539,10 @@ Think step by step about the best next action."""
                     "depth": topic.depth,
                     "priority": topic.priority,
                 },
-                metrics={"findings_count": len(self.all_findings), "completed_topics": len(self.completed_topics)},
+                metrics={
+                    "findings_count": len(self.all_findings),
+                    "completed_topics": len(self.completed_topics),
+                },
             )
 
             directive = ManagerDirective(
@@ -510,12 +562,13 @@ Think step by step about the best next action."""
 
             self._log("═" * 70, style="bold blue")
             self._log(f"[QUEUED TOPIC] Depth {topic.depth}: {topic.topic}", style="bold green")
-            self._log(f"  Priority: {topic.priority}/10 | Remaining in queue: {len(self.topics_queue)}", style="dim")
+            self._log(
+                f"  Priority: {topic.priority}/10 | Remaining in queue: {len(self.topics_queue)}",
+                style="dim",
+            )
             self._log("═" * 70, style="bold blue")
 
-            intern_report = await self.intern.execute_directive(
-                directive, self.session_id
-            )
+            intern_report = await self.intern.execute_directive(directive, self.session_id)
             async with self._state_lock:
                 self.all_reports.append(intern_report)
                 self.all_findings.extend(intern_report.findings)
@@ -529,12 +582,10 @@ Think step by step about the best next action."""
             await self.memory.add_message(
                 role="system",
                 content=f"Completed research on: {topic.topic} - {len(intern_report.findings)} findings",
-                metadata={"topic": topic.topic, "findings": len(intern_report.findings)}
+                metadata={"topic": topic.topic, "findings": len(intern_report.findings)},
             )
 
-            await self.db.update_topic_status(
-                topic.id, "completed", len(intern_report.findings)
-            )
+            await self.db.update_topic_status(topic.id, "completed", len(intern_report.findings))
 
             critique = await self._critique_report(intern_report)
 
@@ -548,7 +599,10 @@ Think step by step about the best next action."""
 
             # Show follow-up topics added
             if intern_report.suggested_followups:
-                self._log(f"[Follow-up Topics Added: {len(intern_report.suggested_followups)}]", style="cyan")
+                self._log(
+                    f"[Follow-up Topics Added: {len(intern_report.suggested_followups)}]",
+                    style="cyan",
+                )
                 for ft in intern_report.suggested_followups[:3]:
                     self._log(f"  → {ft}", style="cyan")
 
@@ -680,13 +734,16 @@ Think step by step about the best next action."""
 
         if response:
             # Log that we got a response
-            self._log(f"[USER RESPONSE] {response[:100]}{'...' if len(response) > 100 else ''}", style="bold green")
+            self._log(
+                f"[USER RESPONSE] {response[:100]}{'...' if len(response) > 100 else ''}",
+                style="bold green",
+            )
 
             # Add to memory for context
             await self.memory.add_message(
                 role="user",
                 content=f"User guidance: {response}",
-                metadata={"type": "mid_research_response"}
+                metadata={"type": "mid_research_response"},
             )
 
         return response
@@ -712,7 +769,9 @@ Think step by step about the best next action."""
                 findings=findings,
                 session_id=self.session_id,
             )
-            self._log(f"[RETRIEVAL] Indexed {len(findings)} findings for semantic search", style="dim")
+            self._log(
+                f"[RETRIEVAL] Indexed {len(findings)} findings for semantic search", style="dim"
+            )
         except Exception as e:
             self._log(f"[RETRIEVAL] Error indexing findings: {e}", style="yellow")
 
@@ -740,22 +799,22 @@ Think step by step about the best next action."""
             self._log(
                 f"[KG] Extracted {result['total_entities']} entities, "
                 f"{result['total_relations']} relations",
-                style="dim"
+                style="dim",
             )
-            if result['total_contradictions'] > 0:
+            if result["total_contradictions"] > 0:
                 self._log(
                     f"[KG] Contradictions detected: {result['total_contradictions']}",
-                    style="yellow"
+                    style="yellow",
                 )
         else:
             # Process individually for small batches
             for kg_finding in kg_findings:
                 try:
                     result = await self.knowledge_graph.add_finding(kg_finding, fast_mode=True)
-                    if result.get('contradictions_found', 0) > 0:
+                    if result.get("contradictions_found", 0) > 0:
                         self._log(
                             f"[KG] Contradiction detected: {result['contradictions_found']} conflicts",
-                            style="yellow"
+                            style="yellow",
                         )
                 except Exception as e:
                     self._log(f"[KG] Error processing finding: {e}", style="dim")
@@ -767,7 +826,9 @@ Think step by step about the best next action."""
             return False
 
         # Calculate time usage percentage
-        time_used_percent = ((self.time_limit_minutes - time_remaining) / self.time_limit_minutes) * 100
+        time_used_percent = (
+            (self.time_limit_minutes - time_remaining) / self.time_limit_minutes
+        ) * 100
 
         # Only allow synthesis after using at least 90% of time budget
         # Exception: if less than 5 minutes remain (handles edge cases with short budgets)
@@ -780,14 +841,19 @@ Think step by step about the best next action."""
         # Time pressure - synthesize if under 5 minutes and we have findings
         if time_remaining < 5 and self.all_findings:
             # Log the synthesis trigger decision
-            asyncio.create_task(self._log_decision(
-                session_id=self.session_id,
-                decision_type=DecisionType.SYNTHESIS_TRIGGER,
-                decision_outcome="triggered_time_pressure",
-                reasoning=f"Time remaining ({time_remaining:.1f}min) < 5min with {len(self.all_findings)} findings",
-                inputs={"time_remaining": time_remaining, "findings_count": len(self.all_findings)},
-                metrics={"time_used_percent": time_used_percent},
-            ))
+            asyncio.create_task(
+                self._log_decision(
+                    session_id=self.session_id,
+                    decision_type=DecisionType.SYNTHESIS_TRIGGER,
+                    decision_outcome="triggered_time_pressure",
+                    reasoning=f"Time remaining ({time_remaining:.1f}min) < 5min with {len(self.all_findings)} findings",
+                    inputs={
+                        "time_remaining": time_remaining,
+                        "findings_count": len(self.all_findings),
+                    },
+                    metrics={"time_used_percent": time_used_percent},
+                )
+            )
             return True
 
         # Explicit signals - but only if we have meaningful findings AND used enough time
@@ -807,14 +873,22 @@ Think step by step about the best next action."""
 
         if should_synthesize:
             # Log the synthesis trigger decision
-            asyncio.create_task(self._log_decision(
-                session_id=self.session_id,
-                decision_type=DecisionType.SYNTHESIS_TRIGGER,
-                decision_outcome="triggered_explicit_signal",
-                reasoning=thought[:500],
-                inputs={"time_remaining": time_remaining, "findings_count": len(self.all_findings)},
-                metrics={"time_used_percent": time_used_percent, "topics_completed": len(self.completed_topics)},
-            ))
+            asyncio.create_task(
+                self._log_decision(
+                    session_id=self.session_id,
+                    decision_type=DecisionType.SYNTHESIS_TRIGGER,
+                    decision_outcome="triggered_explicit_signal",
+                    reasoning=thought[:500],
+                    inputs={
+                        "time_remaining": time_remaining,
+                        "findings_count": len(self.all_findings),
+                    },
+                    metrics={
+                        "time_used_percent": time_used_percent,
+                        "topics_completed": len(self.completed_topics),
+                    },
+                )
+            )
 
         return should_synthesize
 
@@ -836,8 +910,7 @@ Think step by step about the best next action."""
     async def _create_directive(self, thought: str) -> ManagerDirective | None:
         """Create a directive for the Intern based on reasoning."""
         prompt = (
-            f"Based on this reasoning:\n{thought}\n\n"
-            "Create a directive for the Research Intern."
+            f"Based on this reasoning:\n{thought}\n\nCreate a directive for the Research Intern."
         )
 
         schema = {
@@ -855,15 +928,19 @@ Think step by step about the best next action."""
                     "max_searches": {"type": "integer"},
                 },
                 "required": [
-                    "action", "topic", "instructions",
-                    "priority", "max_searches",
+                    "action",
+                    "topic",
+                    "instructions",
+                    "priority",
+                    "max_searches",
                 ],
             },
         }
 
         try:
             response = await self.call_claude(
-                prompt, output_format=schema,
+                prompt,
+                output_format=schema,
             )
 
             if isinstance(response, dict):
@@ -897,10 +974,7 @@ Think step by step about the best next action."""
                 },
                 metrics={
                     "findings_count": len(self.all_findings),
-                    "time_remaining": (
-                        self.time_limit_minutes
-                        - self._get_elapsed_minutes()
-                    ),
+                    "time_remaining": (self.time_limit_minutes - self._get_elapsed_minutes()),
                 },
             )
 
@@ -915,7 +989,9 @@ Think step by step about the best next action."""
         # Run batch verification on findings if not already verified
         unverified = [f for f in report.findings if not f.verification_status]
         if unverified and self.verification_config.enable_batch_verification:
-            self._log(f"[VERIFY] Running batch verification on {len(unverified)} findings...", style="dim")
+            self._log(
+                f"[VERIFY] Running batch verification on {len(unverified)} findings...", style="dim"
+            )
             batch_result = await self.verification_pipeline.verify_batch(
                 unverified, self.session_id
             )
@@ -979,7 +1055,7 @@ Think step by step about the best next action."""
             self._log(
                 f"[VERIFY] Results: {batch_result.verified_count} verified, "
                 f"{batch_result.flagged_count} flagged, {batch_result.rejected_count} rejected",
-                style="dim"
+                style="dim",
             )
 
         # Separate findings by verification status
@@ -987,10 +1063,12 @@ Think step by step about the best next action."""
         flagged = [f for f in report.findings if f.verification_status == "flagged"]
         rejected = [f for f in report.findings if f.verification_status == "rejected"]
 
-        findings_text = "\n".join([
-            f"- [{f.finding_type.value}] {f.content} (confidence: {f.confidence:.0%}, status: {f.verification_status or 'pending'})"
-            for f in report.findings[:10]
-        ])
+        findings_text = "\n".join(
+            [
+                f"- [{f.finding_type.value}] {f.content} (confidence: {f.confidence:.0%}, status: {f.verification_status or 'pending'})"
+                for f in report.findings[:10]
+            ]
+        )
 
         verification_summary = ""
         if verified or flagged or rejected:
@@ -1037,11 +1115,20 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
         for followup in report.suggested_followups[:3]:  # Limit follow-ups
             # Filter out meta-questions/clarifying questions
             followup_lower = followup.lower()
-            is_meta_question = any(phrase in followup_lower for phrase in [
-                "please provide", "what information", "could you clarify",
-                "what are you looking for", "what topic", "what subject",
-                "what would you like", "can you specify", "please specify",
-            ])
+            is_meta_question = any(
+                phrase in followup_lower
+                for phrase in [
+                    "please provide",
+                    "what information",
+                    "could you clarify",
+                    "what are you looking for",
+                    "what topic",
+                    "what subject",
+                    "what would you like",
+                    "can you specify",
+                    "please specify",
+                ]
+            )
             if is_meta_question:
                 continue
 
@@ -1071,9 +1158,9 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
         # a second look with the full pipeline (CoVe batch + KG + CRITIC).
         _streaming_methods = {"streaming", ""}
         needs_batch = [
-            f for f in self.all_findings
-            if not f.verification_status
-            or (f.verification_method or "") in _streaming_methods
+            f
+            for f in self.all_findings
+            if not f.verification_status or (f.verification_method or "") in _streaming_methods
         ]
         if needs_batch and self.verification_config.enable_batch_verification:
             self._log(f"[VERIFY] Batch verification on {len(needs_batch)} findings...", style="dim")
@@ -1140,21 +1227,27 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
         verified_findings = [f for f in self.all_findings if f.verification_status == "verified"]
         flagged_findings = [f for f in self.all_findings if f.verification_status == "flagged"]
         rejected_findings = [f for f in self.all_findings if f.verification_status == "rejected"]
-        other_findings = [f for f in self.all_findings if f.verification_status not in ["verified", "flagged", "rejected"]]
+        other_findings = [
+            f
+            for f in self.all_findings
+            if f.verification_status not in ["verified", "flagged", "rejected"]
+        ]
 
         # Priority: verified > flagged > unverified > rejected
         # Weight by calibrated confidence
         priority_findings = (
-            sorted(verified_findings, key=lambda f: f.confidence, reverse=True) +
-            sorted(flagged_findings, key=lambda f: f.confidence, reverse=True) +
-            sorted(other_findings, key=lambda f: f.confidence, reverse=True)
+            sorted(verified_findings, key=lambda f: f.confidence, reverse=True)
+            + sorted(flagged_findings, key=lambda f: f.confidence, reverse=True)
+            + sorted(other_findings, key=lambda f: f.confidence, reverse=True)
         )
         key_findings = priority_findings[:20]
 
-        findings_text = "\n".join([
-            f"- [{f.finding_type.value}] {f.content} (verified: {f.verification_status or 'pending'}, confidence: {f.confidence:.0%})"
-            for f in key_findings
-        ])
+        findings_text = "\n".join(
+            [
+                f"- [{f.finding_type.value}] {f.content} (verified: {f.verification_status or 'pending'}, confidence: {f.confidence:.0%})"
+                for f in key_findings
+            ]
+        )
 
         # Verification context for synthesis
         verification_context = ""
@@ -1221,7 +1314,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
         await self.memory.add_message(
             role="system",
             content=f"Starting parallel research on: {goal}",
-            metadata={"phase": "parallel_init"}
+            metadata={"phase": "parallel_init"},
         )
 
         # Decompose goal into aspects first
@@ -1276,7 +1369,9 @@ Be thorough and insightful. Note where findings have lower confidence."""
 
         # Update DB status outside lock
         for topic in aspect_topics:
-            await self.db.update_topic_status(topic.id, "completed", len(result.total_findings) // len(aspects))
+            await self.db.update_topic_status(
+                topic.id, "completed", len(result.total_findings) // len(aspects)
+            )
 
         # Update depth tracking
         self.current_depth = max(self.current_depth, 1)
@@ -1286,35 +1381,37 @@ Be thorough and insightful. Note where findings have lower confidence."""
 
         # Store findings summary in external memory for later retrieval
         if result.total_findings:
-            findings_summary = "\n".join([
-                f"- {f.content[:200]}" for f in result.total_findings[:20]
-            ])
+            findings_summary = "\n".join(
+                [f"- {f.content[:200]}" for f in result.total_findings[:20]]
+            )
             await self.external_memory.store(
                 session_id=self.session_id,
                 content=f"Parallel research findings:\n{findings_summary}",
                 memory_type="finding",
                 tags=["parallel", "initial"],
-                metadata={"count": len(result.total_findings)}
+                metadata={"count": len(result.total_findings)},
             )
 
         # Record completion in memory
         await self.memory.add_message(
             role="system",
             content=f"Parallel research complete: {len(result.total_findings)} findings from {result.total_searches} searches in {result.execution_time_seconds:.1f}s",
-            metadata={"phase": "parallel_complete", "findings_count": len(result.total_findings)}
+            metadata={"phase": "parallel_complete", "findings_count": len(result.total_findings)},
         )
 
         self._log("=" * 70, style="bold cyan")
         self._log(
             f"[PARALLEL RESEARCH] Complete: {len(result.total_findings)} findings, "
             f"{result.total_searches} searches, {result.execution_time_seconds:.1f}s",
-            style="bold green"
+            style="bold green",
         )
         if result.errors:
             self._log(f"  Errors: {len(result.errors)}", style="yellow")
         self._log("=" * 70, style="bold cyan")
 
-    async def _run_parallel_topics(self, topics: list[ResearchTopic], max_parallel: int = 3) -> None:
+    async def _run_parallel_topics(
+        self, topics: list[ResearchTopic], max_parallel: int = 3
+    ) -> None:
         """Run multiple queued topics in parallel.
 
         Args:
@@ -1414,6 +1511,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
 
         # Restore timing: set start_time so _get_elapsed_minutes() returns correct total
         from datetime import timedelta
+
         self.start_time = datetime.now() - timedelta(seconds=session.elapsed_seconds)
 
         # Restore iteration count
@@ -1433,7 +1531,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
                 f"{len(self.all_findings)} findings loaded, "
                 f"{len(self.topics_queue)} topics pending."
             ),
-            metadata={"type": "resume", "session_id": session.id}
+            metadata={"type": "resume", "session_id": session.id},
         )
 
         # Index existing findings for retrieval
@@ -1504,9 +1602,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
 
             # Initialize memory for this session
             await self.memory.add_message(
-                role="user",
-                content=f"Research goal: {goal}",
-                metadata={"session_id": session_id}
+                role="user", content=f"Research goal: {goal}", metadata={"session_id": session_id}
             )
 
             # Phase 1: Parallel initial research (if enabled and pool available)
@@ -1567,7 +1663,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
                 "findings_count": len(self.all_findings),
                 "topics_count": len(self.completed_topics),
                 "time_minutes": self._get_elapsed_minutes(),
-            }
+            },
         )
 
         # Return the final report
@@ -1664,12 +1760,12 @@ Be thorough and insightful. Note where findings have lower confidence."""
         visualizer = KnowledgeGraphVisualizer(self.kg_store)
 
         exports = {
-            'stats': self.kg_store.get_stats(),
-            'key_concepts': self.kg_query.get_key_concepts(10),
-            'gaps': [g.to_dict() for g in self.kg_query.identify_gaps()],
-            'contradictions': self.kg_query.get_contradictions(),
-            'mermaid_diagram': visualizer.create_mermaid_diagram(max_nodes=20),
-            'stats_card': visualizer.create_summary_stats_card(),
+            "stats": self.kg_store.get_stats(),
+            "key_concepts": self.kg_query.get_key_concepts(10),
+            "gaps": [g.to_dict() for g in self.kg_query.identify_gaps()],
+            "contradictions": self.kg_query.get_contradictions(),
+            "mermaid_diagram": visualizer.create_mermaid_diagram(max_nodes=20),
+            "stats_card": visualizer.create_summary_stats_card(),
         }
 
         return exports
