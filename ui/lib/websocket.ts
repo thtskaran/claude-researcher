@@ -25,6 +25,7 @@ export class ResearchWebSocket {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private pingInterval: NodeJS.Timeout | null = null;
+  private intentionalDisconnect = false;
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
@@ -33,6 +34,7 @@ export class ResearchWebSocket {
   connect(): void {
     const url = `ws://localhost:8080/ws/${this.sessionId}`;
     console.log(`[WebSocket] Connecting to ${url}...`);
+    this.intentionalDisconnect = false;
 
     try {
       this.ws = new WebSocket(url);
@@ -83,6 +85,11 @@ export class ResearchWebSocket {
         console.log("[WebSocket] Connection closed");
         this.stopPing();
 
+        if (this.intentionalDisconnect) {
+          console.log("[WebSocket] Intentional disconnect, skipping reconnection");
+          return;
+        }
+
         // Attempt reconnection
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
@@ -102,6 +109,7 @@ export class ResearchWebSocket {
 
   disconnect(): void {
     console.log("[WebSocket] Disconnecting...");
+    this.intentionalDisconnect = true;
     this.stopPing();
     if (this.ws) {
       this.ws.close();

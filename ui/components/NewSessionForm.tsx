@@ -62,7 +62,13 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
       }
 
       const data = await response.json();
-      setQuestions(data.questions || []);
+      const qs = data.questions || [];
+      if (qs.length === 0) {
+        // No questions generated — start research directly
+        await startResearch(goal.trim());
+        return;
+      }
+      setQuestions(qs);
       setShowClarification(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to get clarification questions");

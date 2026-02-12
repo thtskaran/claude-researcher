@@ -137,21 +137,26 @@ class EventEmitter:
             subscribers = list(self._subscribers[session_id])
             print(f"   ✓ Sending to {len(subscribers)} subscriber(s)")
 
-        # Send to all subscribers (outside lock to avoid blocking)
-        dead_connections = []
-        for websocket in subscribers:
+        # Send to all subscribers concurrently (outside lock to avoid blocking)
+        event_dict = event.to_dict()
+
+        async def _send(ws: WebSocket) -> WebSocket | None:
             try:
-                await websocket.send_json(event.to_dict())
-                logger.debug(f"Sent {event_type} event to WebSocket for session {session_id}")
+                await asyncio.wait_for(ws.send_json(event_dict), timeout=5.0)
+                return None
             except Exception as e:
                 logger.warning(f"Failed to send to WebSocket: {e}")
-                dead_connections.append(websocket)
+                return ws
+
+        results = await asyncio.gather(*[_send(ws) for ws in subscribers])
+        dead_connections = [ws for ws in results if ws is not None]
 
         # Clean up dead connections
         if dead_connections:
             async with self._subscribers_lock:
-                for ws in dead_connections:
-                    self._subscribers[session_id].discard(ws)
+                if session_id in self._subscribers:
+                    for ws in dead_connections:
+                        self._subscribers[session_id].discard(ws)
 
     def get_subscriber_count(self, session_id: str) -> int:
         """Get number of active subscribers for a session."""

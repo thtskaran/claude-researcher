@@ -5,9 +5,10 @@ import { ResearchWebSocket, AgentEvent } from "@/lib/websocket";
 
 interface ActivityFeedProps {
   sessionId: string;
+  sharedWs?: ResearchWebSocket | null;
 }
 
-export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
+export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps) {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<ResearchWebSocket | null>(null);
@@ -28,7 +29,9 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
   const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    const ws = new ResearchWebSocket(sessionId);
+    // Use shared WebSocket from parent if available, otherwise create own
+    const ownsWs = !sharedWs;
+    const ws = sharedWs ?? new ResearchWebSocket(sessionId);
 
     let cancelled = false;
     const cacheKey = `activity_cache_${sessionId}`;
@@ -73,7 +76,7 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
       }
     })();
 
-    ws.onEvent((event) => {
+    const unsubscribe = ws.onEvent((event) => {
       console.log("Received event:", event);
       const key = getEventKey(event);
       if (seenKeysRef.current.has(key)) {
@@ -83,7 +86,9 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
       setEvents((prev) => [event, ...prev].slice(0, 2000));
     });
 
-    ws.connect();
+    if (ownsWs) {
+      ws.connect();
+    }
     wsRef.current = ws;
 
     const checkConnection = setInterval(() => {
@@ -93,9 +98,12 @@ export default function ActivityFeed({ sessionId }: ActivityFeedProps) {
     return () => {
       cancelled = true;
       clearInterval(checkConnection);
-      ws.disconnect();
+      unsubscribe();
+      if (ownsWs) {
+        ws.disconnect();
+      }
     };
-  }, [sessionId]);
+  }, [sessionId, sharedWs]);
 
   useEffect(() => {
     const cacheKey = `activity_cache_${sessionId}`;
