@@ -5,8 +5,6 @@ import signal
 import subprocess
 import sys
 import webbrowser
-from typing import Optional
-
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -37,12 +35,12 @@ def _handle_interrupt(signum, frame):
 @app.command()
 def main(
     goal: str = typer.Argument(..., help="The research goal or question to investigate"),
-    time_limit: int = typer.Option(
-        60,
-        "--time", "-t",
-        help="Time limit in minutes (default: 60)",
+    iterations: int = typer.Option(
+        5,
+        "--iterations", "-n",
+        help="Number of research iterations (default: 5)",
         min=1,
-        max=480,
+        max=30,
     ),
     db_path: str = typer.Option(
         "research.db",
@@ -80,8 +78,8 @@ def main(
 
     Examples:
         researcher "What are the latest advances in fusion energy?"
-        researcher "History of the Internet" --time 120
-        researcher "Climate change solutions" -t 30 --no-clarify
+        researcher "History of the Internet" --iterations 10
+        researcher "Climate change solutions" -n 3 --no-clarify
         researcher "AI developments" --autonomous
     """
     global _harness
@@ -131,7 +129,7 @@ def main(
                 harness.director.set_input_listener(listener)
 
             try:
-                report = await harness.research(goal, time_limit)
+                report = await harness.research(goal, iterations)
                 return report
 
             except asyncio.CancelledError:

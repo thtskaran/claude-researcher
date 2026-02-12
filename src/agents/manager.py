@@ -79,7 +79,7 @@ class ManagerAgent(BaseAgent):
         self.current_depth: int = 0
         self.max_depth: int = 5
         self.start_time: datetime | None = None
-        self.time_limit_minutes: int = 60
+        self.time_limit_minutes: int = 0  # Kept for stats only, not used for stopping
 
         # Locks for thread-safe state access (prevents race conditions in parallel execution)
         self._state_lock = asyncio.Lock()  # Protects topics_queue, all_findings, all_reports
@@ -291,7 +291,7 @@ Provide structured analysis with clear reasoning. When creating directives:
     async def think(self, context: dict[str, Any]) -> str:
         """Reason about research progress and next steps."""
         time_elapsed = self._get_elapsed_minutes()
-        time_remaining = self.time_limit_minutes - time_elapsed
+        iterations_remaining = self.config.max_iterations - self.state.iteration
 
         # Check for user guidance messages
         user_guidance = ""
@@ -344,8 +344,8 @@ Provide structured analysis with clear reasoning. When creating directives:
 {user_guidance}
 
 Current Status:
+- Iteration: {self.state.iteration}/{self.config.max_iterations} ({iterations_remaining} remaining)
 - Time elapsed: {time_elapsed:.1f} minutes
-- Time remaining: {time_remaining:.1f} minutes
 - Topics completed: {len(self.completed_topics)}
 - Topics in queue: {len(self.topics_queue)}
 - Total findings: {len(self.all_findings)}
@@ -398,10 +398,8 @@ Think step by step about the best next action."""
         # Periodic checkpoint for crash recovery
         await self._maybe_periodic_checkpoint()
 
-        time_remaining = self.time_limit_minutes - self._get_elapsed_minutes()
-
         # Check if we should synthesize and stop
-        if self._should_synthesize(thought, time_remaining):
+        if self._should_synthesize(thought):
             report = await self._synthesize_report()
             return {
                 "action": "synthesize",
@@ -663,19 +661,18 @@ Think step by step about the best next action."""
         return "Unknown action"
 
     def is_done(self, context: dict[str, Any]) -> bool:
-        """Check if the Manager should stop."""
-        # Check time limit
-        if self._get_elapsed_minutes() >= self.time_limit_minutes:
-            self._log("Time limit reached", style="yellow")
-            return True
-
+        """Check if the Manager should stop (iteration-based)."""
         # Check if synthesis complete
         last_action = context.get("last_action", {})
         if last_action.get("action") == "synthesize":
             return True
 
-        # Check max iterations
+        # Check max iterations (the only stopping condition now)
         if self.state.iteration >= self.config.max_iterations:
+            self._log(
+                f"Iteration limit reached ({self.state.iteration}/{self.config.max_iterations})",
+                style="yellow",
+            )
             return True
 
         return False
@@ -819,47 +816,41 @@ Think step by step about the best next action."""
                 except Exception as e:
                     self._log(f"[KG] Error processing finding: {e}", style="dim")
 
-    def _should_synthesize(self, thought: str, time_remaining: float) -> bool:
-        """Determine if it's time to synthesize results."""
-        # Never synthesize if we have no findings - always do research first!
+    def _should_synthesize(self, thought: str) -> bool:
+        """Determine if it's time to synthesize results (iteration-based)."""
+        # Never synthesize if we have no findings
         if not self.all_findings:
             return False
 
-        # Calculate time usage percentage
-        time_used_percent = (
-            (self.time_limit_minutes - time_remaining) / self.time_limit_minutes
-        ) * 100
+        iterations_remaining = self.config.max_iterations - self.state.iteration
 
-        # Only allow synthesis after using at least 90% of time budget
-        # Exception: if less than 5 minutes remain (handles edge cases with short budgets)
-        min_time_used_percent = 90
-
-        if time_remaining >= 5 and time_used_percent < min_time_used_percent:
-            # Not enough time used yet - keep researching regardless of signals
-            return False
-
-        # Time pressure - synthesize if under 5 minutes and we have findings
-        if time_remaining < 5 and self.all_findings:
-            # Log the synthesis trigger decision
+        # On last iteration, always synthesize if we have findings
+        if iterations_remaining <= 0 and self.all_findings:
             asyncio.create_task(
                 self._log_decision(
                     session_id=self.session_id,
                     decision_type=DecisionType.SYNTHESIS_TRIGGER,
-                    decision_outcome="triggered_time_pressure",
-                    reasoning=f"Time remaining ({time_remaining:.1f}min) < 5min with {len(self.all_findings)} findings",
-                    inputs={
-                        "time_remaining": time_remaining,
-                        "findings_count": len(self.all_findings),
+                    decision_outcome="triggered_last_iteration",
+                    reasoning=f"Last iteration with {len(self.all_findings)} findings",
+                    inputs={"findings_count": len(self.all_findings)},
+                    metrics={
+                        "iteration": self.state.iteration,
+                        "max_iterations": self.config.max_iterations,
                     },
-                    metrics={"time_used_percent": time_used_percent},
                 )
             )
             return True
 
-        # Explicit signals - but only if we have meaningful findings AND used enough time
-        if len(self.all_findings) < 3:
-            return False  # Need at least some findings before synthesizing
+        # Don't allow early synthesis until at least 80% of iterations are done
+        iteration_pct = (self.state.iteration / self.config.max_iterations) * 100
+        if iteration_pct < 80:
+            return False
 
+        # Need at least some findings before synthesizing
+        if len(self.all_findings) < 3:
+            return False
+
+        # Check explicit signals from LLM
         thought_lower = thought.lower()
         synthesis_signals = [
             "time to synthesize",
@@ -872,19 +863,16 @@ Think step by step about the best next action."""
         should_synthesize = any(signal in thought_lower for signal in synthesis_signals)
 
         if should_synthesize:
-            # Log the synthesis trigger decision
             asyncio.create_task(
                 self._log_decision(
                     session_id=self.session_id,
                     decision_type=DecisionType.SYNTHESIS_TRIGGER,
                     decision_outcome="triggered_explicit_signal",
                     reasoning=thought[:500],
-                    inputs={
-                        "time_remaining": time_remaining,
-                        "findings_count": len(self.all_findings),
-                    },
+                    inputs={"findings_count": len(self.all_findings)},
                     metrics={
-                        "time_used_percent": time_used_percent,
+                        "iteration": self.state.iteration,
+                        "max_iterations": self.config.max_iterations,
                         "topics_completed": len(self.completed_topics),
                     },
                 )
@@ -974,7 +962,7 @@ Think step by step about the best next action."""
                 },
                 metrics={
                     "findings_count": len(self.all_findings),
-                    "time_remaining": (self.time_limit_minutes - self._get_elapsed_minutes()),
+                    "iterations_remaining": self.config.max_iterations - self.state.iteration,
                 },
             )
 
@@ -1150,7 +1138,6 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
     async def _synthesize_report(self) -> ManagerReport:
         """Synthesize all findings into a final report with verification awareness."""
         time_elapsed = self._get_elapsed_minutes()
-        time_remaining = self.time_limit_minutes - time_elapsed
 
         # Run batch verification on findings that haven't had thorough verification.
         # Includes: unverified findings, streaming-only verified findings (lightweight
@@ -1290,7 +1277,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
             quality_assessment="",
             recommended_next_steps=[],
             time_elapsed_minutes=time_elapsed,
-            time_remaining_minutes=time_remaining,
+            iterations_completed=self.state.iteration,
         )
 
     async def _run_parallel_initial_research(self, goal: str, max_aspects: int = 3) -> None:
@@ -1559,7 +1546,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
         self,
         goal: str,
         session_id: str,
-        time_limit_minutes: int = 60,
+        max_iterations: int = 5,
         use_parallel_init: bool = True,
         resume: bool = False,
         session: ResearchSession | None = None,
@@ -1569,7 +1556,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
         Args:
             goal: The main research goal
             session_id: Session ID for persistence (7-char hex)
-            time_limit_minutes: Time budget for research
+            max_iterations: Number of manager ReAct loop iterations (controls depth)
             use_parallel_init: If True, start with parallel decomposition phase
             resume: If True, restore state from DB and continue
             session: Existing session object (required if resume=True)
@@ -1577,7 +1564,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
         self.research_goal = goal
         self.session_id = session_id
         self.knowledge_graph.session_id = session_id
-        self.time_limit_minutes = time_limit_minutes
+        self.config.max_iterations = max_iterations
         self._current_phase = "init"
 
         # Eagerly initialize external memory DB
@@ -1648,7 +1635,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
                 quality_assessment="",
                 recommended_next_steps=["Resume research to continue"],
                 time_elapsed_minutes=self._get_elapsed_minutes(),
-                time_remaining_minutes=self.time_limit_minutes - self._get_elapsed_minutes(),
+                iterations_completed=self.state.iteration,
             )
 
         self._current_phase = "done"

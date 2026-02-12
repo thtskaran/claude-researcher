@@ -133,7 +133,8 @@ class ResearchDatabase:
                 id TEXT PRIMARY KEY,
                 goal TEXT NOT NULL,
                 slug TEXT,
-                time_limit_minutes INTEGER DEFAULT 60,
+                max_iterations INTEGER DEFAULT 5,
+                time_limit_minutes INTEGER DEFAULT 0,
                 started_at TEXT NOT NULL,
                 ended_at TEXT,
                 status TEXT DEFAULT 'active',
@@ -272,8 +273,17 @@ class ResearchDatabase:
         """)
         await self._connection.commit()
 
+        # Migration: add max_iterations column for existing databases
+        try:
+            await self._connection.execute(
+                "ALTER TABLE sessions ADD COLUMN max_iterations INTEGER DEFAULT 5"
+            )
+            await self._connection.commit()
+        except Exception:
+            pass  # Column already exists
+
     # Session methods
-    async def create_session(self, goal: str, time_limit_minutes: int = 60) -> ResearchSession:
+    async def create_session(self, goal: str, max_iterations: int = 5) -> ResearchSession:
         """Create a new research session with unique hex ID."""
         session_id = _generate_session_id()
         slug = _generate_slug(goal)
@@ -282,10 +292,10 @@ class ResearchDatabase:
         try:
             await self._connection.execute(
                 """
-                INSERT INTO sessions (id, goal, slug, time_limit_minutes, started_at, status)
+                INSERT INTO sessions (id, goal, slug, max_iterations, started_at, status)
                 VALUES (?, ?, ?, ?, ?, 'active')
                 """,
-                (session_id, goal, slug, time_limit_minutes, now),
+                (session_id, goal, slug, max_iterations, now),
             )
             await self._connection.commit()
         except Exception:
@@ -295,7 +305,7 @@ class ResearchDatabase:
             id=session_id,
             goal=goal,
             slug=slug,
-            time_limit_minutes=time_limit_minutes,
+            max_iterations=max_iterations,
             started_at=datetime.fromisoformat(now),
             status="active",
         )
@@ -312,7 +322,8 @@ class ResearchDatabase:
             id=row["id"],
             goal=row["goal"],
             slug=row["slug"],
-            time_limit_minutes=row["time_limit_minutes"],
+            max_iterations=row["max_iterations"] if "max_iterations" in row.keys() else 5,
+            time_limit_minutes=row["time_limit_minutes"] if "time_limit_minutes" in row.keys() else 0,
             started_at=datetime.fromisoformat(row["started_at"]),
             ended_at=datetime.fromisoformat(row["ended_at"]) if row["ended_at"] else None,
             status=row["status"],

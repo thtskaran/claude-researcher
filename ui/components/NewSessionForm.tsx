@@ -17,7 +17,7 @@ interface ClarificationQuestion {
 export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormProps) {
   const router = useRouter();
   const [goal, setGoal] = useState("");
-  const [timeLimit, setTimeLimit] = useState(30);
+  const [maxIterations, setMaxIterations] = useState(5);
   const [autonomous, setAutonomous] = useState(true);
   const [enableMidQuestions, setEnableMidQuestions] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -113,7 +113,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           goal: researchGoal,
-          time_limit: timeLimit,
+          max_iterations: maxIterations,
           autonomous: !enableMidQuestions,
           enable_mid_questions: enableMidQuestions,
         }),
@@ -133,7 +133,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
     }
   };
 
-  const estimatedCost = timeLimit <= 15 ? "$0.50 - $1.50" : timeLimit <= 45 ? "$2.00 - $4.00" : "$5.00 - $10.00";
+  const depthLabel = maxIterations <= 3 ? "Quick scan" : maxIterations <= 7 ? "Standard depth" : maxIterations <= 14 ? "Deep research" : "Exhaustive";
 
   return (
     <div className="bg-card rounded-2xl border border-edge overflow-hidden relative" style={{ boxShadow: "var(--shadow-lg)" }}>
@@ -182,28 +182,28 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
               </div>
             </div>
 
-            {/* Time Limit Slider */}
+            {/* Iterations Slider */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-medium uppercase tracking-wider text-ink-secondary">
-                  Time Limit
+                  Research Depth (Iterations)
                 </label>
                 <span className="text-sage font-mono text-sm bg-sage-soft px-2 py-0.5 rounded">
-                  {timeLimit} mins
+                  {maxIterations} {maxIterations === 1 ? "iteration" : "iterations"}
                 </span>
               </div>
               <input
                 type="range"
-                min="5"
-                max="120"
-                step="5"
-                value={timeLimit}
-                onChange={(e) => setTimeLimit(parseInt(e.target.value))}
+                min="1"
+                max="20"
+                step="1"
+                value={maxIterations}
+                onChange={(e) => setMaxIterations(parseInt(e.target.value))}
                 className="w-full h-1.5 bg-edge rounded-full appearance-none cursor-pointer accent-sage"
               />
               <div className="flex justify-between text-xs text-ink-muted font-mono">
-                <span>5m</span>
-                <span>120m</span>
+                <span>1 (quick)</span>
+                <span>20 (deep)</span>
               </div>
             </div>
 
@@ -285,8 +285,8 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
         {/* Action Footer */}
         <div className="pt-2 flex flex-col items-center gap-6">
           <div className="font-mono text-sm text-ink-secondary flex items-center gap-2">
-            <span className="material-symbols-outlined text-base">payments</span>
-            Estimated Cost: <span className="text-ink font-bold">{estimatedCost}</span>
+            <span className="material-symbols-outlined text-base">speed</span>
+            Depth: <span className="text-ink font-bold">{depthLabel}</span>
           </div>
           <button
             type="submit"

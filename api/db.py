@@ -16,7 +16,8 @@ class SessionRecord(BaseModel):
     id: str
     goal: str
     slug: str
-    time_limit_minutes: int
+    max_iterations: int = 5
+    time_limit: int = 0  # Kept for backward compat display
     started_at: datetime
     ended_at: datetime | None = None
     status: str = "active"
@@ -27,6 +28,28 @@ class SessionRecord(BaseModel):
     paused_at: datetime | None = None
     iteration_count: int = 0
     phase: str = "init"
+
+
+def _row_to_session(row) -> SessionRecord:
+    """Convert a DB row to SessionRecord, handling old schemas without max_iterations."""
+    keys = row.keys() if hasattr(row, "keys") else []
+    return SessionRecord(
+        id=row["id"],
+        goal=row["goal"],
+        slug=row["slug"],
+        max_iterations=row["max_iterations"] if "max_iterations" in keys else 5,
+        time_limit=row["time_limit_minutes"] if "time_limit_minutes" in keys else 0,
+        started_at=datetime.fromisoformat(row["started_at"]),
+        ended_at=datetime.fromisoformat(row["ended_at"]) if row["ended_at"] else None,
+        status=row["status"],
+        total_findings=row["total_findings"],
+        total_searches=row["total_searches"],
+        depth_reached=row["depth_reached"],
+        elapsed_seconds=row["elapsed_seconds"] or 0.0,
+        paused_at=datetime.fromisoformat(row["paused_at"]) if row["paused_at"] else None,
+        iteration_count=row["iteration_count"] or 0,
+        phase=row["phase"] or "init",
+    )
 
 
 class APIDatabase:
@@ -51,7 +74,8 @@ class APIDatabase:
                 id TEXT PRIMARY KEY,
                 goal TEXT NOT NULL,
                 slug TEXT,
-                time_limit_minutes INTEGER DEFAULT 60,
+                max_iterations INTEGER DEFAULT 5,
+                time_limit_minutes INTEGER DEFAULT 0,
                 started_at TEXT NOT NULL,
                 ended_at TEXT,
                 status TEXT DEFAULT 'active',
@@ -188,6 +212,15 @@ class APIDatabase:
         )
         await self._connection.commit()
 
+        # Migration: add max_iterations column for existing databases
+        try:
+            await self._connection.execute(
+                "ALTER TABLE sessions ADD COLUMN max_iterations INTEGER DEFAULT 5"
+            )
+            await self._connection.commit()
+        except Exception:
+            pass  # Column already exists
+
     async def close(self):
         """Close database connection."""
         if self._connection:
@@ -208,22 +241,7 @@ class APIDatabase:
 
         sessions = []
         for row in rows:
-            sessions.append(SessionRecord(
-                id=row["id"],
-                goal=row["goal"],
-                slug=row["slug"],
-                time_limit_minutes=row["time_limit_minutes"],
-                started_at=datetime.fromisoformat(row["started_at"]),
-                ended_at=datetime.fromisoformat(row["ended_at"]) if row["ended_at"] else None,
-                status=row["status"],
-                total_findings=row["total_findings"],
-                total_searches=row["total_searches"],
-                depth_reached=row["depth_reached"],
-                elapsed_seconds=row["elapsed_seconds"] or 0.0,
-                paused_at=datetime.fromisoformat(row["paused_at"]) if row["paused_at"] else None,
-                iteration_count=row["iteration_count"] or 0,
-                phase=row["phase"] or "init",
-            ))
+            sessions.append(_row_to_session(row))
 
         return sessions
 
@@ -236,24 +254,9 @@ class APIDatabase:
         if not row:
             return None
 
-        return SessionRecord(
-            id=row["id"],
-            goal=row["goal"],
-            slug=row["slug"],
-            time_limit_minutes=row["time_limit_minutes"],
-            started_at=datetime.fromisoformat(row["started_at"]),
-            ended_at=datetime.fromisoformat(row["ended_at"]) if row["ended_at"] else None,
-            status=row["status"],
-            total_findings=row["total_findings"],
-            total_searches=row["total_searches"],
-            depth_reached=row["depth_reached"],
-            elapsed_seconds=row["elapsed_seconds"] or 0.0,
-            paused_at=datetime.fromisoformat(row["paused_at"]) if row["paused_at"] else None,
-            iteration_count=row["iteration_count"] or 0,
-            phase=row["phase"] or "init",
-        )
+        return _row_to_session(row)
 
-    async def create_session(self, goal: str, time_limit: int = 60) -> SessionRecord:
+    async def create_session(self, goal: str, max_iterations: int = 5) -> SessionRecord:
         """Create a new research session."""
         session_id = secrets.token_hex(4)[:7]  # 7-char hex like the main code
 
@@ -266,10 +269,10 @@ class APIDatabase:
         try:
             await self._connection.execute(
                 """
-                INSERT INTO sessions (id, goal, slug, time_limit_minutes, started_at, status)
+                INSERT INTO sessions (id, goal, slug, max_iterations, started_at, status)
                 VALUES (?, ?, ?, ?, ?, 'created')
                 """,
-                (session_id, goal, slug, time_limit, now.isoformat()),
+                (session_id, goal, slug, max_iterations, now.isoformat()),
             )
             await self._connection.commit()
         except Exception:
@@ -280,7 +283,7 @@ class APIDatabase:
             id=session_id,
             goal=goal,
             slug=slug,
-            time_limit_minutes=time_limit,
+            max_iterations=max_iterations,
             started_at=now,
             status="created",
         )

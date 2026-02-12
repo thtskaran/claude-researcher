@@ -25,7 +25,7 @@ running_harnesses: dict[str, object] = {}  # session_id -> ResearchHarness
 class StartResearchRequest(BaseModel):
     """Request to start research."""
     goal: str
-    time_limit: int = 60
+    max_iterations: int = 5
     autonomous: bool = True
     enable_mid_questions: bool = False
 
@@ -76,7 +76,7 @@ class ResearchStatusResponse(BaseModel):
     message: str | None = None
 
 
-async def run_research_background(session_id: str, goal: str, time_limit: int, autonomous: bool = True, enable_mid_questions: bool = False):
+async def run_research_background(session_id: str, goal: str, max_iterations: int, autonomous: bool = True, enable_mid_questions: bool = False):
     """
     Run research in the background.
 
@@ -86,7 +86,7 @@ async def run_research_background(session_id: str, goal: str, time_limit: int, a
     print("🔬 STARTING BACKGROUND RESEARCH")
     print(f"   Session ID: {session_id}")
     print(f"   Goal: {goal}")
-    print(f"   Time Limit: {time_limit} minutes")
+    print(f"   Iterations: {max_iterations}")
     print(f"   Autonomous Mode: {autonomous}")
     print(f"   Mid-Research Questions: {enable_mid_questions}")
     print(f"{'='*60}\n")
@@ -142,7 +142,7 @@ async def run_research_background(session_id: str, goal: str, time_limit: int, a
             # Pass existing session_id so we don't create a duplicate session
             result = await harness.research(
                 goal=goal,
-                time_limit_minutes=time_limit,
+                max_iterations=max_iterations,
                 existing_session_id=session_id
             )
 
@@ -206,15 +206,15 @@ async def start_research(
 
     # Create session in database
     db = await get_db()
-    session = await db.create_session(request.goal, request.time_limit)
+    session = await db.create_session(request.goal, request.max_iterations)
     session_id = session.id
 
-    # Start research in background with autonomous flag and mid-questions setting
+    # Start research in background
     task = asyncio.create_task(
         run_research_background(
             session_id,
             request.goal,
-            request.time_limit,
+            request.max_iterations,
             request.autonomous,
             request.enable_mid_questions
         )
@@ -353,7 +353,7 @@ async def run_research_resume_background(session_id: str):
 
             result = await harness.research(
                 goal=session.goal,
-                time_limit_minutes=session.time_limit_minutes,
+                max_iterations=session.max_iterations if hasattr(session, "max_iterations") else 5,
                 existing_session_id=session_id,
                 resume=True,
             )

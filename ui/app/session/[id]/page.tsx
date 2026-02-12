@@ -13,12 +13,13 @@ import Link from "next/link";
 interface Session {
   session_id: string;
   goal: string;
-  time_limit: number;
+  max_iterations: number;
   status: string;
   created_at: string;
   completed_at?: string | null;
   elapsed_seconds?: number;
   paused_at?: string | null;
+  iteration_count?: number;
 }
 
 const tabs = [
@@ -213,11 +214,7 @@ export default function SessionDetail() {
     : session.elapsed_seconds && session.elapsed_seconds > 0
       ? formatSeconds(session.elapsed_seconds)
       : getDuration(session.created_at, session.completed_at || null);
-  const remaining = isRunning
-    ? getRemainingTimeWithElapsed(session.time_limit, session.elapsed_seconds || 0, session.created_at, nowTick)
-    : isResumable && session.elapsed_seconds
-      ? formatSeconds(session.time_limit * 60 - session.elapsed_seconds)
-      : getRemainingTime(session.created_at, session.time_limit, nowTick);
+  const iterationProgress = `${session.iteration_count ?? 0}/${session.max_iterations}`;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -340,8 +337,8 @@ export default function SessionDetail() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard icon="travel_explore" label="Sources Found" value={stats ? String(stats.sources) : "--"} color="text-sage" />
             <StatCard icon="description" label="Findings" value={stats ? String(stats.findings) : "--"} color="text-olive" />
-            <StatCard icon="topic" label="Topics" value={stats ? String(stats.topics) : "--"} color="text-gold" />
-            <StatCard icon="timer" label={isRunning ? "Time Remaining" : "Duration"} value={isRunning ? remaining : elapsed} color={isRunning ? "text-sage" : "text-ink-secondary"} animate={isRunning} />
+            <StatCard icon="repeat" label="Iterations" value={iterationProgress} color={isRunning ? "text-sage" : "text-ink-secondary"} animate={isRunning} />
+            <StatCard icon="timer" label="Elapsed" value={elapsed} color="text-ink-secondary" animate={isRunning} />
           </div>
         </div>
       </div>
@@ -547,17 +544,6 @@ function getElapsedTime(startDate: string, nowMs: number): string {
   return `${secs}s`;
 }
 
-function getRemainingTime(startDate: string, limitMins: number, nowMs: number): string {
-  const start = new Date(startDate);
-  const endMs = start.getTime() + limitMins * 60 * 1000;
-  const remainMs = endMs - nowMs;
-  if (remainMs <= 0) return "0:00";
-  const remainSecs = Math.floor(remainMs / 1000);
-  const mins = Math.floor(remainSecs / 60);
-  const secs = remainSecs % 60;
-  return `${mins}:${String(secs).padStart(2, "0")}`;
-}
-
 function getDuration(startDateString: string, endDateString: string | null): string {
   if (!endDateString) {
     return "N/A";
@@ -585,17 +571,3 @@ function formatSeconds(totalSecs: number): string {
   return `${secs}s`;
 }
 
-function getRemainingTimeWithElapsed(limitMins: number, elapsedSecs: number, startDate: string, nowMs: number): string {
-  // For a running session that was previously resumed, account for both
-  // the accumulated elapsed_seconds and the time since the current run started
-  const start = new Date(startDate);
-  const currentRunSecs = (nowMs - start.getTime()) / 1000;
-  // The elapsed_seconds from DB already includes previous runs. During a running session,
-  // the manager adjusts start_time so _get_elapsed_minutes works correctly,
-  // but the DB elapsed_seconds may lag. Use whichever is greater.
-  const totalElapsed = Math.max(elapsedSecs, currentRunSecs);
-  const remainSecs = Math.max(0, limitMins * 60 - totalElapsed);
-  const mins = Math.floor(remainSecs / 60);
-  const secs = Math.floor(remainSecs % 60);
-  return `${mins}:${String(secs).padStart(2, "0")}`;
-}

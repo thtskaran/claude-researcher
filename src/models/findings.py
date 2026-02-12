@@ -65,12 +65,13 @@ class ResearchTopic(BaseModel):
 
 
 class ResearchSession(BaseModel):
-    """A research session with time limits and goals."""
+    """A research session with iteration-based control."""
 
     id: str | None = None  # 7-char hex ID
     goal: str
     slug: str | None = None  # AI-generated short name for output folder
-    time_limit_minutes: int = 60
+    max_iterations: int = 5  # Manager ReAct loop iterations (controls research depth)
+    time_limit_minutes: int = 0  # Kept for backward compat / display only
     started_at: datetime = Field(default_factory=datetime.now)
     ended_at: datetime | None = None
     status: str = "active"  # active, running, paused, crashed, completed, error, interrupted
@@ -127,5 +128,6 @@ class ManagerReport(BaseModel):
     topics_remaining: list[str]
     quality_assessment: str
     recommended_next_steps: list[str]
-    time_elapsed_minutes: float
-    time_remaining_minutes: float
+    time_elapsed_minutes: float = 0.0
+    iterations_completed: int = 0
+    searches_performed: int = 0

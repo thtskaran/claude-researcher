@@ -7,10 +7,11 @@ import NewSessionForm from "@/components/NewSessionForm";
 interface Session {
   session_id: string;
   goal: string;
-  time_limit: number;
+  max_iterations: number;
   status: string;
   created_at: string;
   completed_at?: string | null;
+  iteration_count?: number;
 }
 
 export default function Home() {
@@ -220,8 +221,8 @@ function SessionCard({ session, onClick }: { session: Session; onClick: () => vo
           {timeDisplay}
         </span>
         <span className="flex items-center gap-1">
-          <span className="material-symbols-outlined text-[14px]">hourglass_empty</span>
-          {session.time_limit}m limit
+          <span className="material-symbols-outlined text-[14px]">repeat</span>
+          {session.iteration_count ?? 0}/{session.max_iterations} iter
         </span>
       </div>
     </button>

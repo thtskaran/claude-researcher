@@ -163,7 +163,7 @@ When presenting results:
     async def start_research(
         self,
         goal: str,
-        time_limit_minutes: int = 60,
+        max_iterations: int = 5,
         skip_clarification: bool = False,
         existing_session_id: str | None = None,
         resume: bool = False,
@@ -172,7 +172,7 @@ When presenting results:
 
         Args:
             goal: The research goal/question to investigate
-            time_limit_minutes: Maximum time for the research session
+            max_iterations: Number of manager ReAct loop iterations
             skip_clarification: Skip pre-research clarification questions
             existing_session_id: Optional existing session ID to use (for UI/API)
             resume: If True, resume a paused or crashed session
@@ -195,7 +195,7 @@ When presenting results:
                     f"{self.current_session.status}, not paused/crashed"
                 )
             effective_goal = self.current_session.goal
-            time_limit_minutes = self.current_session.time_limit_minutes
+            max_iterations = self.current_session.max_iterations
         else:
             # Clarify goal if enabled (skip when using existing session from UI)
             if not skip_clarification and self.interaction_config.enable_clarification and not existing_session_id:
@@ -217,7 +217,7 @@ When presenting results:
                 # Create new session (CLI flow)
                 self.current_session = await self.db.create_session(
                     goal=effective_goal,
-                    time_limit_minutes=time_limit_minutes,
+                    max_iterations=max_iterations,
                 )
 
         # Set session ID on all agents for WebSocket events
@@ -225,12 +225,12 @@ When presenting results:
         self.manager.session_id = self.current_session.id
         self.intern.session_id = self.current_session.id
 
-        self._log_header(effective_goal, time_limit_minutes)
+        self._log_header(effective_goal, max_iterations)
 
         # Run research with progress display
         try:
             report = await self._run_with_progress(
-                effective_goal, time_limit_minutes, resume=resume
+                effective_goal, max_iterations, resume=resume
             )
 
             # Check if we paused (don't mark as completed)
@@ -282,7 +282,7 @@ When presenting results:
         self._log("Pause requested - finishing current operation")
 
     async def _run_with_progress(
-        self, goal: str, time_limit_minutes: int, resume: bool = False
+        self, goal: str, max_iterations: int, resume: bool = False
     ) -> ManagerReport:
         """Run research with progress display."""
         self._progress = Progress(
@@ -315,7 +315,7 @@ When presenting results:
             report = await self.manager.run_research(
                 goal=goal,
                 session_id=self.current_session.id,
-                time_limit_minutes=time_limit_minutes,
+                max_iterations=max_iterations,
                 resume=resume,
                 session=self.current_session if resume else None,
             )
@@ -331,12 +331,12 @@ When presenting results:
 
             return report
 
-    def _log_header(self, goal: str, time_limit_minutes: int) -> None:
+    def _log_header(self, goal: str, max_iterations: int) -> None:
         """Log research session header."""
         self.console.print()
         self.console.print(Panel(
             f"[bold]Research Goal:[/bold] {goal}\n"
-            f"[bold]Time Limit:[/bold] {time_limit_minutes} minutes\n"
+            f"[bold]Iterations:[/bold] {max_iterations}\n"
             f"[bold]Session ID:[/bold] {self.current_session.id}",
             title="[bold blue]Deep Research Session[/bold blue]",
             border_style="blue",
@@ -376,7 +376,8 @@ When presenting results:
             f"[bold]Total Findings:[/bold] {stats['total_findings']}\n"
             f"[bold]Unique Searches:[/bold] {stats['unique_searches']}\n"
             f"[bold]Max Depth:[/bold] {stats['max_depth']}\n"
-            f"[bold]Time Used:[/bold] {report.time_elapsed_minutes:.1f} minutes",
+            f"[bold]Time Used:[/bold] {report.time_elapsed_minutes:.1f} minutes\n"
+            f"[bold]Iterations:[/bold] {report.iterations_completed}",
             title="[bold]Session Statistics[/bold]",
             border_style="dim",
         ))
@@ -623,7 +624,7 @@ class ResearchHarness:
     async def research(
         self,
         goal: str,
-        time_limit_minutes: int = 60,
+        max_iterations: int = 5,
         existing_session_id: str | None = None,
         resume: bool = False,
     ) -> ManagerReport:
@@ -631,7 +632,7 @@ class ResearchHarness:
 
         Args:
             goal: The research question or topic to investigate
-            time_limit_minutes: Maximum time for the session (default: 60)
+            max_iterations: Number of manager ReAct loop iterations (default: 5)
             existing_session_id: Optional existing session ID (for UI/API)
             resume: If True, resume a paused/crashed session
 
@@ -643,7 +644,7 @@ class ResearchHarness:
 
         return await self.director.start_research(
             goal,
-            time_limit_minutes,
+            max_iterations,
             existing_session_id=existing_session_id,
             resume=resume,
         )

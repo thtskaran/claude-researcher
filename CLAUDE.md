@@ -10,13 +10,14 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e .
 
 # Run research (CLI -- results persist in SQLite, viewable in UI later)
-researcher "Your research question" --time 30
+researcher "Your research question" --iterations 10
 
 # Launch web UI (starts API on :8080 + Next.js on :3000, opens browser)
 researcher ui
 
 # CLI options
-researcher "topic" --time 60          # Time limit in minutes (default: 60)
+researcher "topic" --iterations 10     # Number of research iterations (default: 5)
+researcher "topic" -n 3                # Short form for --iterations
 researcher "topic" --no-clarify        # Skip pre-research clarification
 researcher "topic" --autonomous        # No user interaction
 researcher "topic" --db my.db          # Custom SQLite database path
