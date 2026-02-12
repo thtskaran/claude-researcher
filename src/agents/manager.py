@@ -129,6 +129,7 @@ class ManagerAgent(BaseAgent):
         self.verification_pipeline = VerificationPipeline(
             llm_callback=self._verification_llm_callback,
             knowledge_graph=self.knowledge_graph,
+            search_callback=self._verification_search_callback,
             config=self.verification_config,
         )
         # Pass pipeline to intern and intern pool
@@ -200,6 +201,22 @@ class ManagerAgent(BaseAgent):
             return await self.call_claude(prompt, output_format=output_format)
         finally:
             self.config.model = original_model
+
+    async def _verification_search_callback(self, query: str) -> list[dict]:
+        """Web search callback for CoVe/CRITIC independent verification.
+
+        Uses the intern's search tool (Bright Data) to fetch evidence so
+        the verification pipeline can ground answers in real web data
+        instead of relying solely on parametric knowledge.
+        """
+        try:
+            results, _ = await self.intern.search_tool.search(query)
+            return [
+                {"title": r.title, "url": r.url, "snippet": r.snippet}
+                for r in results[:5]
+            ]
+        except Exception:
+            return []
 
     @property
     def system_prompt(self) -> str:
@@ -1048,12 +1065,20 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
         time_elapsed = self._get_elapsed_minutes()
         time_remaining = self.time_limit_minutes - time_elapsed
 
-        # Run batch verification on any unverified findings
-        unverified = [f for f in self.all_findings if not f.verification_status]
-        if unverified and self.verification_config.enable_batch_verification:
-            self._log(f"[VERIFY] Final verification on {len(unverified)} findings...", style="dim")
+        # Run batch verification on findings that haven't had thorough verification.
+        # Includes: unverified findings, streaming-only verified findings (lightweight
+        # CoVe only), and findings that were rejected/flagged by streaming and deserve
+        # a second look with the full pipeline (CoVe batch + KG + CRITIC).
+        _streaming_methods = {"streaming", ""}
+        needs_batch = [
+            f for f in self.all_findings
+            if not f.verification_status
+            or (f.verification_method or "") in _streaming_methods
+        ]
+        if needs_batch and self.verification_config.enable_batch_verification:
+            self._log(f"[VERIFY] Batch verification on {len(needs_batch)} findings...", style="dim")
             batch_result = await self.verification_pipeline.verify_batch(
-                unverified, self.session_id
+                needs_batch, self.session_id
             )
             self.last_batch_verification = batch_result
 

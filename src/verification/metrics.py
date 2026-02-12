@@ -128,13 +128,13 @@ class VerificationMetricsTracker:
                 self.contradictions_by_severity[contradiction.severity] += 1
 
             # KG tracking
-            if result.kg_support_score > 0:
+            if (result.kg_support_score or 0) > 0:
                 self.kg_matches += 1
-            if result.kg_support_score > 0.5:
+            if (result.kg_support_score or 0) > 0.5:
                 self.kg_boosts += 1
 
             # CRITIC tracking
-            self.critic_iterations_total += result.critic_iterations
+            self.critic_iterations_total += result.critic_iterations or 0
             self.corrections_made += len(result.corrections_made)
             if result.external_verification_used:
                 self.external_verifications += 1

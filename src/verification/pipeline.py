@@ -54,8 +54,12 @@ class VerificationPipeline:
         self.knowledge_graph = knowledge_graph
         self.search_callback = search_callback
 
-        # Initialize components
-        self.cove = ChainOfVerification(llm_callback, self.config)
+        # Initialize components — pass search_callback to CoVe so it can
+        # independently verify claims via web search instead of relying
+        # solely on the LLM's parametric knowledge.
+        self.cove = ChainOfVerification(
+            llm_callback, self.config, search_callback=search_callback,
+        )
         self.critic = CRITICVerifier(llm_callback, search_callback, self.config)
         self.calibrator = ConfidenceCalibrator(self.config)
         self.high_stakes_detector = HighStakesDetector()
@@ -93,11 +97,22 @@ class VerificationPipeline:
             )
 
         # HHEM source-grounding check (runs before CoVe to enable early reject)
+        # Only use HHEM when source_content is substantial enough for reliable
+        # grounding evaluation.  Search-result snippets (~100-200 chars) are too
+        # short — HHEM compares hypothesis against premise, and a tiny snippet
+        # rarely contains enough evidence to support a detailed finding, causing
+        # false low scores and mass-rejection.
         hhem_score = -1.0
-        if self.hhem and source_content:
+        min_source_len_for_hhem = 500
+        if (
+            self.hhem
+            and source_content
+            and len(source_content) >= min_source_len_for_hhem
+        ):
             hhem_score = await self.hhem.score(source_content, finding.content)
 
-            # Early reject if clearly not grounded in source
+            # Early reject only if clearly not grounded AND we had enough source
+            # text to make a reliable judgement
             if 0 <= hhem_score < self.config.hhem_reject_threshold:
                 result = VerificationResult(
                     finding_id=finding_id,
@@ -140,7 +155,8 @@ class VerificationPipeline:
             # so the calibrator treats it as "no data" rather than a negative signal
             cove_score = (
                 result.consistency_score
-                if result.verification_status != VerificationStatus.SKIPPED
+                if result.consistency_score is not None
+                and result.verification_status != VerificationStatus.SKIPPED
                 else -1.0
             )
             calibration = self.calibrator.calibrate(

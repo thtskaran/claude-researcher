@@ -49,14 +49,22 @@ QUESTIONS_SCHEMA = {
     "required": ["questions"],
 }
 
-ANSWER_SCHEMA = {
+INDEPENDENT_ANSWER_SCHEMA = {
     "type": "object",
     "properties": {
         "answer": {"type": "string"},
         "confidence": {"type": "number"},
-        "supports": {"type": "boolean"},
     },
-    "required": ["answer", "confidence", "supports"],
+    "required": ["answer", "confidence"],
+}
+
+COMPARISON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "supports": {"type": "boolean"},
+        "reasoning": {"type": "string"},
+    },
+    "required": ["supports", "reasoning"],
 }
 
 
@@ -66,7 +74,7 @@ class ChainOfVerification:
     Implements a 4-step verification process:
     1. Baseline: The original finding (already have this)
     2. Plan: Generate verification questions
-    3. Execute: Answer questions independently
+    3. Execute: Answer questions independently (with optional web search)
     4. Verify: Check consistency and calibrate confidence
     """
 
@@ -74,6 +82,7 @@ class ChainOfVerification:
         self,
         llm_callback: Callable,  # (prompt, model, **kwargs) -> response
         config: VerificationConfig | None = None,
+        search_callback: Callable | None = None,
     ):
         """Initialize CoVe verifier.
 
@@ -81,10 +90,13 @@ class ChainOfVerification:
             llm_callback: Async function to call LLM. Accepts (prompt, model)
                 and optionally output_format kwarg for structured output.
             config: Verification configuration
+            search_callback: Optional async function for web search.
+                Accepts (query) and returns search results.
         """
         self.llm_callback = llm_callback
         self.config = config or VerificationConfig()
         self.calibrator = ConfidenceCalibrator(config)
+        self.search_callback = search_callback
 
     async def verify_streaming(
         self,
@@ -339,64 +351,164 @@ class ChainOfVerification:
         # Fallback: parse text response
         return self._parse_questions(response)[:max_q]
 
+    async def _search_for_evidence(self, question: str) -> str:
+        """Search the web for evidence to answer a verification question.
+
+        Returns formatted evidence string, or empty string if unavailable.
+        """
+        if not self.search_callback:
+            return ""
+
+        try:
+            results = await self.search_callback(question)
+            if not results:
+                return ""
+            if isinstance(results, list):
+                snippets = []
+                for r in results[:3]:
+                    title = r.get("title", "") if isinstance(r, dict) else ""
+                    snippet = r.get("snippet", "") if isinstance(r, dict) else str(r)
+                    if snippet:
+                        snippets.append(f"- {title}: {snippet[:300]}")
+                return "\n".join(snippets) if snippets else ""
+            return str(results)[:800]
+        except Exception:
+            return ""
+
     async def _answer_questions_parallel(
         self,
         questions: list[VerificationQuestion],
         original_finding: str,
         use_batch_model: bool = False,
     ) -> list[VerificationQuestion]:
-        """Answer verification questions independently in parallel.
+        """Answer verification questions using factored CoVe (two-step).
 
-        Two-step CoVe process per question:
-        1. Answer the question based on general knowledge (independent)
-        2. Compare the answer against the original claim to determine support
+        Per the CoVe paper, step 3 must answer questions INDEPENDENTLY
+        (without seeing the original claim) so answers are not biased.
+        A separate comparison step then checks support/contradiction.
+
+        Step 1: Search web for evidence, then answer the question independently.
+        Step 2: Compare the independent answer against the original claim.
         """
         model = (
             self.config.batch_model
             if use_batch_model
             else self.config.streaming_model
         )
-        schema_fmt = {"type": "json_schema", "schema": ANSWER_SCHEMA}
+        answer_schema = {"type": "json_schema", "schema": INDEPENDENT_ANSWER_SCHEMA}
+        compare_schema = {"type": "json_schema", "schema": COMPARISON_SCHEMA}
 
-        async def answer_question(
+        async def answer_and_compare(
             q: VerificationQuestion,
         ) -> VerificationQuestion:
-            # Include the original claim so the LLM can actually
-            # determine whether its answer supports or contradicts it.
-            # The CoVe "factored" variant includes the claim for comparison.
-            prompt = (
-                "Answer this verification question based on your "
-                "knowledge, then determine whether your answer supports "
-                "or contradicts the original claim.\n\n"
-                f"ORIGINAL CLAIM: {original_finding}\n\n"
-                f"VERIFICATION QUESTION: {q.question}\n"
-                f"ASPECT: {q.aspect}\n\n"
-                "Respond with:\n"
-                '- "answer": your factual answer to the question\n'
-                '- "confidence": 0.0-1.0 how confident you are\n'
-                '- "supports": true if your answer is consistent with '
-                "the claim, false if it contradicts it"
-            )
-
             try:
+                # --- Step 1a: Search web for evidence (if available) ---
+                evidence = await self._search_for_evidence(q.question)
+
+                # --- Step 1b: Independent answer with evidence context ---
+                evidence_block = ""
+                if evidence:
+                    evidence_block = (
+                        "\n\nWEB EVIDENCE (use this to inform your answer):\n"
+                        f"{evidence}\n"
+                    )
+
+                answer_prompt = (
+                    "Answer this factual question. Use the web evidence "
+                    "if provided, otherwise use your knowledge. You MUST "
+                    "always provide your best answer even if uncertain — "
+                    "never say you cannot answer or need access to a "
+                    "source.\n\n"
+                    f"QUESTION: {q.question}\n"
+                    f"ASPECT: {q.aspect}"
+                    f"{evidence_block}\n\n"
+                    "Respond with:\n"
+                    '- "answer": your best factual answer\n'
+                    '- "confidence": 0.0-1.0 (use lower confidence if '
+                    "you're unsure, but always answer)"
+                )
+
                 try:
-                    response = await self.llm_callback(
-                        prompt, model, output_format=schema_fmt,
+                    answer_resp = await self.llm_callback(
+                        answer_prompt, model, output_format=answer_schema,
                     )
                 except TypeError:
-                    response = await self.llm_callback(prompt, model)
+                    answer_resp = await self.llm_callback(answer_prompt, model)
 
-                if isinstance(response, dict):
-                    data = response
-                elif response:
-                    data = self._parse_json(response)
+                if isinstance(answer_resp, dict):
+                    answer_data = answer_resp
+                elif answer_resp:
+                    answer_data = self._parse_json(answer_resp)
+                    # Fallback: structured output failed and JSON parse
+                    # failed — use the raw text as the answer rather than
+                    # discarding it entirely (the comparison step will
+                    # still evaluate it against the claim)
+                    if not answer_data and isinstance(answer_resp, str):
+                        text = answer_resp.strip()
+                        if len(text) > 10:
+                            answer_data = {"answer": text, "confidence": 0.5}
                 else:
-                    data = None
+                    answer_data = None
 
-                if data:
-                    q.independent_answer = data.get("answer", "")
-                    q.confidence = data.get("confidence", 0.5)
-                    q.supports_original = data.get("supports", True)
+                if not answer_data or not answer_data.get("answer"):
+                    q.independent_answer = None
+                    q.confidence = 0.0
+                    q.supports_original = None
+                    return q
+
+                q.independent_answer = answer_data["answer"]
+                q.confidence = answer_data.get("confidence", 0.5)
+
+                # --- Guard: detect "can't access" non-answers ---
+                # If the LLM still says it can't verify, treat as neutral
+                # (not a contradiction) with low confidence
+                _refusal_markers = [
+                    "cannot access", "can't access", "cannot verify",
+                    "can't verify", "not provided", "no access",
+                    "unable to verify", "unable to access",
+                    "don't have access", "without access",
+                    "not available", "cannot be determined",
+                ]
+                answer_lower = q.independent_answer.lower()
+                if any(m in answer_lower for m in _refusal_markers):
+                    q.confidence = 0.1
+                    q.supports_original = None  # Neutral, not contradicting
+                    return q
+
+                # --- Step 2: Compare independent answer against claim ---
+                compare_prompt = (
+                    "Compare this independent answer against a claim and "
+                    "determine if they are consistent.\n\n"
+                    f"CLAIM: {original_finding}\n\n"
+                    f"QUESTION: {q.question}\n"
+                    f"INDEPENDENT ANSWER: {q.independent_answer}\n\n"
+                    "Respond with:\n"
+                    '- "supports": true if the answer is consistent with '
+                    "the claim, false if it contradicts the claim\n"
+                    '- "reasoning": brief explanation of why'
+                )
+
+                try:
+                    compare_resp = await self.llm_callback(
+                        compare_prompt, model, output_format=compare_schema,
+                    )
+                except TypeError:
+                    compare_resp = await self.llm_callback(
+                        compare_prompt, model,
+                    )
+
+                if isinstance(compare_resp, dict):
+                    compare_data = compare_resp
+                elif compare_resp:
+                    compare_data = self._parse_json(compare_resp)
+                else:
+                    compare_data = None
+
+                if compare_data:
+                    q.supports_original = compare_data.get("supports", True)
+                else:
+                    q.supports_original = None
+
             except Exception:
                 q.independent_answer = None
                 q.confidence = 0.0
@@ -406,7 +518,7 @@ class ChainOfVerification:
 
         # Run all questions in parallel
         answered = await asyncio.gather(
-            *[answer_question(q) for q in questions]
+            *[answer_and_compare(q) for q in questions]
         )
         return list(answered)
 

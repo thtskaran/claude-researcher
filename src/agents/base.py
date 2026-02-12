@@ -14,6 +14,7 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ResultMessage,
     TextBlock,
+    ToolUseBlock,
     query,
 )
 from rich.console import Console
@@ -391,6 +392,15 @@ class BaseAgent(ABC):
                     for block in message.content:
                         if isinstance(block, TextBlock):
                             response_text += block.text
+                        elif (
+                            isinstance(block, ToolUseBlock)
+                            and block.name == "StructuredOutput"
+                        ):
+                            # SDK emits structured output as a ToolUseBlock
+                            # with name="StructuredOutput" — capture it here
+                            # because ResultMessage.structured_output is
+                            # often None even when the data exists.
+                            structured_output = block.input
                 elif isinstance(message, ResultMessage):
                     if message.structured_output is not None:
                         structured_output = message.structured_output

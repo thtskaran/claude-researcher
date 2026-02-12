@@ -101,8 +101,8 @@ class CRITICVerifier:
         external_verification_used = False
 
         # Get initial signals from CoVe if available
-        consistency_score = cove_result.consistency_score if cove_result else 0.0
-        kg_support = cove_result.kg_support_score if cove_result else 0.0
+        consistency_score = (cove_result.consistency_score or 0.0) if cove_result else 0.0
+        kg_support = (cove_result.kg_support_score or 0.0) if cove_result else 0.0
         questions_asked = cove_result.questions_asked if cove_result else []
 
         try:

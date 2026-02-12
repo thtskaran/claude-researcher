@@ -1208,6 +1208,29 @@ Return as JSON array:
             stats['fast_ner'] = self.fast_ner.get_stats()
         return stats
 
+    def _find_entity_in_kg(self, name: str) -> str | None:
+        """Find an entity ID in the KG using exact, alias, and substring matching.
+
+        Returns entity_id if found, None otherwise.
+        """
+        key = name.lower().strip()
+        if not key or len(key) < 2:
+            return None
+
+        # 1. Exact match
+        if key in self.entity_by_name:
+            return self.entity_by_name[key]
+
+        # 2. Check if any KG entity name contains this name or vice versa
+        #    (e.g., "Cursor" matches "Cursor AI", "GitHub Copilot" matches "Copilot")
+        for kg_name, entity_id in self.entity_by_name.items():
+            if len(kg_name) < 3 or len(key) < 3:
+                continue
+            if key in kg_name or kg_name in key:
+                return entity_id
+
+        return None
+
     async def get_kg_support_score(
         self,
         content: str,
@@ -1215,9 +1238,9 @@ Return as JSON array:
     ) -> tuple[float, int, int]:
         """Calculate KG support score for a finding.
 
-        Returns score and counts based on:
-        - Entity matches in the KG
-        - Supporting relations in the KG
+        Uses a two-pronged approach:
+        1. Extract entities from content and look them up in KG
+        2. Check which KG entity names appear in the content text
 
         Args:
             content: The finding content to check
@@ -1226,33 +1249,39 @@ Return as JSON array:
         Returns:
             Tuple of (support_score, entity_match_count, supporting_relation_count)
         """
-        # Extract entities from the content (quick extraction)
-        entities = await self._quick_entity_extract(content)
-        if not entities:
-            return 0.0, 0, 0
-
-        entity_match_count = 0
+        matched_entity_ids: set[str] = set()
         supporting_relations = 0
 
+        # --- Approach 1: Extract entities from content, look up in KG ---
+        entities = await self._quick_entity_extract(content)
         for entity_name in entities:
-            # Check if entity exists in KG
-            entity_key = entity_name.lower().strip()
-            if entity_key in self.entity_by_name:
-                entity_match_count += 1
-                entity_id = self.entity_by_name[entity_key]
+            entity_id = self._find_entity_in_kg(entity_name)
+            if entity_id:
+                matched_entity_ids.add(entity_id)
 
-                # Check for supporting relations
-                relations = self.store.get_entity_relations(entity_id)
-                if relations:
-                    supporting_relations += len(relations.get('outgoing', []))
-                    supporting_relations += len(relations.get('incoming', []))
+        # --- Approach 2: Check which KG entities appear in the content ---
+        content_lower = content.lower()
+        for kg_name, entity_id in self.entity_by_name.items():
+            if len(kg_name) >= 3 and kg_name in content_lower:
+                matched_entity_ids.add(entity_id)
 
-        if not entities:
+        if not matched_entity_ids:
             return 0.0, 0, 0
 
-        # Calculate score: 60% entity matches + 40% relation support
-        entity_score = min(entity_match_count / len(entities), 1.0)
-        relation_score = min(supporting_relations / (len(entities) * 2), 1.0)
+        # Count supporting relations for matched entities
+        for entity_id in matched_entity_ids:
+            relations = self.store.get_entity_relations(entity_id)
+            if relations:
+                supporting_relations += len(relations.get('outgoing', []))
+                supporting_relations += len(relations.get('incoming', []))
+
+        entity_match_count = len(matched_entity_ids)
+
+        # Calculate score: 60% entity match density + 40% relation support
+        # Use total KG entity count as denominator for a meaningful ratio
+        total_kg_entities = max(len(set(self.entity_by_name.values())), 1)
+        entity_score = min(entity_match_count / min(total_kg_entities, 10), 1.0)
+        relation_score = min(supporting_relations / max(entity_match_count * 3, 1), 1.0)
 
         score = (entity_score * 0.6) + (relation_score * 0.4)
         return score, entity_match_count, supporting_relations
@@ -1261,43 +1290,43 @@ Return as JSON array:
         """Quick entity extraction without LLM call.
 
         Uses spaCy if available, otherwise simple NLP heuristics.
+        Returns a combined list of NER entities + simple pattern matches.
         """
-        # Use fast NER if available (much more accurate)
+        entities: list[str] = []
+        seen: set[str] = set()
+
+        def _add(name: str) -> None:
+            key = name.lower().strip()
+            if key not in seen and len(key) > 2:
+                seen.add(key)
+                entities.append(name)
+
+        # Use fast NER if available
         if self.use_fast_ner and self.fast_ner and self.fast_ner.enabled:
-            extracted = self.fast_ner.extract(content)
-            return [e.name for e in extracted[:10]]
+            for e in self.fast_ner.extract(content):
+                _add(e.name)
 
-        # Fallback to regex heuristics
-        import re
+        # Always also run pattern-based extraction to catch domain terms
+        # that spaCy's standard NER misses (e.g., "Cursor", "Copilot",
+        # "LLM", lowercase tech terms).
 
-        entities = []
+        # Capitalized phrases (proper nouns)
+        for m in re.findall(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b', content):
+            _add(m)
 
-        # Extract capitalized phrases (likely proper nouns)
-        cap_pattern = r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b'
-        matches = re.findall(cap_pattern, content)
-        entities.extend(matches)
+        # Quoted terms
+        for m in re.findall(r'"([^"]{2,50})"', content):
+            _add(m)
 
-        # Extract quoted terms
-        quoted_pattern = r'"([^"]+)"|\'([^\']+)\''
-        for match in re.findall(quoted_pattern, content):
-            for group in match:
-                if group:
-                    entities.append(group)
+        # Acronyms and tech terms (e.g., "AI", "GPT-4", "LLM", "VSCode")
+        for m in re.findall(r'\b([A-Z][A-Z0-9][-A-Za-z0-9]*)\b', content):
+            _add(m)
 
-        # Extract terms with numbers (likely specific things)
-        num_pattern = r'\b([A-Za-z]+[-\s]?\d+(?:\.\d+)?)\b'
-        entities.extend(re.findall(num_pattern, content))
+        # CamelCase terms (e.g., "GitHub", "DevOps", "TypeScript")
+        for m in re.findall(r'\b([A-Z][a-z]+[A-Z][a-zA-Z]*)\b', content):
+            _add(m)
 
-        # Deduplicate and limit
-        seen = set()
-        unique_entities = []
-        for e in entities:
-            e_lower = e.lower()
-            if e_lower not in seen and len(e) > 2:
-                seen.add(e_lower)
-                unique_entities.append(e)
-
-        return unique_entities[:10]  # Limit to 10 entities
+        return entities[:15]
 
     async def check_contradictions_detailed(
         self,
@@ -1305,69 +1334,70 @@ Return as JSON array:
     ) -> dict:
         """Check for contradictions with detailed results.
 
+        Uses exact predicate matching (not substring) to avoid false positives
+        like "enables" matching inside "implements".
+
         Args:
             content: The finding content to check
 
         Returns:
             Dict with has_contradictions bool and list of contradiction details
         """
-        entities = await self._quick_entity_extract(content)
         contradictions = []
 
-        # Only check specific, unambiguous predicate pairs.
-        # Skip overly generic pairs like ('has','lacks'), ('is','is not')
-        # that cause massive false positives via substring matching.
-        strict_pairs = [
-            ('increases', 'decreases'),
-            ('causes', 'prevents'),
-            ('enables', 'blocks'),
-            ('improves', 'worsens'),
-            ('outperforms', 'underperforms'),
-        ]
+        # Antonym predicate pairs — if the KG has one and the content uses
+        # the other *for the same entity pair*, that's a contradiction.
+        antonym_pairs = {
+            'increases': 'decreases',
+            'decreases': 'increases',
+            'causes': 'prevents',
+            'prevents': 'causes',
+            'enables': 'blocks',
+            'blocks': 'enables',
+            'improves': 'worsens',
+            'worsens': 'improves',
+            'outperforms': 'underperforms',
+            'underperforms': 'outperforms',
+        }
 
         content_lower = content.lower()
 
-        for entity_name in entities:
-            entity_key = entity_name.lower().strip()
-            if entity_key not in self.entity_by_name:
-                continue
+        # Find all KG entities mentioned in the content
+        matched_ids: set[str] = set()
+        for kg_name, entity_id in self.entity_by_name.items():
+            if len(kg_name) >= 3 and kg_name in content_lower:
+                matched_ids.add(entity_id)
 
-            entity_id = self.entity_by_name[entity_key]
+        for entity_id in matched_ids:
             relations = self.store.get_entity_relations(entity_id)
-
             if not relations:
                 continue
 
-            # Only check outgoing relations that involve this entity's
-            # target. We need the target entity name to appear in the
-            # content for the contradiction to be meaningful.
             for relation in relations.get('outgoing', []):
-                predicate = relation.get('predicate', '').lower()
-                target_name = relation.get('target_name', '').lower()
+                predicate = relation.get('predicate', '').lower().strip()
+                target_name = relation.get('target_name', '').lower().strip()
 
-                # Skip if target entity isn't even mentioned in content
-                if target_name and target_name not in content_lower:
+                # Both the target and an antonym predicate must appear in
+                # the content for a real contradiction
+                if not target_name or target_name not in content_lower:
                     continue
 
-                for p_a, p_b in strict_pairs:
-                    if p_a in predicate and p_b in content_lower:
-                        contradictions.append({
-                            "conflicting_id": relation.get('relation_id', 'unknown'),
-                            "description": (
-                                f"Content suggests '{p_b}' but KG has "
-                                f"'{p_a}' for {entity_name}"
-                            ),
-                            "severity": "medium",
-                        })
-                    elif p_b in predicate and p_a in content_lower:
-                        contradictions.append({
-                            "conflicting_id": relation.get('relation_id', 'unknown'),
-                            "description": (
-                                f"Content suggests '{p_a}' but KG has "
-                                f"'{p_b}' for {entity_name}"
-                            ),
-                            "severity": "medium",
-                        })
+                # Exact match against canonical antonym (not substring)
+                antonym = antonym_pairs.get(predicate)
+                if not antonym:
+                    continue
+
+                # Check if the antonym appears as a standalone word in
+                # the content (word-boundary match to avoid substrings)
+                if re.search(rf'\b{re.escape(antonym)}\b', content_lower):
+                    contradictions.append({
+                        "conflicting_id": relation.get('relation_id', 'unknown'),
+                        "description": (
+                            f"KG relation '{predicate}' for target "
+                            f"'{target_name}' but content uses '{antonym}'"
+                        ),
+                        "severity": "medium",
+                    })
 
         return {
             "has_contradictions": len(contradictions) > 0,

@@ -59,17 +59,17 @@ class VerificationResult:
     verification_status: VerificationStatus
     verification_method: VerificationMethod
 
-    # CoVe results
+    # CoVe results (None = not computed, 0.0 = computed as zero)
     questions_asked: list[VerificationQuestion] = field(default_factory=list)
-    consistency_score: float = 0.0  # How consistent are the independent answers
+    consistency_score: float | None = None
 
-    # KG results
-    kg_support_score: float = 0.0
-    kg_entity_matches: int = 0
-    kg_supporting_relations: int = 0
+    # KG results (None = not computed)
+    kg_support_score: float | None = None
+    kg_entity_matches: int | None = None
+    kg_supporting_relations: int | None = None
 
-    # CRITIC results (if used)
-    critic_iterations: int = 0
+    # CRITIC results (None = not run)
+    critic_iterations: int | None = None
     corrections_made: list[str] = field(default_factory=list)
     external_verification_used: bool = False
 

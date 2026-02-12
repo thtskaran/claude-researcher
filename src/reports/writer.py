@@ -377,7 +377,7 @@ class DeepReportWriter:
             # 3. Verification-weighted confidence (0-3 pts)
             vstatus = f.verification_status or "unverified"
             score += verification_weights.get(vstatus, 1.5)
-            score += f.kg_support_score * 1.0
+            score += (f.kg_support_score or 0.0) * 1.0
 
             # 4. Raw confidence as tiebreaker (0-1 pts)
             score += f.confidence

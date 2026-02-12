@@ -45,7 +45,7 @@ class Finding(BaseModel):
     # Verification fields
     verification_status: str | None = None  # verified/flagged/rejected/skipped
     verification_method: str | None = None  # cove/critic/kg_match/streaming/batch
-    kg_support_score: float = 0.0  # KG corroboration score (0-1)
+    kg_support_score: float | None = None  # KG corroboration score (0-1)
     original_confidence: float | None = None  # Confidence before verification calibration
 
 
