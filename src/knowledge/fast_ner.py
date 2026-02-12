@@ -412,32 +412,57 @@ class FastNER:
             for t in domain_types
         ])
 
-        prompt = f"""Extract domain-specific entities from this text.
+        prompt = (
+            "Extract domain-specific entities from this text.\n\n"
+            f"Text: {text}\n\n"
+            f"Only extract these entity types:\n{types_desc}\n\n"
+            "For METRIC entities, also include value and unit.\n"
+            "For CLAIM entities, also include attributed_to.\n\n"
+            "Max 8 entities. Focus on the most important domain "
+            "concepts. Do NOT extract people, organizations, "
+            "locations, or dates (those are already handled)."
+        )
 
-Text: {text}
-
-Only extract these entity types:
-{types_desc}
-
-Return as JSON array:
-[{{"name": "entity name", "type": "CONCEPT", "description": "one-sentence description"}}]
-
-For METRIC entities, also include "value" and "unit" fields.
-For CLAIM entities, also include "attributed_to" (who made the claim, if known).
-
-Keep it concise: max 8 entities. Focus on the most important domain concepts.
-Do NOT extract people, organizations, locations, or dates (those are already handled).
-"""
+        ner_schema = {
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "entities": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "type": {"type": "string"},
+                                "description": {"type": "string"},
+                                "value": {"type": "string"},
+                                "unit": {"type": "string"},
+                                "attributed_to": {"type": "string"},
+                            },
+                            "required": ["name", "type"],
+                        },
+                    },
+                },
+                "required": ["entities"],
+            },
+        }
 
         try:
-            response = await llm_callback(prompt)
+            try:
+                response = await llm_callback(
+                    prompt, output_format=ner_schema,
+                )
+            except TypeError:
+                response = await llm_callback(prompt)
 
-            # Parse JSON from response
-            match = re.search(r'\[.*?\]', response, re.DOTALL)
-            if not match:
-                return []
-
-            data = json.loads(match.group())
+            if isinstance(response, dict):
+                data = response.get("entities", [])
+            else:
+                match = re.search(r'\[.*?\]', response, re.DOTALL)
+                if not match:
+                    return []
+                data = json.loads(match.group())
 
             entities = []
             for item in data:

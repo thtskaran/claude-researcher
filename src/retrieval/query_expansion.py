@@ -179,8 +179,36 @@ class QueryExpander:
             f']}}'
         )
 
+        multi_schema = {
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "queries": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string"},
+                                "strategy": {"type": "string"},
+                                "reasoning": {"type": "string"},
+                            },
+                            "required": ["query", "strategy"],
+                        },
+                    },
+                },
+                "required": ["queries"],
+            },
+        }
+
         try:
-            response = await self.llm_callback(prompt)
+            try:
+                response = await self.llm_callback(
+                    prompt, output_format=multi_schema,
+                )
+            except TypeError:
+                response = await self.llm_callback(prompt)
+
             data = self._parse_json_response(response)
             queries_data = data.get("queries", [])
 
@@ -208,7 +236,6 @@ class QueryExpander:
             return expanded
 
         except Exception:
-            # Fallback: temporal expansion
             return [ExpandedQuery(
                 query=f"{query} {year} latest research developments",
                 strategy="temporal",
@@ -257,7 +284,36 @@ class QueryExpander:
                 f']}}'
             )
 
-            response = await self.llm_callback(prompt)
+            ctx_schema = {
+                "type": "json_schema",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "contextual_queries": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "query": {"type": "string"},
+                                    "gap_addressed": {
+                                        "type": "string",
+                                    },
+                                },
+                                "required": ["query"],
+                            },
+                        },
+                    },
+                    "required": ["contextual_queries"],
+                },
+            }
+
+            try:
+                response = await self.llm_callback(
+                    prompt, output_format=ctx_schema,
+                )
+            except TypeError:
+                response = await self.llm_callback(prompt)
+
             data = self._parse_json_response(response)
             contextual_data = data.get("contextual_queries", [])
 
@@ -327,8 +383,33 @@ class QueryExpander:
             f'}}'
         )
 
+        suff_schema = {
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "is_sufficient": {"type": "boolean"},
+                    "sufficiency_score": {"type": "number"},
+                    "coverage_assessment": {"type": "string"},
+                    "critical_gaps": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+                "required": [
+                    "is_sufficient", "sufficiency_score",
+                ],
+            },
+        }
+
         try:
-            response = await self.llm_callback(prompt)
+            try:
+                response = await self.llm_callback(
+                    prompt, output_format=suff_schema,
+                )
+            except TypeError:
+                response = await self.llm_callback(prompt)
+
             data = self._parse_json_response(response)
 
             is_sufficient = bool(data.get("is_sufficient", False))
@@ -365,8 +446,10 @@ class QueryExpander:
             lines.append(f"- {type_str}{content[:100]}")
         return "\n".join(lines)
 
-    def _parse_json_response(self, response: str) -> dict:
-        """Parse JSON from LLM response, handling common issues."""
+    def _parse_json_response(self, response: str | dict) -> dict:
+        """Parse JSON from LLM response, handling structured output."""
+        if isinstance(response, dict):
+            return response
         start = response.find("{")
         end = response.rfind("}") + 1
         if start != -1 and end > start:

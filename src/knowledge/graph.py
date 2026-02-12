@@ -344,117 +344,137 @@ class IncrementalKnowledgeGraph:
 
         entity_types_list = ", ".join(list(ENTITY_TYPES.keys())[:10])
 
-        prompt = f"""Extract key entities and their relationships from this research finding.
+        prompt = (
+            "Extract key entities and their relationships from "
+            "this research finding.\n\n"
+            f"Finding: {finding.content}\n\n"
+            f"Entity Types: {entity_types_list}\n\n"
+            "For each entity provide name, type, description.\n"
+            "For METRIC entities, also include value and unit.\n"
+            "For CLAIM entities, also include attributed_to.\n\n"
+            f"Allowed predicates (use ONLY these):\n"
+            f"{CANONICAL_PREDICATES_PROMPT}\n\n"
+            "Extract up to 8 entities and 5 relations. "
+            "Focus on the most important facts."
+        )
 
-Finding: {finding.content}
-
-Entity Types: {entity_types_list}
-
-For each entity provide:
-- name: Canonical name
-- type: One of the entity types above
-- description: One-sentence description of this entity
-
-For METRIC entities, also include:
-- value: The numeric value (e.g. "3.5", "92%")
-- unit: The unit of measurement (e.g. "%", "ms", "users")
-
-For CLAIM entities, also include:
-- attributed_to: Who made this claim (if known)
-- date_claimed: When it was claimed (if known)
-
-Allowed predicates for relations (use ONLY these):
-{CANONICAL_PREDICATES_PROMPT}
-
-Return as JSON:
-{{
-  "entities": [
-    {{"name": "Entity name", "type": "CONCEPT", "description": "Brief description"}}
-  ],
-  "relations": [
-    {{"subject": "Entity1", "predicate": "causes", "object": "Entity2"}}
-  ]
-}}
-
-Extract up to 8 entities and 5 relations. Focus on the most important facts."""
+        kg_schema = {
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "entities": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "type": {"type": "string"},
+                                "description": {"type": "string"},
+                                "value": {"type": "string"},
+                                "unit": {"type": "string"},
+                                "attributed_to": {"type": "string"},
+                            },
+                            "required": ["name", "type"],
+                        },
+                    },
+                    "relations": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "subject": {"type": "string"},
+                                "predicate": {"type": "string"},
+                                "object": {"type": "string"},
+                            },
+                            "required": [
+                                "subject", "predicate", "object",
+                            ],
+                        },
+                    },
+                },
+                "required": ["entities", "relations"],
+            },
+        }
 
         try:
-            response = await self.llm_callback(prompt)
+            response = await self.llm_callback(
+                prompt, output_format=kg_schema,
+            )
 
-            # Parse response
-            match = re.search(r'\{.*\}', response, re.DOTALL)
-            if match:
+            # Parse response (structured or text fallback)
+            if isinstance(response, dict):
+                data = response
+            else:
+                match = re.search(r'\{.*\}', response, re.DOTALL)
+                if not match:
+                    return result
                 data = json.loads(match.group())
 
-                # Improvement #5: use source credibility for relation confidence
-                confidence = finding.credibility_score if finding.credibility_score else 0.8
+            # Process entities and relations from parsed data
+            confidence = finding.credibility_score if finding.credibility_score else 0.8
 
-                # Process entities (improvement #1: raised cap 5→8)
-                for e in data.get('entities', [])[:8]:
-                    if isinstance(e, dict) and e.get('name'):
-                        entity_type = e.get('type', 'CONCEPT').upper()
+            for e in data.get('entities', [])[:8]:
+                if isinstance(e, dict) and e.get('name'):
+                    entity_type = e.get('type', 'CONCEPT').upper()
 
-                        # Build properties (improvements #2, #3, #7, #8)
-                        props: dict[str, Any] = {}
-                        if e.get('description'):
-                            props['description'] = e['description']
-                        if finding.source_url:
-                            props['source_urls'] = [finding.source_url]
-                        if entity_type == 'METRIC' and e.get('value'):
-                            props['metric_value'] = e['value']
-                            props['metric_unit'] = e.get('unit', '')
-                        if entity_type == 'CLAIM':
-                            if e.get('attributed_to'):
-                                props['attributed_to'] = e['attributed_to']
-                            if e.get('date_claimed'):
-                                props['date_claimed'] = e['date_claimed']
+                    props: dict[str, Any] = {}
+                    if e.get('description'):
+                        props['description'] = e['description']
+                    if finding.source_url:
+                        props['source_urls'] = [finding.source_url]
+                    if entity_type == 'METRIC' and e.get('value'):
+                        props['metric_value'] = e['value']
+                        props['metric_unit'] = e.get('unit', '')
+                    if entity_type == 'CLAIM':
+                        if e.get('attributed_to'):
+                            props['attributed_to'] = e['attributed_to']
+                        if e.get('date_claimed'):
+                            props['date_claimed'] = e['date_claimed']
 
-                        entity = Entity(
+                    entity = Entity(
+                        id=self._generate_id(),
+                        name=e['name'],
+                        entity_type=entity_type,
+                        aliases=[],
+                        sources=[finding.id],
+                        properties=props,
+                    )
+                    resolved = await self._resolve_entity(entity)
+                    result['entities'].append(resolved)
+
+            name_to_id = {e.name.lower(): e.id for e in result['entities']}
+            for r in data.get('relations', [])[:5]:
+                if isinstance(r, dict):
+                    subject_id = name_to_id.get(r.get('subject', '').lower())
+                    object_id = name_to_id.get(r.get('object', '').lower())
+
+                    if subject_id and object_id and subject_id != object_id:
+                        relation = Relation(
                             id=self._generate_id(),
-                            name=e['name'],
-                            entity_type=entity_type,
-                            aliases=[],
-                            sources=[finding.id],
-                            properties=props,
+                            subject_id=subject_id,
+                            predicate=self._normalize_predicate(
+                                r.get('predicate', 'related_to')),
+                            object_id=object_id,
+                            source_id=finding.id,
+                            confidence=confidence,
                         )
-                        resolved = await self._resolve_entity(entity)
-                        result['entities'].append(resolved)
 
-                # Process relations (improvement #1: raised cap 3→5)
-                name_to_id = {e.name.lower(): e.id for e in result['entities']}
-                for r in data.get('relations', [])[:5]:
-                    if isinstance(r, dict):
-                        subject_id = name_to_id.get(r.get('subject', '').lower())
-                        object_id = name_to_id.get(r.get('object', '').lower())
+                        contradiction = self._check_contradiction(relation)
+                        if contradiction:
+                            self.contradictions.append(contradiction)
+                            self.store.add_contradiction(contradiction)
+                            result['contradictions_found'] += 1
 
-                        if subject_id and object_id and subject_id != object_id:
-                            relation = Relation(
-                                id=self._generate_id(),
-                                subject_id=subject_id,
-                                predicate=self._normalize_predicate(
-                                    r.get('predicate', 'related_to')),
-                                object_id=object_id,
-                                source_id=finding.id,
-                                confidence=confidence,
-                            )
+                        self.store.add_relation(relation, self.session_id)
+                        result['relations'].append(relation)
 
-                            # Check for contradictions
-                            contradiction = self._check_contradiction(relation)
-                            if contradiction:
-                                self.contradictions.append(contradiction)
-                                self.store.add_contradiction(contradiction)
-                                result['contradictions_found'] += 1
-
-                            self.store.add_relation(relation, self.session_id)
-                            result['relations'].append(relation)
-
-                # Improvement #4: co-occurrence links
-                co_relations = self._build_co_occurrence_links(
-                    result['entities'], result['relations'], finding,
-                )
-                for relation in co_relations:
-                    self.store.add_relation(relation, self.session_id)
-                    result['relations'].append(relation)
+            co_relations = self._build_co_occurrence_links(
+                result['entities'], result['relations'], finding,
+            )
+            for relation in co_relations:
+                self.store.add_relation(relation, self.session_id)
+                result['relations'].append(relation)
 
         except Exception:
             # Silently fail - KG is optional
@@ -478,25 +498,51 @@ Extract up to 8 entities and 5 relations. Focus on the most important facts."""
 
         entity_names = ", ".join([e.name for e in entities[:8]])
 
-        prompt = f"""Given these entities: {entity_names}
+        prompt = (
+            f"Given these entities: {entity_names}\n\n"
+            f"Extract relationships from this text:\n"
+            f"{text[:500]}\n\n"
+            f"Allowed predicates (use ONLY these):\n"
+            f"{CANONICAL_PREDICATES_PROMPT}\n\n"
+            "Return max 5 relations."
+        )
 
-Extract relationships from this text:
-{text[:500]}
-
-Allowed predicates (use ONLY these):
-{CANONICAL_PREDICATES_PROMPT}
-
-Return JSON array (max 5 relations):
-[{{"subject": "Entity1", "predicate": "causes", "object": "Entity2"}}]"""
+        rel_schema = {
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "relations": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "subject": {"type": "string"},
+                                "predicate": {"type": "string"},
+                                "object": {"type": "string"},
+                            },
+                            "required": [
+                                "subject", "predicate", "object",
+                            ],
+                        },
+                    },
+                },
+                "required": ["relations"],
+            },
+        }
 
         try:
-            response = await self.llm_callback(prompt)
+            response = await self.llm_callback(
+                prompt, output_format=rel_schema,
+            )
 
-            match = re.search(r'\[.*?\]', response, re.DOTALL)
-            if not match:
-                return []
-
-            data = json.loads(match.group())
+            if isinstance(response, dict):
+                data = response.get("relations", [])
+            else:
+                match = re.search(r'\[.*\]', response, re.DOTALL)
+                if not match:
+                    return []
+                data = json.loads(match.group())
 
             # Map entity names to IDs
             name_to_id = {e.name.lower(): e.id for e in entities}
@@ -590,100 +636,152 @@ Return JSON array (max 5 relations):
             for i, f in enumerate(findings)
         ])
 
-        prompt = f"""Extract key entities and relationships from these research findings.
+        prompt = (
+            "Extract key entities and relationships from these "
+            "research findings.\n\n"
+            f"{findings_text}\n\n"
+            f"Entity Types: {entity_types_list}\n\n"
+            "For each entity provide name, type, and description.\n"
+            "For METRIC entities, also include value and unit.\n\n"
+            f"Allowed predicates (use ONLY these):\n"
+            f"{CANONICAL_PREDICATES_PROMPT}\n\n"
+            "Max 5 entities and 4 relations per finding."
+        )
 
-{findings_text}
-
-Entity Types: {entity_types_list}
-
-For each entity provide name, type, and a brief description.
-For METRIC entities, also include "value" and "unit".
-
-Allowed predicates for relations (use ONLY these):
-{CANONICAL_PREDICATES_PROMPT}
-
-Return as JSON array, one object per finding:
-[
-  {{
-    "finding": 1,
-    "entities": [{{"name": "Entity", "type": "CONCEPT", "description": "Brief description"}}],
-    "relations": [{{"subject": "Entity1", "predicate": "causes", "object": "Entity2"}}]
-  }}
-]
-
-Max 5 entities and 4 relations per finding."""
+        batch_schema = {
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "finding": {"type": "integer"},
+                                "entities": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": {"type": "string"},
+                                            "type": {"type": "string"},
+                                            "description": {
+                                                "type": "string",
+                                            },
+                                            "value": {"type": "string"},
+                                            "unit": {"type": "string"},
+                                        },
+                                        "required": ["name", "type"],
+                                    },
+                                },
+                                "relations": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "subject": {
+                                                "type": "string",
+                                            },
+                                            "predicate": {
+                                                "type": "string",
+                                            },
+                                            "object": {
+                                                "type": "string",
+                                            },
+                                        },
+                                        "required": [
+                                            "subject", "predicate",
+                                            "object",
+                                        ],
+                                    },
+                                },
+                            },
+                            "required": [
+                                "finding", "entities", "relations",
+                            ],
+                        },
+                    },
+                },
+                "required": ["results"],
+            },
+        }
 
         try:
-            response = await self.llm_callback(prompt)
+            response = await self.llm_callback(
+                prompt, output_format=batch_schema,
+            )
 
-            # Parse response
-            match = re.search(r'\[.*\]', response, re.DOTALL)
-            if match:
+            # Parse response (structured or text fallback)
+            if isinstance(response, dict):
+                data = response.get("results", [])
+            else:
+                match = re.search(r'\[.*\]', response, re.DOTALL)
+                if not match:
+                    return result
                 data = json.loads(match.group())
 
-                for item in data:
-                    if not isinstance(item, dict):
-                        continue
+            # Process all items from parsed data
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
 
-                    finding_idx = item.get('finding', 1) - 1
-                    if finding_idx < 0 or finding_idx >= len(findings):
-                        finding_idx = 0
-                    finding = findings[finding_idx]
-                    confidence = finding.credibility_score if finding.credibility_score else 0.8
+                finding_idx = item.get('finding', 1) - 1
+                if finding_idx < 0 or finding_idx >= len(findings):
+                    finding_idx = 0
+                finding = findings[finding_idx]
+                confidence = finding.credibility_score if finding.credibility_score else 0.8
 
-                    # Process entities (raised cap 3→5)
-                    entities = []
-                    for e in item.get('entities', [])[:5]:
-                        if isinstance(e, dict) and e.get('name'):
-                            entity_type = e.get('type', 'CONCEPT').upper()
-                            props: dict[str, Any] = {}
-                            if e.get('description'):
-                                props['description'] = e['description']
-                            if finding.source_url:
-                                props['source_urls'] = [finding.source_url]
-                            if entity_type == 'METRIC' and e.get('value'):
-                                props['metric_value'] = e['value']
-                                props['metric_unit'] = e.get('unit', '')
+                entities = []
+                for e in item.get('entities', [])[:5]:
+                    if isinstance(e, dict) and e.get('name'):
+                        entity_type = e.get('type', 'CONCEPT').upper()
+                        props: dict[str, Any] = {}
+                        if e.get('description'):
+                            props['description'] = e['description']
+                        if finding.source_url:
+                            props['source_urls'] = [finding.source_url]
+                        if entity_type == 'METRIC' and e.get('value'):
+                            props['metric_value'] = e['value']
+                            props['metric_unit'] = e.get('unit', '')
 
-                            entity = Entity(
+                        entity = Entity(
+                            id=self._generate_id(),
+                            name=e['name'],
+                            entity_type=entity_type,
+                            aliases=[],
+                            sources=[finding.id],
+                            properties=props,
+                        )
+                        resolved = await self._resolve_entity(entity)
+                        entities.append(resolved)
+                        result['entities_count'] += 1
+
+                name_to_id = {e.name.lower(): e.id for e in entities}
+                for r in item.get('relations', [])[:4]:
+                    if isinstance(r, dict):
+                        subject_id = name_to_id.get(r.get('subject', '').lower())
+                        object_id = name_to_id.get(r.get('object', '').lower())
+
+                        if subject_id and object_id and subject_id != object_id:
+                            relation = Relation(
                                 id=self._generate_id(),
-                                name=e['name'],
-                                entity_type=entity_type,
-                                aliases=[],
-                                sources=[finding.id],
-                                properties=props,
-                            )
-                            resolved = await self._resolve_entity(entity)
-                            entities.append(resolved)
-                            result['entities_count'] += 1
-
-                    # Process relations (raised cap 2→4)
-                    name_to_id = {e.name.lower(): e.id for e in entities}
-                    for r in item.get('relations', [])[:4]:
-                        if isinstance(r, dict):
-                            subject_id = name_to_id.get(r.get('subject', '').lower())
-                            object_id = name_to_id.get(r.get('object', '').lower())
-
-                            if subject_id and object_id and subject_id != object_id:
-                                relation = Relation(
-                                    id=self._generate_id(),
-                                    subject_id=subject_id,
-                                    predicate=self._normalize_predicate(
+                                subject_id=subject_id,
+                                predicate=self._normalize_predicate(
                                     r.get('predicate', 'related_to')),
-                                    object_id=object_id,
-                                    source_id=finding.id,
-                                    confidence=confidence,
-                                )
+                                object_id=object_id,
+                                source_id=finding.id,
+                                confidence=confidence,
+                            )
 
-                                # Check for contradictions
-                                contradiction = self._check_contradiction(relation)
-                                if contradiction:
-                                    self.contradictions.append(contradiction)
-                                    self.store.add_contradiction(contradiction)
-                                    result['contradictions'] += 1
+                            contradiction = self._check_contradiction(relation)
+                            if contradiction:
+                                self.contradictions.append(contradiction)
+                                self.store.add_contradiction(contradiction)
+                                result['contradictions'] += 1
 
-                                self.store.add_relation(relation, self.session_id)
-                                result['relations_count'] += 1
+                            self.store.add_relation(relation, self.session_id)
+                            result['relations_count'] += 1
 
         except Exception:
             pass
@@ -703,7 +801,27 @@ Finding: {finding.content}
 Return as JSON array of strings.
 Example: ["Fact 1", "Fact 2", "Fact 3"]"""
 
-        response = await self.llm_callback(prompt)
+        facts_schema = {
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "facts": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+                "required": ["facts"],
+            },
+        }
+
+        try:
+            response = await self.llm_callback(prompt, output_format=facts_schema)
+        except TypeError:
+            response = await self.llm_callback(prompt)
+
+        if isinstance(response, dict):
+            return response.get("facts", [])
         return self._parse_json_array(response)
 
     async def _extract_entities(self, text: str, source_id: str) -> list[Entity]:
@@ -727,8 +845,40 @@ Return as JSON array:
   {{"name": "Entity name", "type": "CONCEPT", "aliases": ["alias1"]}}
 ]"""
 
-        response = await self.llm_callback(prompt)
-        entities_data = self._parse_json_array(response)
+        entities_schema = {
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "entities": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "type": {"type": "string"},
+                                "aliases": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                            },
+                            "required": ["name", "type"],
+                        },
+                    },
+                },
+                "required": ["entities"],
+            },
+        }
+
+        try:
+            response = await self.llm_callback(prompt, output_format=entities_schema)
+        except TypeError:
+            response = await self.llm_callback(prompt)
+
+        if isinstance(response, dict):
+            entities_data = response.get("entities", [])
+        else:
+            entities_data = self._parse_json_array(response)
 
         entities = []
         for e in entities_data:
@@ -829,8 +979,38 @@ Return as JSON array:
   {{"subject": "Entity1", "predicate": "causes", "object": "Entity2", "confidence": 0.9}}
 ]"""
 
-        response = await self.llm_callback(prompt)
-        relations_data = self._parse_json_array(response)
+        relations_schema = {
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "relations": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "subject": {"type": "string"},
+                                "predicate": {"type": "string"},
+                                "object": {"type": "string"},
+                                "confidence": {"type": "number"},
+                            },
+                            "required": ["subject", "predicate", "object"],
+                        },
+                    },
+                },
+                "required": ["relations"],
+            },
+        }
+
+        try:
+            response = await self.llm_callback(prompt, output_format=relations_schema)
+        except TypeError:
+            response = await self.llm_callback(prompt)
+
+        if isinstance(response, dict):
+            relations_data = response.get("relations", [])
+        else:
+            relations_data = self._parse_json_array(response)
 
         # Map entity names to IDs
         name_to_id = {e.name.lower(): e.id for e in entities}
@@ -969,23 +1149,52 @@ Return as JSON array:
         """Generate unique ID."""
         return str(uuid.uuid4())[:8]
 
-    def _parse_json_array(self, text: str) -> list:
-        """Parse JSON array from LLM response."""
-        # Extract JSON from potential markdown code blocks
-        match = re.search(r'\[.*?\]', text, re.DOTALL)
+    def _parse_json_array(self, text: str | dict | list) -> list:
+        """Parse JSON array from LLM response with multiple fallbacks."""
+        # Handle structured output passthrough
+        if isinstance(text, list):
+            return text
+        if isinstance(text, dict):
+            # Try common wrapper keys
+            for key in ("results", "entities", "relations", "facts"):
+                if key in text and isinstance(text[key], list):
+                    return text[key]
+            return []
+
+        # Strip markdown code blocks
+        cleaned = re.sub(r'```(?:json)?\s*', '', text).strip()
+        cleaned = re.sub(r'```\s*$', '', cleaned).strip()
+
+        # Strategy 1: Try parsing the whole cleaned response
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, list):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Strategy 2: Greedy regex - match from first [ to last ]
+        match = re.search(r'\[.*\]', cleaned, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group())
             except json.JSONDecodeError:
                 pass
 
-        # Try parsing the whole response
-        try:
-            result = json.loads(text)
-            if isinstance(result, list):
-                return result
-        except json.JSONDecodeError:
-            pass
+        # Strategy 3: Find balanced brackets
+        start = cleaned.find('[')
+        if start >= 0:
+            depth = 0
+            for i in range(start, len(cleaned)):
+                if cleaned[i] == '[':
+                    depth += 1
+                elif cleaned[i] == ']':
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            return json.loads(cleaned[start:i + 1])
+                        except json.JSONDecodeError:
+                            break
 
         return []
 
@@ -1003,10 +1212,10 @@ Return as JSON array:
         self,
         content: str,
         source_url: str | None = None,
-    ) -> float:
+    ) -> tuple[float, int, int]:
         """Calculate KG support score for a finding.
 
-        Returns 0-1 score based on:
+        Returns score and counts based on:
         - Entity matches in the KG
         - Supporting relations in the KG
 
@@ -1015,12 +1224,12 @@ Return as JSON array:
             source_url: Optional source URL for context
 
         Returns:
-            Support score between 0 and 1
+            Tuple of (support_score, entity_match_count, supporting_relation_count)
         """
         # Extract entities from the content (quick extraction)
         entities = await self._quick_entity_extract(content)
         if not entities:
-            return 0.0
+            return 0.0, 0, 0
 
         entity_match_count = 0
         supporting_relations = 0
@@ -1039,13 +1248,14 @@ Return as JSON array:
                     supporting_relations += len(relations.get('incoming', []))
 
         if not entities:
-            return 0.0
+            return 0.0, 0, 0
 
         # Calculate score: 60% entity matches + 40% relation support
         entity_score = min(entity_match_count / len(entities), 1.0)
         relation_score = min(supporting_relations / (len(entities) * 2), 1.0)
 
-        return (entity_score * 0.6) + (relation_score * 0.4)
+        score = (entity_score * 0.6) + (relation_score * 0.4)
+        return score, entity_match_count, supporting_relations
 
     async def _quick_entity_extract(self, content: str) -> list[str]:
         """Quick entity extraction without LLM call.
@@ -1104,6 +1314,19 @@ Return as JSON array:
         entities = await self._quick_entity_extract(content)
         contradictions = []
 
+        # Only check specific, unambiguous predicate pairs.
+        # Skip overly generic pairs like ('has','lacks'), ('is','is not')
+        # that cause massive false positives via substring matching.
+        strict_pairs = [
+            ('increases', 'decreases'),
+            ('causes', 'prevents'),
+            ('enables', 'blocks'),
+            ('improves', 'worsens'),
+            ('outperforms', 'underperforms'),
+        ]
+
+        content_lower = content.lower()
+
         for entity_name in entities:
             entity_key = entity_name.lower().strip()
             if entity_key not in self.entity_by_name:
@@ -1115,24 +1338,34 @@ Return as JSON array:
             if not relations:
                 continue
 
-            # Check for contradictory predicates in the content
-            content_lower = content.lower()
+            # Only check outgoing relations that involve this entity's
+            # target. We need the target entity name to appear in the
+            # content for the contradiction to be meaningful.
             for relation in relations.get('outgoing', []):
-                predicate = relation.get('predicate', '')
+                predicate = relation.get('predicate', '').lower()
+                target_name = relation.get('target_name', '').lower()
 
-                # Check if content contradicts existing relation
-                for contra_pair in self.CONTRADICTORY_PREDICATES:
-                    # Check if content has opposite predicate
-                    if contra_pair[0] in predicate and contra_pair[1] in content_lower:
+                # Skip if target entity isn't even mentioned in content
+                if target_name and target_name not in content_lower:
+                    continue
+
+                for p_a, p_b in strict_pairs:
+                    if p_a in predicate and p_b in content_lower:
                         contradictions.append({
                             "conflicting_id": relation.get('relation_id', 'unknown'),
-                            "description": f"Content suggests '{contra_pair[1]}' but KG has '{contra_pair[0]}' for {entity_name}",
+                            "description": (
+                                f"Content suggests '{p_b}' but KG has "
+                                f"'{p_a}' for {entity_name}"
+                            ),
                             "severity": "medium",
                         })
-                    elif contra_pair[1] in predicate and contra_pair[0] in content_lower:
+                    elif p_b in predicate and p_a in content_lower:
                         contradictions.append({
                             "conflicting_id": relation.get('relation_id', 'unknown'),
-                            "description": f"Content suggests '{contra_pair[0]}' but KG has '{contra_pair[1]}' for {entity_name}",
+                            "description": (
+                                f"Content suggests '{p_a}' but KG has "
+                                f"'{p_b}' for {entity_name}"
+                            ),
                             "severity": "medium",
                         })
 

@@ -14,7 +14,6 @@ import json
 import re
 import time
 from collections.abc import Callable
-from typing import Any, Optional
 
 from .confidence import ConfidenceCalibrator
 from .models import (
@@ -24,6 +23,41 @@ from .models import (
     VerificationResult,
     VerificationStatus,
 )
+
+# JSON schemas for structured output
+QUESTIONS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "questions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string"},
+                    "aspect": {
+                        "type": "string",
+                        "enum": [
+                            "factual", "temporal", "source",
+                            "quantitative", "causal",
+                        ],
+                    },
+                },
+                "required": ["question", "aspect"],
+            },
+        },
+    },
+    "required": ["questions"],
+}
+
+ANSWER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "answer": {"type": "string"},
+        "confidence": {"type": "number"},
+        "supports": {"type": "boolean"},
+    },
+    "required": ["answer", "confidence", "supports"],
+}
 
 
 class ChainOfVerification:
@@ -38,13 +72,14 @@ class ChainOfVerification:
 
     def __init__(
         self,
-        llm_callback: Callable[[str, str], Any],  # (prompt, model) -> response
+        llm_callback: Callable,  # (prompt, model, **kwargs) -> response
         config: VerificationConfig | None = None,
     ):
         """Initialize CoVe verifier.
 
         Args:
-            llm_callback: Async function to call LLM with (prompt, model)
+            llm_callback: Async function to call LLM. Accepts (prompt, model)
+                and optionally output_format kwarg for structured output.
             config: Verification configuration
         """
         self.llm_callback = llm_callback
@@ -225,22 +260,17 @@ class ChainOfVerification:
         if search_query:
             context += f"\nSearch query: {search_query}"
 
-        prompt = f"""Generate 1-2 quick verification questions for this claim.
+        prompt = (
+            f"Generate 1-2 quick verification questions for this claim.\n\n"
+            f"CLAIM: {finding_content}\n{context}\n\n"
+            f"Questions should check the most critical facts.\n"
+            f"Aspects: factual, temporal, source, quantitative, causal"
+        )
 
-CLAIM: {finding_content}
-{context}
-
-Questions should check the most critical facts. Return as JSON:
-[
-  {{"question": "Is X true?", "aspect": "factual"}},
-  {{"question": "When did Y happen?", "aspect": "temporal"}}
-]
-
-Aspects: factual, temporal, source, quantitative, causal
-Return ONLY the JSON array."""
-
-        response = await self.llm_callback(prompt, self.config.streaming_model)
-        return self._parse_questions(response)
+        return await self._call_for_questions(
+            prompt, self.config.streaming_model,
+            max_q=self.config.max_cove_questions_streaming,
+        )
 
     async def _generate_questions_batch(
         self,
@@ -253,28 +283,61 @@ Return ONLY the JSON array."""
         if search_query:
             context += f"\nSearch query: {search_query}"
 
-        prompt = f"""Generate 3-5 verification questions to thoroughly check this claim.
+        prompt = (
+            f"Generate 3-5 verification questions to thoroughly check "
+            f"this claim.\n\n"
+            f"CLAIM: {finding_content}\n{context}\n\n"
+            f"Cover different verification aspects:\n"
+            f"- Factual accuracy (are the stated facts correct?)\n"
+            f"- Temporal accuracy (are dates/timeframes correct?)\n"
+            f"- Source attribution (is the source reliable?)\n"
+            f"- Quantitative claims (are numbers accurate?)\n"
+            f"- Causal claims (are cause-effect relationships valid?)"
+        )
 
-CLAIM: {finding_content}
-{context}
+        return await self._call_for_questions(
+            prompt, self.config.batch_model,
+            max_q=self.config.max_cove_questions_batch,
+        )
 
-Cover different verification aspects:
-- Factual accuracy (are the stated facts correct?)
-- Temporal accuracy (are dates/timeframes correct?)
-- Source attribution (is the source reliable?)
-- Quantitative claims (are numbers accurate?)
-- Causal claims (are cause-effect relationships valid?)
+    async def _call_for_questions(
+        self, prompt: str, model: str, max_q: int,
+    ) -> list[VerificationQuestion]:
+        """Call LLM for verification questions using structured output.
 
-Return as JSON array:
-[
-  {{"question": "Specific question?", "aspect": "factual"}},
-  {{"question": "Another question?", "aspect": "temporal"}}
-]
+        Tries structured output first, falls back to text parsing.
+        """
+        schema_fmt = {
+            "type": "json_schema",
+            "schema": QUESTIONS_SCHEMA,
+        }
 
-Return ONLY the JSON array, no explanation."""
+        try:
+            response = await self.llm_callback(
+                prompt, model, output_format=schema_fmt,
+            )
+        except TypeError:
+            # Callback doesn't support output_format kwarg -- fall back
+            response = await self.llm_callback(prompt, model)
 
-        response = await self.llm_callback(prompt, self.config.batch_model)
-        return self._parse_questions(response)
+        # If structured output returned a dict directly, use it
+        if isinstance(response, dict):
+            items = response.get("questions", [])
+            return [
+                VerificationQuestion(
+                    question=q["question"],
+                    aspect=q.get("aspect", "factual"),
+                )
+                for q in items
+                if isinstance(q, dict) and q.get("question")
+            ][:max_q]
+
+        # Guard against None/empty response
+        if not response:
+            return []
+
+        # Fallback: parse text response
+        return self._parse_questions(response)[:max_q]
 
     async def _answer_questions_parallel(
         self,
@@ -282,33 +345,58 @@ Return ONLY the JSON array, no explanation."""
         original_finding: str,
         use_batch_model: bool = False,
     ) -> list[VerificationQuestion]:
-        """Answer verification questions independently in parallel."""
-        model = self.config.batch_model if use_batch_model else self.config.streaming_model
+        """Answer verification questions independently in parallel.
 
-        async def answer_question(q: VerificationQuestion) -> VerificationQuestion:
-            # Importantly: don't show the original finding to avoid bias
-            prompt = f"""Answer this verification question based on your knowledge.
+        Two-step CoVe process per question:
+        1. Answer the question based on general knowledge (independent)
+        2. Compare the answer against the original claim to determine support
+        """
+        model = (
+            self.config.batch_model
+            if use_batch_model
+            else self.config.streaming_model
+        )
+        schema_fmt = {"type": "json_schema", "schema": ANSWER_SCHEMA}
 
-QUESTION: {q.question}
-ASPECT: {q.aspect}
-
-Provide:
-1. Your answer to the question
-2. Confidence (0.0-1.0)
-3. Whether this supports or contradicts the claim being verified
-
-Return as JSON:
-{{"answer": "Your answer", "confidence": 0.8, "supports": true}}
-
-Return ONLY the JSON."""
+        async def answer_question(
+            q: VerificationQuestion,
+        ) -> VerificationQuestion:
+            # Include the original claim so the LLM can actually
+            # determine whether its answer supports or contradicts it.
+            # The CoVe "factored" variant includes the claim for comparison.
+            prompt = (
+                "Answer this verification question based on your "
+                "knowledge, then determine whether your answer supports "
+                "or contradicts the original claim.\n\n"
+                f"ORIGINAL CLAIM: {original_finding}\n\n"
+                f"VERIFICATION QUESTION: {q.question}\n"
+                f"ASPECT: {q.aspect}\n\n"
+                "Respond with:\n"
+                '- "answer": your factual answer to the question\n'
+                '- "confidence": 0.0-1.0 how confident you are\n'
+                '- "supports": true if your answer is consistent with '
+                "the claim, false if it contradicts it"
+            )
 
             try:
-                response = await self.llm_callback(prompt, model)
-                data = self._parse_json(response)
+                try:
+                    response = await self.llm_callback(
+                        prompt, model, output_format=schema_fmt,
+                    )
+                except TypeError:
+                    response = await self.llm_callback(prompt, model)
+
+                if isinstance(response, dict):
+                    data = response
+                elif response:
+                    data = self._parse_json(response)
+                else:
+                    data = None
+
                 if data:
                     q.independent_answer = data.get("answer", "")
                     q.confidence = data.get("confidence", 0.5)
-                    q.supports_original = data.get("supports", None)
+                    q.supports_original = data.get("supports", True)
             except Exception:
                 q.independent_answer = None
                 q.confidence = 0.0
@@ -317,7 +405,9 @@ Return ONLY the JSON."""
             return q
 
         # Run all questions in parallel
-        answered = await asyncio.gather(*[answer_question(q) for q in questions])
+        answered = await asyncio.gather(
+            *[answer_question(q) for q in questions]
+        )
         return list(answered)
 
     def _calculate_consistency(
@@ -326,13 +416,15 @@ Return ONLY the JSON."""
         """Calculate consistency score from answered questions.
 
         Returns 0-1 score based on:
-        - How many questions support the original finding
+        - How many questions explicitly support vs contradict
         - Average confidence of answers
+        - Questions with unknown support (None) are treated as neutral
         """
         if not questions:
-            return 0.0
+            return 0.5  # No data = neutral, not penalizing
 
         supporting = 0
+        contradicting = 0
         total_confidence = 0.0
         answered_count = 0
 
@@ -340,45 +432,124 @@ Return ONLY the JSON."""
             if q.independent_answer is not None:
                 answered_count += 1
                 total_confidence += q.confidence
-                if q.supports_original:
+                # Only count explicit True/False, skip None (unknown)
+                if q.supports_original is True:
                     supporting += 1
+                elif q.supports_original is False:
+                    contradicting += 1
 
         if answered_count == 0:
-            return 0.0
+            return 0.5  # No data = neutral
 
-        # Consistency = (support_ratio * 0.6) + (avg_confidence * 0.4)
-        support_ratio = supporting / answered_count
+        # Support ratio: supporting vs contradicting (ignore unknowns)
+        decided_count = supporting + contradicting
+        if decided_count > 0:
+            support_ratio = supporting / decided_count
+        else:
+            # All answers have unknown support → neutral
+            support_ratio = 0.5
+
         avg_confidence = total_confidence / answered_count
 
+        # Consistency = (support_ratio * 0.6) + (avg_confidence * 0.4)
         return (support_ratio * 0.6) + (avg_confidence * 0.4)
 
     def _parse_questions(self, response: str) -> list[VerificationQuestion]:
         """Parse verification questions from LLM response."""
         questions = []
-        try:
-            # Find JSON array in response
-            match = re.search(r'\[.*?\]', response, re.DOTALL)
-            if match:
-                data = json.loads(match.group())
-                for item in data:
-                    if isinstance(item, dict) and item.get("question"):
-                        questions.append(VerificationQuestion(
-                            question=item["question"],
-                            aspect=item.get("aspect", "factual"),
-                        ))
-        except (json.JSONDecodeError, KeyError):
-            pass
+        data = self._extract_json_array(response)
+        if data:
+            for item in data:
+                if isinstance(item, dict) and item.get("question"):
+                    questions.append(VerificationQuestion(
+                        question=item["question"],
+                        aspect=item.get("aspect", "factual"),
+                    ))
 
         # Limit to configured max
         max_questions = self.config.max_cove_questions_batch
         return questions[:max_questions]
 
-    def _parse_json(self, response: str) -> dict | None:
-        """Parse JSON object from LLM response."""
+    def _extract_json_array(self, response: str) -> list | None:
+        """Extract a JSON array from LLM response with multiple fallbacks."""
+        if not response or not isinstance(response, str):
+            return None
+
+        # Strip markdown code blocks
+        cleaned = re.sub(r'```(?:json)?\s*', '', response).strip()
+        cleaned = re.sub(r'```\s*$', '', cleaned).strip()
+
+        # Strategy 1: Try parsing the whole cleaned response as JSON
         try:
-            match = re.search(r'\{.*?\}', response, re.DOTALL)
-            if match:
-                return json.loads(match.group())
-        except (json.JSONDecodeError, KeyError):
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, list):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
             pass
+
+        # Strategy 2: Greedy regex - match from first [ to last ]
+        match = re.search(r'\[.*\]', cleaned, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                pass
+
+        # Strategy 3: Find balanced brackets
+        start = cleaned.find('[')
+        if start >= 0:
+            depth = 0
+            for i in range(start, len(cleaned)):
+                if cleaned[i] == '[':
+                    depth += 1
+                elif cleaned[i] == ']':
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            return json.loads(cleaned[start:i + 1])
+                        except json.JSONDecodeError:
+                            break
+
+        return None
+
+    def _parse_json(self, response: str) -> dict | None:
+        """Parse JSON object from LLM response with multiple fallbacks."""
+        if not response or not isinstance(response, str):
+            return None
+
+        # Strip markdown code blocks
+        cleaned = re.sub(r'```(?:json)?\s*', '', response).strip()
+        cleaned = re.sub(r'```\s*$', '', cleaned).strip()
+
+        # Strategy 1: Try parsing the whole cleaned response
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Strategy 2: Greedy regex - match from first { to last }
+        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                pass
+
+        # Strategy 3: Find balanced braces
+        start = cleaned.find('{')
+        if start >= 0:
+            depth = 0
+            for i in range(start, len(cleaned)):
+                if cleaned[i] == '{':
+                    depth += 1
+                elif cleaned[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            return json.loads(cleaned[start:i + 1])
+                        except json.JSONDecodeError:
+                            break
+
         return None

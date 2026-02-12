@@ -139,13 +139,14 @@ class ManagerAgent(BaseAgent):
         # Track batch verification results for reports
         self.last_batch_verification: BatchVerificationResult | None = None
 
-    async def _kg_llm_callback(self, prompt: str) -> str:
+    async def _kg_llm_callback(
+        self, prompt: str, **kwargs,
+    ) -> str | dict | list:
         """LLM callback for knowledge graph extraction (uses faster model)."""
-        # Use a simpler model for KG extraction to save costs
         original_model = self.config.model
-        self.config.model = "sonnet"  # Faster for extraction tasks
+        self.config.model = "sonnet"
         try:
-            return await self.call_claude(prompt)
+            return await self.call_claude(prompt, **kwargs)
         finally:
             self.config.model = original_model
 
@@ -180,12 +181,23 @@ class ManagerAgent(BaseAgent):
         finally:
             self.config.model = original_model
 
-    async def _verification_llm_callback(self, prompt: str, model: str = "sonnet") -> str:
-        """LLM callback for verification (model specified by verification pipeline)."""
+    async def _verification_llm_callback(
+        self,
+        prompt: str,
+        model: str = "sonnet",
+        output_format: dict | None = None,
+    ) -> str | dict | list:
+        """LLM callback for verification (model specified by verification pipeline).
+
+        Args:
+            prompt: The prompt to send
+            model: Model to use (e.g. "haiku", "sonnet")
+            output_format: Optional JSON schema for structured output
+        """
         original_model = self.config.model
         self.config.model = model
         try:
-            return await self.call_claude(prompt)
+            return await self.call_claude(prompt, output_format=output_format)
         finally:
             self.config.model = original_model
 
@@ -806,54 +818,76 @@ Think step by step about the best next action."""
 
     async def _create_directive(self, thought: str) -> ManagerDirective | None:
         """Create a directive for the Intern based on reasoning."""
-        prompt = f"""Based on this reasoning:
-{thought}
+        prompt = (
+            f"Based on this reasoning:\n{thought}\n\n"
+            "Create a directive for the Research Intern."
+        )
 
-Create a directive for the Research Intern. Return as JSON:
-{{
-    "action": "search" or "deep_dive" or "verify",
-    "topic": "specific topic to research",
-    "instructions": "detailed instructions",
-    "priority": 1-10,
-    "max_searches": 3-10
-}}
-
-Return ONLY the JSON."""
-
-        response = await self.call_claude(prompt)
+        schema = {
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["search", "deep_dive", "verify"],
+                    },
+                    "topic": {"type": "string"},
+                    "instructions": {"type": "string"},
+                    "priority": {"type": "integer"},
+                    "max_searches": {"type": "integer"},
+                },
+                "required": [
+                    "action", "topic", "instructions",
+                    "priority", "max_searches",
+                ],
+            },
+        }
 
         try:
-            start = response.find("{")
-            end = response.rfind("}") + 1
-            if start != -1 and end > start:
+            response = await self.call_claude(
+                prompt, output_format=schema,
+            )
+
+            if isinstance(response, dict):
+                data = response
+            else:
+                start = response.find("{")
+                end = response.rfind("}") + 1
+                if start == -1 or end <= start:
+                    return None
                 data = json.loads(response[start:end])
-                directive = ManagerDirective(
-                    action=data.get("action", "search"),
-                    topic=data.get("topic", ""),
-                    instructions=data.get("instructions", ""),
-                    priority=data.get("priority", 5),
-                    max_searches=data.get("max_searches", 5),
-                )
 
-                # Log directive creation decision
-                await self._log_decision(
-                    session_id=self.session_id,
-                    decision_type=DecisionType.DIRECTIVE_CREATE,
-                    decision_outcome=directive.action,
-                    reasoning=thought[:500],
-                    inputs={
-                        "action": directive.action,
-                        "topic": directive.topic,
-                        "priority": directive.priority,
-                        "max_searches": directive.max_searches,
-                    },
-                    metrics={
-                        "findings_count": len(self.all_findings),
-                        "time_remaining": self.time_limit_minutes - self._get_elapsed_minutes(),
-                    },
-                )
+            directive = ManagerDirective(
+                action=data.get("action", "search"),
+                topic=data.get("topic", ""),
+                instructions=data.get("instructions", ""),
+                priority=data.get("priority", 5),
+                max_searches=data.get("max_searches", 5),
+            )
 
-                return directive
+            # Log directive creation decision
+            await self._log_decision(
+                session_id=self.session_id,
+                decision_type=DecisionType.DIRECTIVE_CREATE,
+                decision_outcome=directive.action,
+                reasoning=thought[:500],
+                inputs={
+                    "action": directive.action,
+                    "topic": directive.topic,
+                    "priority": directive.priority,
+                    "max_searches": directive.max_searches,
+                },
+                metrics={
+                    "findings_count": len(self.all_findings),
+                    "time_remaining": (
+                        self.time_limit_minutes
+                        - self._get_elapsed_minutes()
+                    ),
+                },
+            )
+
+            return directive
         except (json.JSONDecodeError, KeyError):
             pass
 

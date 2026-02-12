@@ -19,10 +19,10 @@ class CalibrationResult:
 class ConfidenceCalibrator:
     """Calibrates confidence scores and determines verification status.
 
-    Based on research thresholds:
-    - >85%: Auto-accept (VERIFIED)
-    - 50-85%: Flag for review (FLAGGED)
-    - <50%: Reject (REJECTED)
+    Thresholds (configurable in VerificationConfig):
+    - >72%: Auto-accept (VERIFIED)
+    - 45-72%: Flag for review (FLAGGED)
+    - <45%: Reject (REJECTED)
     """
 
     def __init__(self, config: VerificationConfig | None = None):
@@ -31,7 +31,7 @@ class ConfidenceCalibrator:
     def calibrate(
         self,
         original_confidence: float,
-        cove_consistency_score: float = 0.0,
+        cove_consistency_score: float = -1.0,
         kg_support_score: float = 0.0,
         has_contradictions: bool = False,
         source_credibility: float = 0.0,
@@ -56,9 +56,16 @@ class ConfidenceCalibrator:
         calibrated = original_confidence
 
         # CoVe consistency adjustment
-        if cove_consistency_score > 0:
+        # Score of -1 means "not scored / skipped", 0+ is a real signal
+        if cove_consistency_score >= 0:
             # High consistency boosts confidence, low consistency reduces it
-            cove_delta = (cove_consistency_score - 0.5) * 0.2  # +/-10% max
+            # 0.5 is neutral; below penalises, above boosts
+            # Asymmetric: boost up to +8%, penalize up to -5%
+            delta = cove_consistency_score - 0.5
+            if delta >= 0:
+                cove_delta = delta * 0.16  # +8% max boost
+            else:
+                cove_delta = delta * 0.10  # -5% max penalty
             calibrated += cove_delta
             if abs(cove_delta) > 0.01:
                 adjustments.append(("cove_consistency", cove_delta))

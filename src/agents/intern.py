@@ -131,9 +131,13 @@ class InternAgent(BaseAgent):
         """Set the knowledge graph query interface for contextual expansion."""
         self.query_expander.set_kg_query(kg_query)
 
-    async def _query_expansion_callback(self, prompt: str) -> str:
+    async def _query_expansion_callback(
+        self, prompt: str, **kwargs,
+    ) -> str | dict | list:
         """Callback for QueryExpander to call the LLM."""
-        return await self.call_claude(prompt, task_type="query_expansion")
+        return await self.call_claude(
+            prompt, task_type="query_expansion", **kwargs,
+        )
 
     async def _expansion_decision_logger(
         self,
@@ -587,155 +591,183 @@ Output ONLY the search query (15-25 words max), nothing else."""
         if search_summary:
             summary_section = f"\n\nSearch Summary:\n{search_summary}\n"
 
-        prompt = f"""Analyze these search results for the query: "{query}"
+        prompt = (
+            f'Analyze these search results for the query: "{query}"\n\n'
+            f"{results_text}\n{summary_section}\n"
+            "Extract key findings. For each finding, provide:\n"
+            "1. The finding content (1-2 sentences)\n"
+            "2. Type: FACT, INSIGHT, CONNECTION, SOURCE, QUESTION, "
+            "or CONTRADICTION\n"
+            "3. Source URL\n"
+            "4. Confidence score (0.0-1.0)\n\n"
+            "Also suggest 2-3 follow-up search queries that could "
+            "deepen this research."
+        )
 
-{results_text}
-{summary_section}
-Extract key findings. For each finding, provide:
-1. The finding content (1-2 sentences)
-2. Type: FACT, INSIGHT, CONNECTION, SOURCE, QUESTION, or CONTRADICTION
-3. Source URL
-4. Confidence score (0.0-1.0)
+        schema = {
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "findings": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "content": {"type": "string"},
+                                "type": {
+                                    "type": "string",
+                                    "enum": [
+                                        "FACT", "INSIGHT", "CONNECTION",
+                                        "SOURCE", "QUESTION",
+                                        "CONTRADICTION",
+                                    ],
+                                },
+                                "url": {"type": "string"},
+                                "confidence": {"type": "number"},
+                            },
+                            "required": [
+                                "content", "type", "url", "confidence",
+                            ],
+                        },
+                    },
+                    "followups": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+                "required": ["findings", "followups"],
+            },
+        }
 
-Also suggest 2-3 follow-up search queries that could deepen this research.
-
-Format your response as JSON:
-{{
-    "findings": [
-        {{"content": "...", "type": "FACT", "url": "...", "confidence": 0.8}},
-        ...
-    ],
-    "followups": ["query1", "query2", "query3"]
-}}"""
-
-        response = await self.call_claude(prompt)
+        response = await self.call_claude(
+            prompt, output_format=schema,
+        )
 
         findings = []
 
-        # Try to parse JSON response
+        # Try to parse response (structured or text)
         try:
-            start = response.find("{")
-            end = response.rfind("}") + 1
-            if start != -1 and end > start:
-                data = json.loads(response[start:end])
+            if isinstance(response, dict):
+                data = response
+            else:
+                start = response.find("{")
+                end = response.rfind("}") + 1
+                if start == -1 or end <= start:
+                    data = {"findings": [], "followups": []}
+                else:
+                    data = json.loads(response[start:end])
 
-                for f in data.get("findings", []):
-                    content = f.get("content", "")
+            for f in data.get("findings", []):
+                content = f.get("content", "")
 
-                    # Check for duplicates before processing
-                    if self.deduplicator.enabled:
-                        dedup_result = self.deduplicator.check(content)
-                        if dedup_result.is_duplicate:
-                            self._log(
-                                f"[DEDUP] Skipping duplicate ({dedup_result.match_type}, "
-                                f"sim={dedup_result.similarity:.0%})",
-                                style="dim",
+                # Check for duplicates before processing
+                if self.deduplicator.enabled:
+                    dedup_result = self.deduplicator.check(content)
+                    if dedup_result.is_duplicate:
+                        self._log(
+                            f"[DEDUP] Skipping duplicate ({dedup_result.match_type}, "
+                            f"sim={dedup_result.similarity:.0%})",
+                            style="dim",
+                        )
+                        await self._log_decision(
+                            session_id=session_id,
+                            decision_type=DecisionType.DEDUP_SKIP,
+                            decision_outcome="skipped",
+                            reasoning=f"Content matched existing finding: {content[:100]}",
+                            inputs={"match_type": dedup_result.match_type},
+                            metrics={"similarity": dedup_result.similarity},
+                        )
+                        continue
+
+                source_url = f.get("url")
+                finding = Finding(
+                    session_id=session_id,
+                    content=content,
+                    finding_type=FindingType(f.get("type", "fact").lower()),
+                    source_url=source_url,
+                    confidence=f.get("confidence", 0.7),
+                    search_query=query,
+                )
+
+                # Run streaming verification if pipeline is available
+                verification_result = None
+                if self.verification_pipeline:
+                    try:
+                        source_snippet = None
+                        if source_url:
+                            for r in results:
+                                if r.url == source_url and r.snippet:
+                                    source_snippet = r.snippet
+                                    break
+
+                        verification_result = (
+                            await self.verification_pipeline.verify_intern_finding(
+                                finding, session_id, source_content=source_snippet
                             )
-                            # Log dedup skip decision
-                            await self._log_decision(
-                                session_id=session_id,
-                                decision_type=DecisionType.DEDUP_SKIP,
-                                decision_outcome="skipped",
-                                reasoning=f"Content matched existing finding: {content[:100]}",
-                                inputs={"match_type": dedup_result.match_type},
-                                metrics={"similarity": dedup_result.similarity},
-                            )
-                            continue
+                        )
+                        finding.original_confidence = finding.confidence
+                        finding.confidence = verification_result.verified_confidence
+                        finding.verification_status = (
+                            verification_result.verification_status.value
+                        )
+                        finding.verification_method = (
+                            verification_result.verification_method.value
+                        )
+                        finding.kg_support_score = verification_result.kg_support_score
 
-                    source_url = f.get("url")
-                    finding = Finding(
-                        session_id=session_id,
-                        content=content,
-                        finding_type=FindingType(f.get("type", "fact").lower()),
-                        source_url=source_url,
-                        confidence=f.get("confidence", 0.7),
-                        search_query=query,
+                    except Exception as e:
+                        self._log(f"[VERIFY] Error: {e}", style="dim")
+
+                await self.db.save_finding(finding)
+
+                if verification_result and finding.id:
+                    try:
+                        await self.db.save_verification_result(
+                            session_id=session_id,
+                            finding_id=finding.id,
+                            result_dict=verification_result.to_dict(),
+                        )
+                    except Exception:
+                        pass
+
+                findings.append(finding)
+                self.findings.append(finding)
+
+                if self.session_id:
+                    await emit_finding(
+                        session_id=self.session_id,
+                        agent=self.role.value,
+                        content=content[:300],
+                        source=source_url,
+                        confidence=finding.confidence,
                     )
 
-                    # Run streaming verification if pipeline is available
-                    verification_result = None
-                    if self.verification_pipeline:
-                        try:
-                            # Find matching source snippet for HHEM grounding check
-                            source_snippet = None
-                            if source_url:
-                                for r in results:
-                                    if r.url == source_url and r.snippet:
-                                        source_snippet = r.snippet
-                                        break
-
-                            verification_result = (
-                                await self.verification_pipeline.verify_intern_finding(
-                                    finding, session_id, source_content=source_snippet
-                                )
-                            )
-                            # Update finding with verification results
-                            finding.original_confidence = finding.confidence
-                            finding.confidence = verification_result.verified_confidence
-                            finding.verification_status = (
-                                verification_result.verification_status.value
-                            )
-                            finding.verification_method = (
-                                verification_result.verification_method.value
-                            )
-                            finding.kg_support_score = verification_result.kg_support_score
-
-                        except Exception as e:
-                            self._log(f"[VERIFY] Error: {e}", style="dim")
-
-                    await self.db.save_finding(finding)
-
-                    # Save detailed verification result AFTER save_finding (which assigns finding.id)
-                    if verification_result and finding.id:
-                        try:
-                            await self.db.save_verification_result(
-                                session_id=session_id,
-                                finding_id=finding.id,
-                                result_dict=verification_result.to_dict(),
-                            )
-                        except Exception:
-                            pass  # Don't let verification result saving block research
-
-                    findings.append(finding)
-                    self.findings.append(finding)
-
-                    # Emit finding event for WebSocket
-                    if self.session_id:
-                        await emit_finding(
-                            session_id=self.session_id,
-                            agent=self.role.value,
-                            content=content[:300],  # Truncate for display
-                            source=source_url,
-                            confidence=finding.confidence,
-                        )
-
-                    # Add to deduplication index after saving
-                    if self.deduplicator.enabled:
-                        finding_id = (
-                            str(finding.id) if finding.id else f"{session_id}_{len(self.findings)}"
-                        )
-                        self.deduplicator.add(finding_id, content)
-
-                for followup in data.get("followups", []):
-                    # Filter out meta-questions/clarifying questions that aren't real topics
-                    followup_lower = followup.lower()
-                    is_meta_question = any(
-                        phrase in followup_lower
-                        for phrase in [
-                            "please provide",
-                            "what information",
-                            "could you clarify",
-                            "what are you looking for",
-                            "what topic",
-                            "what subject",
-                            "what would you like",
-                            "can you specify",
-                            "please specify",
-                            "more details",
-                        ]
+                if self.deduplicator.enabled:
+                    finding_id = (
+                        str(finding.id) if finding.id else f"{session_id}_{len(self.findings)}"
                     )
-                    if not is_meta_question and followup not in self.suggested_followups:
-                        self.suggested_followups.append(followup)
+                    self.deduplicator.add(finding_id, content)
+
+            for followup in data.get("followups", []):
+                followup_lower = followup.lower()
+                is_meta_question = any(
+                    phrase in followup_lower
+                    for phrase in [
+                        "please provide",
+                        "what information",
+                        "could you clarify",
+                        "what are you looking for",
+                        "what topic",
+                        "what subject",
+                        "what would you like",
+                        "can you specify",
+                        "please specify",
+                        "more details",
+                    ]
+                )
+                if not is_meta_question and followup not in self.suggested_followups:
+                    self.suggested_followups.append(followup)
 
         except (json.JSONDecodeError, KeyError, ValueError):
             pass

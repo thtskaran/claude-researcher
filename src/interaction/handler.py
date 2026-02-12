@@ -140,34 +140,63 @@ class UserInteraction:
         if not self.llm_callback:
             return []
 
-        prompt = f"""Given this research goal, generate 2-4 brief clarification questions that would help focus the research.
+        prompt = (
+            "Given this research goal, generate 2-4 brief clarification "
+            "questions that would help focus the research.\n\n"
+            f"Research Goal: {goal}\n\n"
+            "Consider asking about:\n"
+            "- Specific focus areas or aspects\n"
+            "- Time period of interest (recent vs historical)\n"
+            "- Depth vs breadth preference\n"
+            "- Any specific use case or application\n"
+            "- Geographic or domain scope\n\n"
+            "Keep questions brief and options concise."
+        )
 
-Research Goal: {goal}
-
-Consider asking about:
-- Specific focus areas or aspects
-- Time period of interest (recent vs historical)
-- Depth vs breadth preference
-- Any specific use case or application
-- Geographic or domain scope
-
-Return as JSON array:
-[
-    {{"id": 1, "question": "...", "options": ["option1", "option2"], "category": "scope"}},
-    ...
-]
-
-Keep questions brief and options concise. Return ONLY the JSON array."""
+        clarify_schema = {
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "questions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "integer"},
+                                "question": {"type": "string"},
+                                "options": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                                "category": {"type": "string"},
+                            },
+                            "required": ["id", "question"],
+                        },
+                    },
+                },
+                "required": ["questions"],
+            },
+        }
 
         try:
-            response = await self.llm_callback(prompt)
+            try:
+                response = await self.llm_callback(
+                    prompt, output_format=clarify_schema,
+                )
+            except TypeError:
+                response = await self.llm_callback(prompt)
 
-            # Parse JSON from response
-            start = response.find("[")
-            end = response.rfind("]") + 1
-            if start != -1 and end > start:
+            if isinstance(response, dict):
+                data = response.get("questions", [])
+            else:
+                start = response.find("[")
+                end = response.rfind("]") + 1
+                if start == -1 or end <= start:
+                    return []
                 data = json.loads(response[start:end])
-                return [ClarificationQuestion(**item) for item in data]
+
+            return [ClarificationQuestion(**item) for item in data]
         except (json.JSONDecodeError, KeyError, TypeError):
             pass
 

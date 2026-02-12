@@ -490,7 +490,7 @@ Choose themes that:
             import json
 
             # Find JSON array in response
-            match = re.search(r"\[.*?\]", themes_response, re.DOTALL)
+            match = re.search(r"\[.*\]", themes_response, re.DOTALL)
             if match:
                 themes = json.loads(match.group())
         except Exception:

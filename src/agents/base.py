@@ -9,7 +9,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
+from claude_agent_sdk import (
+    AssistantMessage,
+    ClaudeAgentOptions,
+    ResultMessage,
+    TextBlock,
+    query,
+)
 from rich.console import Console
 
 from ..audit import DecisionLogger, DecisionType, get_decision_logger
@@ -333,7 +339,8 @@ class BaseAgent(ABC):
         tools: list[str] | None = None,
         use_thinking: bool = False,
         task_type: str | None = None,
-    ) -> str:
+        output_format: dict | None = None,
+    ) -> str | dict | list:
         """Call Claude via the Agent SDK.
 
         Args:
@@ -341,9 +348,13 @@ class BaseAgent(ABC):
             tools: Optional list of tools to enable (default: none for pure reasoning)
             use_thinking: Enable extended thinking for deep reasoning (Opus recommended)
             task_type: Optional task type for automatic model routing
+            output_format: Optional JSON schema for structured output.
+                Example: {"type": "json_schema", "schema": {"type": "object", ...}}
+                When provided, returns parsed structured data instead of text.
 
         Returns:
-            The text response from Claude
+            Text response (str), or parsed structured data (dict/list) if
+            output_format is provided.
         """
         # Build environment with API key
         env = {}
@@ -358,24 +369,35 @@ class BaseAgent(ABC):
             if not use_thinking and ModelRouter.should_use_thinking(task_type):
                 use_thinking = True
 
+        # Structured output needs 2 turns: one for the StructuredOutput
+        # tool call, one for the tool result acknowledgement.
+        max_turns = 2 if output_format else 1
+
         options = ClaudeAgentOptions(
             model=model,
-            max_turns=1,  # Single turn for reasoning
+            max_turns=max_turns,
             allowed_tools=tools or [],
             system_prompt=self.system_prompt,
             env=env,
             max_thinking_tokens=self.config.max_thinking_tokens if use_thinking else None,
+            output_format=output_format,
         )
 
         response_text = ""
+        structured_output = None
         try:
             async for message in query(prompt=prompt, options=options):
                 if isinstance(message, AssistantMessage):
                     for block in message.content:
                         if isinstance(block, TextBlock):
                             response_text += block.text
+                elif isinstance(message, ResultMessage):
+                    if message.structured_output is not None:
+                        structured_output = message.structured_output
         except Exception as e:
             self._log(f"Error calling Claude: {e}", style="red")
+            if output_format:
+                return None
             response_text = f"Error: {e}"
 
         # Track costs
@@ -386,6 +408,10 @@ class BaseAgent(ABC):
             output_text=response_text,
             system_prompt=self.system_prompt,
         )
+
+        # Return structured output if available and requested
+        if output_format and structured_output is not None:
+            return structured_output
 
         return response_text
 

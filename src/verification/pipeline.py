@@ -112,8 +112,12 @@ class VerificationPipeline:
 
         # Quick KG match if available
         kg_support_score = 0.0
+        kg_entity_matches = 0
+        kg_supporting_relations = 0
         if self.knowledge_graph and self.config.enable_kg_verification:
-            kg_support_score = await self._get_kg_support(finding)
+            kg_support_score, kg_entity_matches, kg_supporting_relations = (
+                await self._get_kg_support(finding)
+            )
 
         # Run streaming CoVe
         result = await self.cove.verify_streaming(
@@ -124,15 +128,24 @@ class VerificationPipeline:
             search_query=finding.search_query,
         )
 
-        # Attach HHEM score
+        # Attach HHEM and KG scores
         result.hhem_grounding_score = hhem_score
+        result.kg_support_score = kg_support_score
+        result.kg_entity_matches = kg_entity_matches
+        result.kg_supporting_relations = kg_supporting_relations
 
-        # Recalibrate with all signals (KG + HHEM)
+        # Recalibrate with all signals (KG + HHEM + CoVe)
         if kg_support_score > 0 or hhem_score >= 0:
-            result.kg_support_score = kg_support_score
+            # Pass -1 for CoVe consistency if CoVe was skipped (parsing failed),
+            # so the calibrator treats it as "no data" rather than a negative signal
+            cove_score = (
+                result.consistency_score
+                if result.verification_status != VerificationStatus.SKIPPED
+                else -1.0
+            )
             calibration = self.calibrator.calibrate(
                 original_confidence=finding.confidence,
-                cove_consistency_score=result.consistency_score,
+                cove_consistency_score=cove_score,
                 kg_support_score=kg_support_score,
                 hhem_grounding_score=hhem_score,
             )
@@ -252,11 +265,15 @@ class VerificationPipeline:
 
         # Get KG signals
         kg_support_score = 0.0
+        kg_entity_matches = 0
+        kg_supporting_relations = 0
         has_contradictions = False
         contradictions = []
 
         if self.knowledge_graph and self.config.enable_kg_verification:
-            kg_support_score = await self._get_kg_support(finding)
+            kg_support_score, kg_entity_matches, kg_supporting_relations = (
+                await self._get_kg_support(finding)
+            )
             contradiction_result = await self._check_kg_contradictions(finding)
             has_contradictions = contradiction_result.get("has_contradictions", False)
             if has_contradictions:
@@ -281,10 +298,18 @@ class VerificationPipeline:
             has_contradictions=has_contradictions,
         )
 
-        # Check if CRITIC is needed (low confidence + high stakes)
+        # Attach KG counts to CoVe result
+        cove_result.kg_entity_matches = kg_entity_matches
+        cove_result.kg_supporting_relations = kg_supporting_relations
+
+        # Check if CRITIC is needed:
+        # - Low confidence OR contradictions found, AND high-stakes content
         use_critic = (
             self.config.enable_critic
-            and cove_result.verified_confidence < self.config.critic_confidence_threshold
+            and (
+                cove_result.verified_confidence < self.config.critic_confidence_threshold
+                or has_contradictions
+            )
             and self.high_stakes_detector.is_high_stakes(finding.content)
         )
 
@@ -297,16 +322,22 @@ class VerificationPipeline:
                 cove_result=cove_result,
             )
             critic_result.contradictions = contradictions
+            critic_result.kg_entity_matches = kg_entity_matches
+            critic_result.kg_supporting_relations = kg_supporting_relations
             return critic_result
 
         # Add contradictions to CoVe result
         cove_result.contradictions = contradictions
         return cove_result
 
-    async def _get_kg_support(self, finding: "Finding") -> float:
-        """Get KG support score for a finding."""
+    async def _get_kg_support(self, finding: "Finding") -> tuple[float, int, int]:
+        """Get KG support score and entity/relation counts for a finding.
+
+        Returns:
+            Tuple of (score, entity_matches, supporting_relations)
+        """
         if not self.knowledge_graph:
-            return 0.0
+            return 0.0, 0, 0
 
         try:
             return await self.knowledge_graph.get_kg_support_score(
@@ -314,7 +345,7 @@ class VerificationPipeline:
                 source_url=finding.source_url,
             )
         except Exception:
-            return 0.0
+            return 0.0, 0, 0
 
     async def _check_kg_contradictions(self, finding: "Finding") -> dict:
         """Check for contradictions in the KG."""

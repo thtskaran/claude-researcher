@@ -242,26 +242,44 @@ class ParallelInternPool:
         Returns:
             List of research aspects
         """
-        prompt = f"""Decompose this research goal into {max_aspects} distinct aspects that can be researched independently and in parallel.
-
-Research Goal: {goal}
-
-Each aspect should:
-1. Be specific and focused
-2. Cover a different angle of the topic
-3. Not overlap significantly with other aspects
-4. Be searchable as a standalone query
-
-Return ONLY a JSON array of {max_aspects} aspects:
-["aspect 1", "aspect 2", "aspect 3"]"""
-
-        response = await llm_callback(prompt)
-
-        # Parse JSON array
         import json
         import re
 
-        match = re.search(r'\[.*?\]', response, re.DOTALL)
+        prompt = (
+            f"Decompose this research goal into {max_aspects} "
+            "distinct aspects that can be researched independently "
+            "and in parallel.\n\n"
+            f"Research Goal: {goal}\n\n"
+            "Each aspect should be specific, focused, cover a "
+            "different angle, and be searchable standalone."
+        )
+
+        decompose_schema = {
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "aspects": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+                "required": ["aspects"],
+            },
+        }
+
+        try:
+            response = await llm_callback(
+                prompt, output_format=decompose_schema,
+            )
+        except TypeError:
+            response = await llm_callback(prompt)
+
+        if isinstance(response, dict):
+            return response.get("aspects", [goal])[:max_aspects]
+
+        # Text fallback
+        match = re.search(r'\[.*\]', response, re.DOTALL)
         if match:
             try:
                 aspects = json.loads(match.group())
@@ -269,7 +287,6 @@ Return ONLY a JSON array of {max_aspects} aspects:
             except json.JSONDecodeError:
                 pass
 
-        # Fallback: return the goal as single aspect
         return [goal]
 
     def _log(self, message: str, style: str | None = None) -> None:

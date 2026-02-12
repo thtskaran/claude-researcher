@@ -9,21 +9,42 @@ CRITIC is a tool-interactive verification method that:
 Reference: "CRITIC: Large Language Models Can Self-Correct with Tool-Interactive Critiquing"
 """
 
-import asyncio
 import json
 import re
 import time
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any
 
 from .confidence import ConfidenceCalibrator
 from .models import (
-    ContradictionDetail,
     VerificationConfig,
     VerificationMethod,
     VerificationResult,
     VerificationStatus,
 )
+
+CRITIQUE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "needs_correction": {"type": "boolean"},
+        "issue": {"type": "string"},
+        "issue_type": {
+            "type": "string",
+            "enum": [
+                "factual", "logical", "temporal",
+                "quantitative", "attribution",
+            ],
+        },
+        "severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high"],
+        },
+        "verify_externally": {"type": "boolean"},
+        "search_query": {"type": "string"},
+        "suggestion": {"type": "string"},
+    },
+    "required": ["needs_correction"],
+}
 
 
 class CRITICVerifier:
@@ -35,7 +56,7 @@ class CRITICVerifier:
 
     def __init__(
         self,
-        llm_callback: Callable[[str, str], Any],  # (prompt, model) -> response
+        llm_callback: Callable,  # (prompt, model, **kwargs) -> response
         search_callback: Callable[[str], Any] | None = None,  # query -> results
         config: VerificationConfig | None = None,
     ):
@@ -168,31 +189,32 @@ class CRITICVerifier:
         """Generate critique of the finding content."""
         source_context = f"\nSource: {source_url}" if source_url else ""
 
-        prompt = f"""Critically analyze this research finding for potential issues.
+        prompt = (
+            "Critically analyze this research finding for potential "
+            "issues.\n\n"
+            f"FINDING: {content}{source_context}\n\n"
+            "Check for:\n"
+            "1. Factual accuracy - Are the stated facts verifiable?\n"
+            "2. Logical consistency - Are there contradictions?\n"
+            "3. Temporal accuracy - Are dates/timeframes plausible?\n"
+            "4. Quantitative claims - Are numbers reasonable?\n"
+            "5. Source attribution - Is the claim properly attributed?"
+        )
 
-FINDING: {content}{source_context}
+        schema_fmt = {"type": "json_schema", "schema": CRITIQUE_SCHEMA}
+        try:
+            response = await self.llm_callback(
+                prompt, self.config.batch_model,
+                output_format=schema_fmt,
+            )
+        except TypeError:
+            response = await self.llm_callback(
+                prompt, self.config.batch_model,
+            )
 
-Check for:
-1. Factual accuracy - Are the stated facts verifiable?
-2. Logical consistency - Are there contradictions?
-3. Temporal accuracy - Are dates/timeframes plausible?
-4. Quantitative claims - Are numbers reasonable?
-5. Source attribution - Is the claim properly attributed?
+        if isinstance(response, dict):
+            return response
 
-Return as JSON:
-{{
-  "needs_correction": true/false,
-  "issue": "Brief description of the issue if any",
-  "issue_type": "factual/logical/temporal/quantitative/attribution",
-  "severity": "low/medium/high",
-  "verify_externally": true/false,
-  "search_query": "Query to verify if external check needed",
-  "suggestion": "How to correct if needed"
-}}
-
-Return ONLY the JSON."""
-
-        response = await self.llm_callback(prompt, self.config.batch_model)
         return self._parse_json(response) or {"needs_correction": False}
 
     async def _external_verify(self, query: str) -> str | None:
@@ -254,13 +276,45 @@ Return ONLY the corrected finding text, no explanation."""
         return corrected if corrected else None
 
     def _parse_json(self, response: str) -> dict | None:
-        """Parse JSON object from LLM response."""
+        """Parse JSON object from LLM response with multiple fallbacks."""
+        if not response or not isinstance(response, str):
+            return None
+
+        # Strip markdown code blocks
+        cleaned = re.sub(r'```(?:json)?\s*', '', response).strip()
+        cleaned = re.sub(r'```\s*$', '', cleaned).strip()
+
+        # Strategy 1: Try parsing the whole cleaned response
         try:
-            match = re.search(r'\{.*?\}', response, re.DOTALL)
-            if match:
-                return json.loads(match.group())
-        except (json.JSONDecodeError, KeyError):
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
             pass
+
+        # Strategy 2: Greedy regex - match from first { to last }
+        match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                pass
+
+        # Strategy 3: Find balanced braces
+        start = cleaned.find('{')
+        if start >= 0:
+            depth = 0
+            for i in range(start, len(cleaned)):
+                if cleaned[i] == '{':
+                    depth += 1
+                elif cleaned[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            return json.loads(cleaned[start:i + 1])
+                        except json.JSONDecodeError:
+                            break
+
         return None
 
 

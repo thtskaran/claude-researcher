@@ -9,9 +9,9 @@ from typing import Optional
 class VerificationStatus(str, Enum):
     """Status of a verification result."""
 
-    VERIFIED = "verified"  # >85% confidence, auto-accepted
-    FLAGGED = "flagged"  # 50-85% confidence, needs review
-    REJECTED = "rejected"  # <50% confidence, should trigger additional search
+    VERIFIED = "verified"  # >72% confidence, auto-accepted
+    FLAGGED = "flagged"  # 45-72% confidence, needs review
+    REJECTED = "rejected"  # <45% confidence, should trigger additional search
     SKIPPED = "skipped"  # Verification skipped (disabled or error)
     PENDING = "pending"  # Not yet verified
 
@@ -182,8 +182,8 @@ class VerificationConfig:
     """Configuration for the verification system."""
 
     # Confidence thresholds
-    auto_accept_threshold: float = 0.85  # >85% = VERIFIED
-    flag_threshold: float = 0.50  # 50-85% = FLAGGED, <50% = REJECTED
+    auto_accept_threshold: float = 0.72  # >72% = VERIFIED
+    flag_threshold: float = 0.45  # 45-72% = FLAGGED, <45% = REJECTED
 
     # Feature toggles
     enable_streaming_verification: bool = True
@@ -202,7 +202,7 @@ class VerificationConfig:
 
     # CRITIC settings
     max_critic_iterations: int = 3
-    critic_confidence_threshold: float = 0.7  # Use CRITIC if below this
+    critic_confidence_threshold: float = 0.8  # Use CRITIC if below this
 
     # Model selection
     streaming_model: str = "haiku"  # Fast for streaming
@@ -210,7 +210,7 @@ class VerificationConfig:
 
     # KG settings
     kg_support_boost: float = 0.1  # Boost confidence by up to 10% for KG match
-    kg_contradiction_penalty: float = 0.2  # Reduce confidence by 20% for KG contradiction
+    kg_contradiction_penalty: float = 0.08  # Reduce confidence by 8% for KG contradiction
 
     # Performance settings
     streaming_timeout_ms: int = 500  # Target <500ms for streaming
