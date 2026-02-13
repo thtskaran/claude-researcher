@@ -187,16 +187,20 @@ class SemanticMemoryStore:
             use_reranker=use_reranker,
         )
 
+        # Batch-fetch all memories from SQLite in one query (fixes N+1)
+        memory_ids = [
+            r.document.metadata.get("memory_id", r.document.id) for r in results
+        ]
+        memories_by_id = await self._get_memories_by_ids(memory_ids)
+
         # Convert to SemanticSearchResult
         search_results = []
-        for result in results:
-            # Get full memory from SQLite
-            memory_id = result.document.metadata.get("memory_id", result.document.id)
-            memories = await self._get_memory_by_id(memory_id)
+        for result, memory_id in zip(results, memory_ids):
+            fetched = memories_by_id.get(memory_id)
 
-            if memories:
+            if fetched:
                 search_results.append(SemanticSearchResult(
-                    memory=memories[0],
+                    memory=fetched[0],
                     score=result.score,
                     retrieval_method="hybrid" if result.reranker_score else "rrf",
                 ))
@@ -221,17 +225,34 @@ class SemanticMemoryStore:
 
     async def _get_memory_by_id(self, memory_id: str) -> list[StoredMemory]:
         """Get memory by ID from SQLite."""
+        results = await self._get_memories_by_ids([memory_id])
+        return results.get(memory_id, [])
+
+    async def _get_memories_by_ids(self, memory_ids: list[str]) -> dict[str, list[StoredMemory]]:
+        """Get memories by IDs from SQLite in a single query.
+
+        Args:
+            memory_ids: List of memory IDs to fetch
+
+        Returns:
+            Dict mapping memory_id -> list of StoredMemory
+        """
+        if not memory_ids:
+            return {}
+
         async with aiosqlite.connect(self._db_path) as conn:
-            cursor = await conn.execute("""
+            placeholders = ",".join("?" for _ in memory_ids)
+            cursor = await conn.execute(f"""
                 SELECT id, session_id, content, memory_type, tags, created_at, metadata
                 FROM memories
-                WHERE id = ?
-            """, (memory_id,))
+                WHERE id IN ({placeholders})
+            """, memory_ids)
 
             rows = await cursor.fetchall()
 
-        return [
-            StoredMemory(
+        result: dict[str, list[StoredMemory]] = {}
+        for row in rows:
+            memory = StoredMemory(
                 id=row[0],
                 session_id=row[1],
                 content=row[2],
@@ -240,8 +261,8 @@ class SemanticMemoryStore:
                 created_at=datetime.fromisoformat(row[5]),
                 metadata=json.loads(row[6]) if row[6] else {},
             )
-            for row in rows
-        ]
+            result.setdefault(row[0], []).append(memory)
+        return result
 
     async def search(
         self,

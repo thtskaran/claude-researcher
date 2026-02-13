@@ -36,14 +36,12 @@ export class ResearchWebSocket {
     const apiHost = process.env.NEXT_PUBLIC_API_HOST || "localhost:8080";
     const wsProtocol = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss" : "ws";
     const url = `${wsProtocol}://${apiHost}/ws/${this.sessionId}`;
-    console.log(`[WebSocket] Connecting to ${url}...`);
     this.intentionalDisconnect = false;
 
     try {
       this.ws = new WebSocket(url);
 
       this.ws.onopen = () => {
-        console.log(`[WebSocket] Connected to session ${this.sessionId}`);
         this.reconnectAttempts = 0;
 
         // Start ping/pong to keep connection alive
@@ -56,7 +54,6 @@ export class ResearchWebSocket {
 
           // Handle system messages
           if (data.type === "connected") {
-            console.log(`[WebSocket] Connection confirmed:`, data);
             return;
           }
 
@@ -85,11 +82,9 @@ export class ResearchWebSocket {
       };
 
       this.ws.onclose = () => {
-        console.log("[WebSocket] Connection closed");
         this.stopPing();
 
         if (this.intentionalDisconnect) {
-          console.log("[WebSocket] Intentional disconnect, skipping reconnection");
           return;
         }
 
@@ -97,9 +92,6 @@ export class ResearchWebSocket {
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
           const delay = this.reconnectDelay * this.reconnectAttempts;
-          console.log(
-            `[WebSocket] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`
-          );
           setTimeout(() => this.connect(), delay);
         } else {
           console.error("[WebSocket] Max reconnection attempts reached");
@@ -111,7 +103,6 @@ export class ResearchWebSocket {
   }
 
   disconnect(): void {
-    console.log("[WebSocket] Disconnecting...");
     this.intentionalDisconnect = true;
     this.stopPing();
     if (this.ws) {

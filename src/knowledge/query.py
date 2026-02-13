@@ -1,7 +1,5 @@
 """Manager query interface for knowledge graph analysis."""
 
-import sqlite3
-
 try:
     import networkx as nx
     HAS_NETWORKX = True
@@ -25,7 +23,7 @@ class ManagerQueryInterface:
     def __init__(self, kg_store: HybridKnowledgeGraphStore):
         self.store = kg_store
 
-    def what_do_i_know_about(self, topic: str) -> dict:
+    async def what_do_i_know_about(self, topic: str) -> dict:
         """Get all knowledge related to a topic.
 
         Args:
@@ -35,7 +33,7 @@ class ManagerQueryInterface:
             Dict with entities, claims, evidence, relations, and sources
         """
         if not HAS_NETWORKX or self.store.graph is None:
-            return self._what_do_i_know_sql(topic)
+            return await self._what_do_i_know_sql(topic)
 
         # Find entities matching the topic
         matching_entities = []
@@ -86,7 +84,7 @@ class ManagerQueryInterface:
                 knowledge['entities'].append(entity_info)
 
             # Get relations
-            relations = self.store.get_entity_relations(entity_id)
+            relations = await self.store.get_entity_relations(entity_id)
             knowledge['relations'].extend(relations['outgoing'])
             knowledge['relations'].extend(relations['incoming'])
 
@@ -99,27 +97,23 @@ class ManagerQueryInterface:
 
         return knowledge
 
-    def _what_do_i_know_sql(self, topic: str) -> dict:
-        """Fallback SQL implementation."""
-        conn = sqlite3.connect(self.store.db_path)
-        cursor = conn.cursor()
+    async def _what_do_i_know_sql(self, topic: str) -> dict:
+        """Fallback SQL implementation using the store's async connection."""
+        conn = self.store._connection
 
-        # Search entities by name
-        cursor.execute("""
+        cursor = await conn.execute("""
             SELECT id, name, entity_type, properties
             FROM kg_entities
             WHERE name LIKE ? OR properties LIKE ?
         """, (f"%{topic}%", f"%{topic}%"))
 
         entities = []
-        for row in cursor.fetchall():
+        for row in await cursor.fetchall():
             entities.append({
                 'id': row[0],
                 'name': row[1],
                 'type': row[2],
             })
-
-        conn.close()
 
         return {
             'found': len(entities) > 0,
@@ -131,7 +125,7 @@ class ManagerQueryInterface:
             'summary': f"Found {len(entities)} related entities.",
         }
 
-    def identify_gaps(self) -> list[KnowledgeGap]:
+    async def identify_gaps(self) -> list[KnowledgeGap]:
         """Identify knowledge gaps using graph structure analysis.
 
         Uses:
@@ -146,7 +140,7 @@ class ManagerQueryInterface:
             return gaps
 
         # 1. Find claims with insufficient evidence
-        claims = self.store.query_by_entity_type('CLAIM')
+        claims = await self.store.query_by_entity_type('CLAIM')
         for claim in claims:
             evidence_count = sum(
                 1 for _, _, d in self.store.graph.in_edges(claim['id'], data=True)
@@ -215,9 +209,9 @@ class ManagerQueryInterface:
         gaps.sort(key=lambda g: g.importance, reverse=True)
         return gaps
 
-    def get_contradictions(self) -> list[dict]:
+    async def get_contradictions(self) -> list[dict]:
         """Get all unresolved contradictions."""
-        contradictions = self.store.get_unresolved_contradictions()
+        contradictions = await self.store.get_unresolved_contradictions()
 
         result = []
         for c in contradictions:
@@ -262,9 +256,9 @@ class ManagerQueryInterface:
 
         return key_concepts
 
-    def get_research_summary(self) -> str:
+    async def get_research_summary(self) -> str:
         """Generate a summary of current knowledge state for the Manager."""
-        stats = self.store.get_stats()
+        stats = await self.store.get_stats()
 
         summary_parts = []
         summary_parts.append("## Knowledge Graph Status")
@@ -282,14 +276,14 @@ class ManagerQueryInterface:
                 summary_parts.append(f"- {c['name']} ({c['type']}, importance: {c['importance']})")
 
         # Gaps
-        gaps = self.identify_gaps()
+        gaps = await self.identify_gaps()
         if gaps:
             summary_parts.append(f"\n## Knowledge Gaps ({len(gaps)} identified)")
             for g in gaps[:5]:
                 summary_parts.append(f"- {g.recommendation}")
 
         # Contradictions
-        contradictions = self.get_contradictions()
+        contradictions = await self.get_contradictions()
         if contradictions:
             summary_parts.append(f"\n## Contradictions ({len(contradictions)} unresolved)")
             for c in contradictions[:3]:
@@ -297,17 +291,17 @@ class ManagerQueryInterface:
 
         return "\n".join(summary_parts)
 
-    def get_next_research_directions(self) -> list[str]:
+    async def get_next_research_directions(self) -> list[str]:
         """Suggest next research directions based on graph analysis."""
         directions = []
 
         # From gaps
-        gaps = self.identify_gaps()
+        gaps = await self.identify_gaps()
         for gap in gaps:
             directions.append(gap.recommendation)
 
         # From contradictions
-        contradictions = self.get_contradictions()
+        contradictions = await self.get_contradictions()
         for c in contradictions:
             directions.append(c['recommendation'])
 

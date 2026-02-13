@@ -146,8 +146,10 @@ class VectorStore:
         contents = []
         metadatas = []
         embeddings = []
+        # Track docs needing embeddings for batch generation
+        needs_embedding_indices = []
 
-        for doc in documents:
+        for i, doc in enumerate(documents):
             ids.append(doc.id)
             contents.append(doc.content)
 
@@ -158,12 +160,18 @@ class VectorStore:
                 clean_metadata = {"_id": doc.id}
             metadatas.append(clean_metadata)
 
-            # Use provided embedding or generate new one
             if doc.embedding is not None:
                 embeddings.append(doc.embedding.tolist())
             else:
-                emb = self.embedding_service.embed_document(doc.content)
-                embeddings.append(emb.tolist())
+                embeddings.append(None)  # Placeholder
+                needs_embedding_indices.append(i)
+
+        # Batch-generate embeddings for docs that need them
+        if needs_embedding_indices:
+            texts_to_embed = [contents[i] for i in needs_embedding_indices]
+            batch_embeddings = self.embedding_service.embed_documents(texts_to_embed)
+            for idx, emb in zip(needs_embedding_indices, batch_embeddings):
+                embeddings[idx] = emb.tolist()
 
         # Upsert to handle duplicates
         collection.upsert(

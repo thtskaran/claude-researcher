@@ -1,9 +1,10 @@
 """Hybrid NetworkX + SQLite storage for knowledge graphs."""
 
 import json
-import sqlite3
 from datetime import datetime
 from pathlib import Path
+
+import aiosqlite
 
 try:
     import networkx as nx
@@ -19,8 +20,10 @@ class HybridKnowledgeGraphStore:
 
     This provides:
     - Fast graph queries via NetworkX (PageRank, centrality, paths)
-    - Persistent storage via SQLite
+    - Persistent storage via SQLite (async via aiosqlite)
     - Automatic sync between the two
+
+    Requires explicit connect()/close() lifecycle.
     """
 
     def __init__(self, db_path: str = "knowledge_graph.db"):
@@ -31,172 +34,179 @@ class HybridKnowledgeGraphStore:
         else:
             self.graph = None  # Fallback mode
 
-        self._init_db()
-        self._load_from_db()
+        self._connection: aiosqlite.Connection | None = None
 
-    def _init_db(self):
+    async def connect(self):
+        """Initialize async DB connection, create schema, and load graph."""
+        self._connection = await aiosqlite.connect(self.db_path)
+        await self._connection.execute("PRAGMA journal_mode=WAL")
+        await self._connection.execute("PRAGMA busy_timeout=5000")
+        await self._init_db()
+        await self._load_from_db()
+
+    async def close(self):
+        """Close the async DB connection."""
+        if self._connection:
+            await self._connection.close()
+            self._connection = None
+
+    async def _init_db(self):
         """Initialize SQLite schema."""
-        # [HARDENED] ERR-001: Use try/finally to prevent connection leaks
-        conn = sqlite3.connect(self.db_path)
-        try:
-            cursor = conn.cursor()
+        conn = self._connection
 
-            # Entities table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS kg_entities (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    entity_type TEXT NOT NULL,
-                    properties TEXT,
-                    embedding BLOB,
-                    session_id TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
+        # Entities table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS kg_entities (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                properties TEXT,
+                embedding BLOB,
+                session_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
-            # Relations table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS kg_relations (
-                    id TEXT PRIMARY KEY,
-                    subject_id TEXT NOT NULL,
-                    predicate TEXT NOT NULL,
-                    object_id TEXT NOT NULL,
-                    source_id TEXT,
-                    confidence REAL DEFAULT 1.0,
-                    properties TEXT,
-                    session_id TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (subject_id) REFERENCES kg_entities(id),
-                    FOREIGN KEY (object_id) REFERENCES kg_entities(id)
-                )
-            """)
+        # Relations table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS kg_relations (
+                id TEXT PRIMARY KEY,
+                subject_id TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                object_id TEXT NOT NULL,
+                source_id TEXT,
+                confidence REAL DEFAULT 1.0,
+                properties TEXT,
+                session_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (subject_id) REFERENCES kg_entities(id),
+                FOREIGN KEY (object_id) REFERENCES kg_entities(id)
+            )
+        """)
 
-            # Findings/Sources table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS kg_findings (
-                    id TEXT PRIMARY KEY,
-                    content TEXT NOT NULL,
-                    source_url TEXT,
-                    source_title TEXT,
-                    credibility_score REAL,
-                    finding_type TEXT,
-                    search_query TEXT,
-                    timestamp TIMESTAMP,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
+        # Findings/Sources table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS kg_findings (
+                id TEXT PRIMARY KEY,
+                content TEXT NOT NULL,
+                source_url TEXT,
+                source_title TEXT,
+                credibility_score REAL,
+                finding_type TEXT,
+                search_query TEXT,
+                timestamp TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
-            # Contradictions table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS kg_contradictions (
-                    id TEXT PRIMARY KEY,
-                    relation1_id TEXT NOT NULL,
-                    relation2_id TEXT NOT NULL,
-                    contradiction_type TEXT NOT NULL,
-                    description TEXT,
-                    severity TEXT DEFAULT 'medium',
-                    resolution TEXT,
-                    resolved_at TIMESTAMP,
-                    session_id TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (relation1_id) REFERENCES kg_relations(id),
-                    FOREIGN KEY (relation2_id) REFERENCES kg_relations(id)
-                )
-            """)
+        # Contradictions table
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS kg_contradictions (
+                id TEXT PRIMARY KEY,
+                relation1_id TEXT NOT NULL,
+                relation2_id TEXT NOT NULL,
+                contradiction_type TEXT NOT NULL,
+                description TEXT,
+                severity TEXT DEFAULT 'medium',
+                resolution TEXT,
+                resolved_at TIMESTAMP,
+                session_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (relation1_id) REFERENCES kg_relations(id),
+                FOREIGN KEY (relation2_id) REFERENCES kg_relations(id)
+            )
+        """)
 
-            # Indexes for fast queries
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_entity_type ON kg_entities(entity_type)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_entity_name ON kg_entities(name)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_relation_predicate ON kg_relations(predicate)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_relation_subject ON kg_relations(subject_id)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_relation_object ON kg_relations(object_id)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_entity_session ON kg_entities(session_id)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_relation_session ON kg_relations(session_id)"
-            )
+        # Indexes for fast queries
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_entity_type ON kg_entities(entity_type)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_entity_name ON kg_entities(name)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_relation_predicate ON kg_relations(predicate)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_relation_subject ON kg_relations(subject_id)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_relation_object ON kg_relations(object_id)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_entity_session ON kg_entities(session_id)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_relation_session ON kg_relations(session_id)"
+        )
 
-            conn.commit()
-        finally:
-            conn.close()
+        await conn.commit()
 
-    def _load_from_db(self):
+    async def _load_from_db(self):
         """Load graph from SQLite into NetworkX."""
         if not HAS_NETWORKX or self.graph is None:
             return
 
-        # [HARDENED] ERR-001: Use try/finally to prevent connection leaks
-        conn = sqlite3.connect(self.db_path)
-        try:
-            cursor = conn.cursor()
+        conn = self._connection
 
-            # Load entities as nodes
-            cursor.execute("SELECT id, name, entity_type, properties FROM kg_entities")
-            for row in cursor.fetchall():
-                entity_id, name, entity_type, properties = row
-                props = json.loads(properties) if properties else {}
-                self.graph.add_node(
-                    entity_id,
-                    name=name,
-                    entity_type=entity_type,
+        # Load entities as nodes
+        cursor = await conn.execute(
+            "SELECT id, name, entity_type, properties FROM kg_entities"
+        )
+        for row in await cursor.fetchall():
+            entity_id, name, entity_type, properties = row
+            props = json.loads(properties) if properties else {}
+            self.graph.add_node(
+                entity_id,
+                name=name,
+                entity_type=entity_type,
+                **props
+            )
+
+        # Load relations as edges
+        cursor = await conn.execute("""
+            SELECT id, subject_id, predicate, object_id, confidence, properties
+            FROM kg_relations
+        """)
+        for row in await cursor.fetchall():
+            rel_id, subj, pred, obj, conf, properties = row
+            props = json.loads(properties) if properties else {}
+            if subj in self.graph and obj in self.graph:
+                self.graph.add_edge(
+                    subj, obj,
+                    relation_id=rel_id,
+                    predicate=pred,
+                    confidence=conf,
                     **props
                 )
 
-            # Load relations as edges
-            cursor.execute("""
-                SELECT id, subject_id, predicate, object_id, confidence, properties
-                FROM kg_relations
-            """)
-            for row in cursor.fetchall():
-                rel_id, subj, pred, obj, conf, properties = row
-                props = json.loads(properties) if properties else {}
-                if subj in self.graph and obj in self.graph:
-                    self.graph.add_edge(
-                        subj, obj,
-                        relation_id=rel_id,
-                        predicate=pred,
-                        confidence=conf,
-                        **props
-                    )
-        finally:
-            conn.close()
-
-    def add_entity(self, entity: Entity, session_id: str | None = None) -> str:
+    async def add_entity(self, entity: Entity, session_id: str | None = None) -> str:
         """Add entity to both NetworkX and SQLite."""
-        # [HARDENED] ERR-001: Use try/finally to prevent connection leaks
-        conn = sqlite3.connect(self.db_path)
-        try:
-            cursor = conn.cursor()
+        conn = self._connection
 
-            # [HARDENED] SEC-002: Use JSON instead of pickle for embedding serialization
-            embedding_blob = json.dumps(entity.embedding.tolist()) if entity.embedding is not None else None
-            properties = json.dumps({
-                'aliases': entity.aliases,
-                'sources': entity.sources,
-                'confidence': entity.confidence,
-                **entity.properties,
-            })
+        # [HARDENED] SEC-002: Use JSON instead of pickle for embedding serialization
+        embedding_blob = (
+            json.dumps(entity.embedding.tolist())
+            if entity.embedding is not None
+            else None
+        )
+        properties = json.dumps({
+            'aliases': entity.aliases,
+            'sources': entity.sources,
+            'confidence': entity.confidence,
+            **entity.properties,
+        })
 
-            cursor.execute("""
-                INSERT OR REPLACE INTO kg_entities (id, name, entity_type, properties, embedding, session_id, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (entity.id, entity.name, entity.entity_type, properties, embedding_blob, session_id, datetime.now().isoformat()))
-
-            conn.commit()
-        finally:
-            conn.close()
+        await conn.execute("""
+            INSERT OR REPLACE INTO kg_entities
+            (id, name, entity_type, properties, embedding, session_id, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            entity.id, entity.name, entity.entity_type, properties,
+            embedding_blob, session_id, datetime.now().isoformat(),
+        ))
+        await conn.commit()
 
         # Add to NetworkX
         if HAS_NETWORKX and self.graph is not None:
@@ -213,31 +223,27 @@ class HybridKnowledgeGraphStore:
 
         return entity.id
 
-    def add_relation(self, relation: Relation, session_id: str | None = None) -> str:
+    async def add_relation(
+        self, relation: Relation, session_id: str | None = None,
+    ) -> str:
         """Add relation to both NetworkX and SQLite."""
-        # [HARDENED] ERR-001: Use try/finally to prevent connection leaks
-        conn = sqlite3.connect(self.db_path)
-        try:
-            cursor = conn.cursor()
+        conn = self._connection
 
-            properties = json.dumps({
-                'timestamp': relation.timestamp,
-                **relation.properties,
-            })
+        properties = json.dumps({
+            'timestamp': relation.timestamp,
+            **relation.properties,
+        })
 
-            cursor.execute("""
-                INSERT INTO kg_relations
-                (id, subject_id, predicate, object_id, source_id, confidence, properties, session_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                relation.id, relation.subject_id, relation.predicate,
-                relation.object_id, relation.source_id, relation.confidence,
-                properties, session_id
-            ))
-
-            conn.commit()
-        finally:
-            conn.close()
+        await conn.execute("""
+            INSERT INTO kg_relations
+            (id, subject_id, predicate, object_id, source_id, confidence, properties, session_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            relation.id, relation.subject_id, relation.predicate,
+            relation.object_id, relation.source_id, relation.confidence,
+            properties, session_id
+        ))
+        await conn.commit()
 
         # Add to NetworkX
         if HAS_NETWORKX and self.graph is not None:
@@ -253,46 +259,37 @@ class HybridKnowledgeGraphStore:
 
         return relation.id
 
-    def add_contradiction(self, contradiction: Contradiction, session_id: str | None = None) -> str:
+    async def add_contradiction(
+        self, contradiction: Contradiction, session_id: str | None = None,
+    ) -> str:
         """Record a detected contradiction."""
-        # [HARDENED] ERR-001: Use try/finally to prevent connection leaks
-        conn = sqlite3.connect(self.db_path)
-        try:
-            cursor = conn.cursor()
+        conn = self._connection
 
-            cursor.execute("""
-                INSERT INTO kg_contradictions
-                (id, relation1_id, relation2_id, contradiction_type, description, severity, session_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                contradiction.id,
-                contradiction.relation1_id,
-                contradiction.relation2_id,
-                contradiction.contradiction_type,
-                contradiction.description,
-                contradiction.severity,
-                session_id,
-            ))
-
-            conn.commit()
-        finally:
-            conn.close()
+        await conn.execute("""
+            INSERT INTO kg_contradictions
+            (id, relation1_id, relation2_id, contradiction_type, description, severity, session_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            contradiction.id,
+            contradiction.relation1_id,
+            contradiction.relation2_id,
+            contradiction.contradiction_type,
+            contradiction.description,
+            contradiction.severity,
+            session_id,
+        ))
+        await conn.commit()
         return contradiction.id
 
-    def get_entity(self, entity_id: str) -> Entity | None:
+    async def get_entity(self, entity_id: str) -> Entity | None:
         """Get an entity by ID."""
-        # [HARDENED] ERR-001: Use try/finally to prevent connection leaks
-        conn = sqlite3.connect(self.db_path)
-        try:
-            cursor = conn.cursor()
+        conn = self._connection
 
-            cursor.execute(
-                "SELECT id, name, entity_type, properties, embedding FROM kg_entities WHERE id = ?",
-                (entity_id,)
-            )
-            row = cursor.fetchone()
-        finally:
-            conn.close()
+        cursor = await conn.execute(
+            "SELECT id, name, entity_type, properties, embedding FROM kg_entities WHERE id = ?",
+            (entity_id,)
+        )
+        row = await cursor.fetchone()
 
         if not row:
             return None
@@ -317,40 +314,38 @@ class HybridKnowledgeGraphStore:
             sources=props.get('sources', []),
             confidence=props.get('confidence', 1.0),
             embedding=embedding,
-            properties={k: v for k, v in props.items() if k not in ['aliases', 'sources', 'confidence']},
+            properties={
+                k: v for k, v in props.items()
+                if k not in ['aliases', 'sources', 'confidence']
+            },
         )
 
-    def query_by_entity_type(self, entity_type: str) -> list[dict]:
+    async def query_by_entity_type(self, entity_type: str) -> list[dict]:
         """Query entities by type using SQLite."""
-        # [HARDENED] ERR-001: Use try/finally to prevent connection leaks
-        conn = sqlite3.connect(self.db_path)
-        try:
-            cursor = conn.cursor()
+        conn = self._connection
 
-            cursor.execute(
-                "SELECT id, name, properties FROM kg_entities WHERE entity_type = ?",
-                (entity_type,)
-            )
+        cursor = await conn.execute(
+            "SELECT id, name, properties FROM kg_entities WHERE entity_type = ?",
+            (entity_type,)
+        )
 
-            results = []
-            for row in cursor.fetchall():
-                entity_id, name, properties = row
-                props = json.loads(properties) if properties else {}
-                results.append({
-                    'id': entity_id,
-                    'name': name,
-                    'type': entity_type,
-                    **props
-                })
-        finally:
-            conn.close()
+        results = []
+        for row in await cursor.fetchall():
+            entity_id, name, properties = row
+            props = json.loads(properties) if properties else {}
+            results.append({
+                'id': entity_id,
+                'name': name,
+                'type': entity_type,
+                **props
+            })
         return results
 
-    def get_entity_relations(self, entity_id: str) -> dict:
+    async def get_entity_relations(self, entity_id: str) -> dict:
         """Get all relations for an entity."""
         if not HAS_NETWORKX or self.graph is None or entity_id not in self.graph:
             # Fallback to SQLite
-            return self._get_entity_relations_sql(entity_id)
+            return await self._get_entity_relations_sql(entity_id)
 
         outgoing = []
         for _, target, data in self.graph.out_edges(entity_id, data=True):
@@ -372,87 +367,83 @@ class HybridKnowledgeGraphStore:
 
         return {'outgoing': outgoing, 'incoming': incoming}
 
-    def _get_entity_relations_sql(self, entity_id: str) -> dict:
+    async def _get_entity_relations_sql(self, entity_id: str) -> dict:
         """Get entity relations via SQLite (fallback)."""
-        # [HARDENED] ERR-001: Use try/finally to prevent connection leaks
-        conn = sqlite3.connect(self.db_path)
-        try:
-            cursor = conn.cursor()
+        conn = self._connection
 
-            # Outgoing relations
-            cursor.execute("""
-                SELECT r.predicate, r.object_id, e.name, r.confidence
-                FROM kg_relations r
-                JOIN kg_entities e ON r.object_id = e.id
-                WHERE r.subject_id = ?
-            """, (entity_id,))
+        # Outgoing relations
+        cursor = await conn.execute("""
+            SELECT r.predicate, r.object_id, e.name, r.confidence
+            FROM kg_relations r
+            JOIN kg_entities e ON r.object_id = e.id
+            WHERE r.subject_id = ?
+        """, (entity_id,))
 
-            outgoing = [
-                {'predicate': row[0], 'target_id': row[1], 'target_name': row[2], 'confidence': row[3]}
-                for row in cursor.fetchall()
-            ]
+        outgoing = [
+            {
+                'predicate': row[0], 'target_id': row[1],
+                'target_name': row[2], 'confidence': row[3],
+            }
+            for row in await cursor.fetchall()
+        ]
 
-            # Incoming relations
-            cursor.execute("""
-                SELECT r.predicate, r.subject_id, e.name, r.confidence
-                FROM kg_relations r
-                JOIN kg_entities e ON r.subject_id = e.id
-                WHERE r.object_id = ?
-            """, (entity_id,))
+        # Incoming relations
+        cursor = await conn.execute("""
+            SELECT r.predicate, r.subject_id, e.name, r.confidence
+            FROM kg_relations r
+            JOIN kg_entities e ON r.subject_id = e.id
+            WHERE r.object_id = ?
+        """, (entity_id,))
 
-            incoming = [
-                {'predicate': row[0], 'source_id': row[1], 'source_name': row[2], 'confidence': row[3]}
-                for row in cursor.fetchall()
-            ]
-        finally:
-            conn.close()
+        incoming = [
+            {
+                'predicate': row[0], 'source_id': row[1],
+                'source_name': row[2], 'confidence': row[3],
+            }
+            for row in await cursor.fetchall()
+        ]
         return {'outgoing': outgoing, 'incoming': incoming}
 
-    def get_unresolved_contradictions(self) -> list[dict]:
+    async def get_unresolved_contradictions(self) -> list[dict]:
         """Get all unresolved contradictions."""
-        # [HARDENED] ERR-001: Use try/finally to prevent connection leaks
-        conn = sqlite3.connect(self.db_path)
-        try:
-            cursor = conn.cursor()
+        conn = self._connection
 
-            cursor.execute("""
-                SELECT id, relation1_id, relation2_id, contradiction_type, description, severity
-                FROM kg_contradictions
-                WHERE resolved_at IS NULL
-            """)
+        cursor = await conn.execute("""
+            SELECT id, relation1_id, relation2_id, contradiction_type, description, severity
+            FROM kg_contradictions
+            WHERE resolved_at IS NULL
+        """)
 
-            contradictions = []
-            for row in cursor.fetchall():
-                contradictions.append({
-                    'id': row[0],
-                    'relation1_id': row[1],
-                    'relation2_id': row[2],
-                    'type': row[3],
-                    'description': row[4],
-                    'severity': row[5],
-                })
-        finally:
-            conn.close()
+        contradictions = []
+        for row in await cursor.fetchall():
+            contradictions.append({
+                'id': row[0],
+                'relation1_id': row[1],
+                'relation2_id': row[2],
+                'type': row[3],
+                'description': row[4],
+                'severity': row[5],
+            })
         return contradictions
 
-    def get_stats(self) -> dict:
+    async def get_stats(self) -> dict:
         """Get knowledge graph statistics."""
         if HAS_NETWORKX and self.graph is not None:
             num_entities = self.graph.number_of_nodes()
             num_relations = self.graph.number_of_edges()
-            num_components = nx.number_weakly_connected_components(self.graph) if num_entities > 0 else 0
+            num_components = (
+                nx.number_weakly_connected_components(self.graph)
+                if num_entities > 0 else 0
+            )
             density = nx.density(self.graph) if num_entities > 1 else 0
         else:
-            # [HARDENED] ERR-001: Use try/finally to prevent connection leaks
-            conn = sqlite3.connect(self.db_path)
-            try:
-                cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM kg_entities")
-                num_entities = cursor.fetchone()[0]
-                cursor.execute("SELECT COUNT(*) FROM kg_relations")
-                num_relations = cursor.fetchone()[0]
-            finally:
-                conn.close()
+            conn = self._connection
+            cursor = await conn.execute("SELECT COUNT(*) FROM kg_entities")
+            row = await cursor.fetchone()
+            num_entities = row[0]
+            cursor = await conn.execute("SELECT COUNT(*) FROM kg_relations")
+            row = await cursor.fetchone()
+            num_relations = row[0]
             num_components = 0
             density = 0
 
@@ -471,21 +462,15 @@ class HybridKnowledgeGraphStore:
             'entity_types': type_counts,
         }
 
-    def clear(self):
+    async def clear(self):
         """Clear all data from the knowledge graph."""
-        # [HARDENED] ERR-001: Use try/finally to prevent connection leaks
-        conn = sqlite3.connect(self.db_path)
-        try:
-            cursor = conn.cursor()
+        conn = self._connection
 
-            cursor.execute("DELETE FROM kg_contradictions")
-            cursor.execute("DELETE FROM kg_relations")
-            cursor.execute("DELETE FROM kg_entities")
-            cursor.execute("DELETE FROM kg_findings")
-
-            conn.commit()
-        finally:
-            conn.close()
+        await conn.execute("DELETE FROM kg_contradictions")
+        await conn.execute("DELETE FROM kg_relations")
+        await conn.execute("DELETE FROM kg_entities")
+        await conn.execute("DELETE FROM kg_findings")
+        await conn.commit()
 
         if HAS_NETWORKX and self.graph is not None:
             self.graph.clear()

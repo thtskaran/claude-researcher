@@ -524,7 +524,7 @@ When presenting results:
 
         # 2. Export knowledge graph
         try:
-            kg_exports = self.manager.get_knowledge_graph_exports(str(output_dir))
+            kg_exports = await self.manager.get_knowledge_graph_exports(str(output_dir))
             self.console.print(f"  [dim]Knowledge graph: {kg_exports.get('stats', {}).get('num_entities', 0)} entities, {kg_exports.get('stats', {}).get('num_relations', 0)} relations[/dim]")
         except Exception as e:
             self.console.print(f"  [dim]Knowledge graph export skipped: {e}[/dim]")

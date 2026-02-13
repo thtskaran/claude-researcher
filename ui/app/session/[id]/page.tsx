@@ -172,12 +172,10 @@ export default function SessionDetail() {
   };
 
   const handleQuestionSubmit = (response: string) => {
-    console.log("Question answered:", response);
     setPendingQuestion(null);
   };
 
   const handleQuestionTimeout = () => {
-    console.log("Question timed out");
     setPendingQuestion(null);
   };
 

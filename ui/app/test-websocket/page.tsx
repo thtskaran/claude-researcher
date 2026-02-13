@@ -13,8 +13,9 @@ export default function TestWebSocket() {
   const sendTestEvent = async () => {
     setSending(true);
     try {
+      const apiHost = process.env.NEXT_PUBLIC_API_HOST || "localhost:8080";
       const response = await fetch(
-        `http://localhost:8080/api/test/emit/${sessionId}?event_type=${eventType}&message=${encodeURIComponent(
+        `http://${apiHost}/api/test/emit/${sessionId}?event_type=${eventType}&message=${encodeURIComponent(
           message
         )}`,
         { method: "POST" }
@@ -24,8 +25,7 @@ export default function TestWebSocket() {
         throw new Error("Failed to send event");
       }
 
-      const data = await response.json();
-      console.log("Event sent:", data);
+      await response.json();
     } catch (error) {
       console.error("Error sending event:", error);
       alert("Failed to send event");

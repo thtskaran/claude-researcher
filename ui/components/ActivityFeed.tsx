@@ -77,7 +77,6 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
     })();
 
     const unsubscribe = ws.onEvent((event) => {
-      console.log("Received event:", event);
       const key = getEventKey(event);
       if (seenKeysRef.current.has(key)) {
         return;

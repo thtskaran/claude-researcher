@@ -83,9 +83,9 @@ class KnowledgeGraphVisualizer:
         lines.append("```")
         return "\n".join(lines)
 
-    def create_summary_stats_card(self) -> str:
+    async def create_summary_stats_card(self) -> str:
         """Generate a text summary card for reports."""
-        stats = self.store.get_stats()
+        stats = await self.store.get_stats()
 
         # Count by type
         type_counts = stats.get('entity_types', {})

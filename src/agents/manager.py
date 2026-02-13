@@ -90,7 +90,7 @@ class ManagerAgent(BaseAgent):
         # User interaction support
         self.interaction = interaction
 
-        # Knowledge graph integration
+        # Knowledge graph integration (connect() called lazily in run_research)
         self.kg_store = HybridKnowledgeGraphStore(db_path=str(db.db_path).replace(".db", "_kg.db"))
         self.knowledge_graph = IncrementalKnowledgeGraph(
             llm_callback=self._kg_llm_callback,
@@ -325,8 +325,8 @@ Provide structured analysis with clear reasoning. When creating directives:
         findings_summary = self._summarize_findings()
 
         # Get knowledge graph insights
-        kg_summary = self.kg_query.get_research_summary()
-        research_directions = self.kg_query.get_next_research_directions()
+        kg_summary = await self.kg_query.get_research_summary()
+        research_directions = await self.kg_query.get_next_research_directions()
 
         # Use hybrid retrieval to find semantically relevant past findings
         relevant_findings_text = ""
@@ -981,6 +981,63 @@ Think step by step about the best next action."""
 
         return None
 
+    async def _apply_verification_results(self, batch_result, findings: list) -> None:
+        """Apply batch verification results to findings and persist to DB.
+
+        Used by both _critique_report and _synthesize_report to update finding
+        verification status, confidence, and save detailed results.
+        """
+        for result in batch_result.results:
+            for f in findings:
+                if str(f.id or hash(f.content)) == result.finding_id:
+                    f.original_confidence = f.confidence
+                    f.confidence = result.verified_confidence
+                    f.verification_status = result.verification_status.value
+                    f.verification_method = result.verification_method.value
+                    f.kg_support_score = result.kg_support_score
+
+                    if f.id:
+                        await self.db.update_finding_verification(
+                            finding_id=f.id,
+                            verification_status=f.verification_status,
+                            verification_method=f.verification_method,
+                            kg_support_score=f.kg_support_score,
+                            original_confidence=f.original_confidence,
+                            new_confidence=f.confidence,
+                        )
+
+                        await self.db.save_verification_result(
+                            session_id=self.session_id,
+                            finding_id=f.id,
+                            result_dict={
+                                "original_confidence": result.original_confidence,
+                                "verified_confidence": result.verified_confidence,
+                                "verification_status": result.verification_status.value,
+                                "verification_method": result.verification_method.value,
+                                "consistency_score": result.consistency_score,
+                                "kg_support_score": result.kg_support_score,
+                                "kg_entity_matches": result.kg_entity_matches,
+                                "kg_supporting_relations": result.kg_supporting_relations,
+                                "critic_iterations": result.critic_iterations,
+                                "corrections_made": result.corrections_made,
+                                "questions_asked": [
+                                    {
+                                        "question": q.question,
+                                        "aspect": q.aspect,
+                                        "independent_answer": q.independent_answer,
+                                        "supports_original": q.supports_original,
+                                        "confidence": q.confidence,
+                                    }
+                                    for q in result.questions_asked
+                                ],
+                                "external_verification_used": result.external_verification_used,
+                                "contradictions": result.contradictions,
+                                "verification_time_ms": result.verification_time_ms,
+                                "error": result.error,
+                            },
+                        )
+                    break
+
     async def _critique_report(self, report: InternReport) -> str:
         """Critique an Intern's report with batch verification."""
         # Run batch verification on findings if not already verified
@@ -994,59 +1051,7 @@ Think step by step about the best next action."""
             )
             self.last_batch_verification = batch_result
 
-            # Update findings with verification results
-            for result in batch_result.results:
-                for f in report.findings:
-                    if str(f.id or hash(f.content)) == result.finding_id:
-                        f.original_confidence = f.confidence
-                        f.confidence = result.verified_confidence
-                        f.verification_status = result.verification_status.value
-                        f.verification_method = result.verification_method.value
-                        f.kg_support_score = result.kg_support_score
-
-                        # Update in database
-                        if f.id:
-                            await self.db.update_finding_verification(
-                                finding_id=f.id,
-                                verification_status=f.verification_status,
-                                verification_method=f.verification_method,
-                                kg_support_score=f.kg_support_score,
-                                original_confidence=f.original_confidence,
-                                new_confidence=f.confidence,
-                            )
-
-                            # Save detailed verification result for UI
-                            await self.db.save_verification_result(
-                                session_id=self.session_id,
-                                finding_id=f.id,
-                                result_dict={
-                                    "original_confidence": result.original_confidence,
-                                    "verified_confidence": result.verified_confidence,
-                                    "verification_status": result.verification_status.value,
-                                    "verification_method": result.verification_method.value,
-                                    "consistency_score": result.consistency_score,
-                                    "kg_support_score": result.kg_support_score,
-                                    "kg_entity_matches": result.kg_entity_matches,
-                                    "kg_supporting_relations": result.kg_supporting_relations,
-                                    "critic_iterations": result.critic_iterations,
-                                    "corrections_made": result.corrections_made,
-                                    "questions_asked": [
-                                        {
-                                            "question": q.question,
-                                            "aspect": q.aspect,
-                                            "independent_answer": q.independent_answer,
-                                            "supports_original": q.supports_original,
-                                            "confidence": q.confidence,
-                                        }
-                                        for q in result.questions_asked
-                                    ],
-                                    "external_verification_used": result.external_verification_used,
-                                    "contradictions": result.contradictions,
-                                    "verification_time_ms": result.verification_time_ms,
-                                    "error": result.error,
-                                },
-                            )
-                        break
+            await self._apply_verification_results(batch_result, report.findings)
 
             # Log verification summary
             self._log(
@@ -1165,59 +1170,7 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
             )
             self.last_batch_verification = batch_result
 
-            # Update findings with verification results and save to verification_results table
-            for result in batch_result.results:
-                for f in self.all_findings:
-                    if str(f.id or hash(f.content)) == result.finding_id:
-                        f.original_confidence = f.confidence
-                        f.confidence = result.verified_confidence
-                        f.verification_status = result.verification_status.value
-                        f.verification_method = result.verification_method.value
-                        f.kg_support_score = result.kg_support_score
-
-                        # Update in database
-                        if f.id:
-                            await self.db.update_finding_verification(
-                                finding_id=f.id,
-                                verification_status=f.verification_status,
-                                verification_method=f.verification_method,
-                                kg_support_score=f.kg_support_score,
-                                original_confidence=f.original_confidence,
-                                new_confidence=f.confidence,
-                            )
-
-                            # Save detailed verification result for UI
-                            await self.db.save_verification_result(
-                                session_id=self.session_id,
-                                finding_id=f.id,
-                                result_dict={
-                                    "original_confidence": result.original_confidence,
-                                    "verified_confidence": result.verified_confidence,
-                                    "verification_status": result.verification_status.value,
-                                    "verification_method": result.verification_method.value,
-                                    "consistency_score": result.consistency_score,
-                                    "kg_support_score": result.kg_support_score,
-                                    "kg_entity_matches": result.kg_entity_matches,
-                                    "kg_supporting_relations": result.kg_supporting_relations,
-                                    "critic_iterations": result.critic_iterations,
-                                    "corrections_made": result.corrections_made,
-                                    "questions_asked": [
-                                        {
-                                            "question": q.question,
-                                            "aspect": q.aspect,
-                                            "independent_answer": q.independent_answer,
-                                            "supports_original": q.supports_original,
-                                            "confidence": q.confidence,
-                                        }
-                                        for q in result.questions_asked
-                                    ],
-                                    "external_verification_used": result.external_verification_used,
-                                    "contradictions": result.contradictions,
-                                    "verification_time_ms": result.verification_time_ms,
-                                    "error": result.error,
-                                },
-                            )
-                        break
+            await self._apply_verification_results(batch_result, self.all_findings)
 
         # Separate findings by verification status
         verified_findings = [f for f in self.all_findings if f.verification_status == "verified"]
@@ -1576,6 +1529,10 @@ Be thorough and insightful. Note where findings have lower confidence."""
         self.config.max_iterations = max_iterations
         self._current_phase = "init"
 
+        # Initialize KG store async connection
+        if self.kg_store._connection is None:
+            await self.kg_store.connect()
+
         # Eagerly initialize external memory DB
         try:
             await self.external_memory._ensure_initialized()
@@ -1669,7 +1626,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
         # Generate final report if not already done
         return await self._synthesize_report()
 
-    def reset(self, clear_knowledge_graph: bool = False, clear_memory: bool = False) -> None:
+    async def reset(self, clear_knowledge_graph: bool = False, clear_memory: bool = False) -> None:
         """Reset the manager state.
 
         Args:
@@ -1691,7 +1648,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
             self.intern_pool.reset_all()
 
         if clear_knowledge_graph:
-            self.kg_store.clear()
+            await self.kg_store.clear()
 
         if clear_memory:
             self.memory.clear()
@@ -1742,7 +1699,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
         """Get statistics about the hybrid retrieval system."""
         return self.findings_retriever.stats()
 
-    def get_knowledge_graph_exports(self, output_dir: str = ".") -> dict:
+    async def get_knowledge_graph_exports(self, output_dir: str = ".") -> dict:
         """Get knowledge graph visualizations and summaries for reports.
 
         Args:
@@ -1756,12 +1713,12 @@ Be thorough and insightful. Note where findings have lower confidence."""
         visualizer = KnowledgeGraphVisualizer(self.kg_store)
 
         exports = {
-            "stats": self.kg_store.get_stats(),
+            "stats": await self.kg_store.get_stats(),
             "key_concepts": self.kg_query.get_key_concepts(10),
-            "gaps": [g.to_dict() for g in self.kg_query.identify_gaps()],
-            "contradictions": self.kg_query.get_contradictions(),
+            "gaps": [g.to_dict() for g in await self.kg_query.identify_gaps()],
+            "contradictions": await self.kg_query.get_contradictions(),
             "mermaid_diagram": visualizer.create_mermaid_diagram(max_nodes=20),
-            "stats_card": visualizer.create_summary_stats_card(),
+            "stats_card": await visualizer.create_summary_stats_card(),
         }
 
         return exports

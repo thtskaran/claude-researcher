@@ -251,14 +251,14 @@ class IncrementalKnowledgeGraph:
                 relations = await self._extract_relations(fact, resolved_entities, finding.id)
                 for relation in relations:
                     # Check for contradictions before adding
-                    contradiction = self._check_contradiction(relation)
+                    contradiction = await self._check_contradiction(relation)
                     if contradiction:
                         self.contradictions.append(contradiction)
-                        self.store.add_contradiction(contradiction)
+                        await self.store.add_contradiction(contradiction)
                         result['contradictions_found'] += 1
 
                     # Add relation to store
-                    self.store.add_relation(relation, self.session_id)
+                    await self.store.add_relation(relation, self.session_id)
                     result['relations'].append(relation)
 
             return result
@@ -312,13 +312,13 @@ class IncrementalKnowledgeGraph:
 
             for relation in relations:
                 # Check for contradictions
-                contradiction = self._check_contradiction(relation)
+                contradiction = await self._check_contradiction(relation)
                 if contradiction:
                     self.contradictions.append(contradiction)
-                    self.store.add_contradiction(contradiction)
+                    await self.store.add_contradiction(contradiction)
                     result['contradictions_found'] += 1
 
-                self.store.add_relation(relation, self.session_id)
+                await self.store.add_relation(relation, self.session_id)
                 result['relations'].append(relation)
 
             # Improvement #4: cross-finding co-occurrence links
@@ -326,7 +326,7 @@ class IncrementalKnowledgeGraph:
                 result['entities'], result['relations'], finding,
             )
             for relation in co_relations:
-                self.store.add_relation(relation, self.session_id)
+                await self.store.add_relation(relation, self.session_id)
                 result['relations'].append(relation)
 
         return result
@@ -458,20 +458,20 @@ class IncrementalKnowledgeGraph:
                             confidence=confidence,
                         )
 
-                        contradiction = self._check_contradiction(relation)
+                        contradiction = await self._check_contradiction(relation)
                         if contradiction:
                             self.contradictions.append(contradiction)
-                            self.store.add_contradiction(contradiction)
+                            await self.store.add_contradiction(contradiction)
                             result['contradictions_found'] += 1
 
-                        self.store.add_relation(relation, self.session_id)
+                        await self.store.add_relation(relation, self.session_id)
                         result['relations'].append(relation)
 
             co_relations = self._build_co_occurrence_links(
                 result['entities'], result['relations'], finding,
             )
             for relation in co_relations:
-                self.store.add_relation(relation, self.session_id)
+                await self.store.add_relation(relation, self.session_id)
                 result['relations'].append(relation)
 
         except Exception:
@@ -772,13 +772,13 @@ class IncrementalKnowledgeGraph:
                                 confidence=confidence,
                             )
 
-                            contradiction = self._check_contradiction(relation)
+                            contradiction = await self._check_contradiction(relation)
                             if contradiction:
                                 self.contradictions.append(contradiction)
-                                self.store.add_contradiction(contradiction)
+                                await self.store.add_contradiction(contradiction)
                                 result['contradictions'] += 1
 
-                            self.store.add_relation(relation, self.session_id)
+                            await self.store.add_relation(relation, self.session_id)
                             result['relations_count'] += 1
 
         except Exception:
@@ -903,7 +903,7 @@ Return as JSON array:
         name_key = entity.name.lower().strip()
         if name_key in self.entity_by_name:
             existing_id = self.entity_by_name[name_key]
-            existing = self.store.get_entity(existing_id)
+            existing = await self.store.get_entity(existing_id)
             if existing:
                 # Merge: add this as a source
                 if entity.sources:
@@ -917,12 +917,12 @@ Return as JSON array:
                 # Keep first description, don't overwrite
                 if entity.properties.get('description'):
                     existing.properties.setdefault('description', entity.properties['description'])
-                self.store.add_entity(existing, self.session_id)  # Update
+                await self.store.add_entity(existing, self.session_id)  # Update
                 return existing
 
         # Check aliases
         for existing_name, existing_id in list(self.entity_by_name.items()):
-            existing = self.store.get_entity(existing_id)
+            existing = await self.store.get_entity(existing_id)
             if existing and entity.name.lower() in [a.lower() for a in existing.aliases]:
                 # Found via alias
                 if entity.sources:
@@ -932,11 +932,11 @@ Return as JSON array:
                 new_urls = set(entity.properties.get('source_urls', []))
                 if new_urls:
                     existing.properties['source_urls'] = list(existing_urls | new_urls)
-                self.store.add_entity(existing, self.session_id)
+                await self.store.add_entity(existing, self.session_id)
                 return existing
 
         # No match found - add as new entity
-        self.store.add_entity(entity, self.session_id)
+        await self.store.add_entity(entity, self.session_id)
         self.entity_by_name[name_key] = entity.id
         self.entity_by_type.setdefault(entity.entity_type, []).append(entity.id)
 
@@ -1040,10 +1040,10 @@ Return as JSON array:
 
         return relations
 
-    def _check_contradiction(self, new_relation: Relation) -> Contradiction | None:
+    async def _check_contradiction(self, new_relation: Relation) -> Contradiction | None:
         """Check if new relation contradicts existing relations."""
         # Look for relations with same subject and object but different predicate
-        existing_relations = self.store.get_entity_relations(new_relation.subject_id)
+        existing_relations = await self.store.get_entity_relations(new_relation.subject_id)
 
         for existing in existing_relations.get('outgoing', []):
             if existing.get('target_id') == new_relation.object_id:
@@ -1197,9 +1197,9 @@ Return as JSON array:
 
         return []
 
-    def get_stats(self) -> dict:
+    async def get_stats(self) -> dict:
         """Get knowledge graph statistics."""
-        stats = self.store.get_stats()
+        stats = await self.store.get_stats()
         stats['contradictions'] = len(self.contradictions)
         stats['indexed_names'] = len(self.entity_by_name)
         stats['fast_ner_enabled'] = self.use_fast_ner and self.fast_ner is not None
@@ -1269,7 +1269,7 @@ Return as JSON array:
 
         # Count supporting relations for matched entities
         for entity_id in matched_entity_ids:
-            relations = self.store.get_entity_relations(entity_id)
+            relations = await self.store.get_entity_relations(entity_id)
             if relations:
                 supporting_relations += len(relations.get('outgoing', []))
                 supporting_relations += len(relations.get('incoming', []))
@@ -1368,7 +1368,7 @@ Return as JSON array:
                 matched_ids.add(entity_id)
 
         for entity_id in matched_ids:
-            relations = self.store.get_entity_relations(entity_id)
+            relations = await self.store.get_entity_relations(entity_id)
             if not relations:
                 continue
 

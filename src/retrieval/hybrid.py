@@ -267,9 +267,9 @@ class HybridRetriever:
 
                 # Update results with reranker scores
                 reranked_results = []
+                candidates_by_id = {r.document.id: r for r in candidates}
                 for doc, rerank_score in reranked:
-                    # Find original result
-                    orig = next((r for r in candidates if r.document.id == doc.id), None)
+                    orig = candidates_by_id.get(doc.id)
                     if orig:
                         reranked_results.append(RetrievalResult(
                             document=doc,

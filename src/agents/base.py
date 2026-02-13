@@ -162,6 +162,7 @@ class BaseAgent(ABC):
         self._pause_requested = False
         self._callbacks: list[Callable] = []
         self.session_id = session_id  # For WebSocket events
+        self._background_tasks: set[asyncio.Task] = set()  # Track fire-and-forget tasks
 
     @property
     @abstractmethod
@@ -515,7 +516,7 @@ class BaseAgent(ABC):
                 loop = asyncio.get_running_loop()
             except RuntimeError:
                 return
-            loop.create_task(
+            task = loop.create_task(
                 emit_agent_event(
                     session_id=self.session_id,
                     event_type="system",
@@ -523,6 +524,8 @@ class BaseAgent(ABC):
                     data={"message": message},
                 )
             )
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
 
     async def _log_decision(
         self,
