@@ -18,7 +18,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
   const router = useRouter();
   const [goal, setGoal] = useState("");
   const [maxIterations, setMaxIterations] = useState(5);
-  const [autonomous, setAutonomous] = useState(true);
+  const [enableClarification, setEnableClarification] = useState(true);
   const [enableMidQuestions, setEnableMidQuestions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -34,7 +34,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
       return;
     }
 
-    if (!autonomous && !showClarification) {
+    if (enableClarification && !showClarification) {
       await getClarificationQuestions();
       return;
     }
@@ -114,7 +114,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
         body: JSON.stringify({
           goal: researchGoal,
           max_iterations: maxIterations,
-          autonomous: !enableMidQuestions,
+          autonomous: !enableClarification && !enableMidQuestions,
           enable_mid_questions: enableMidQuestions,
         }),
       });
@@ -217,8 +217,8 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
                 <input
                   type="checkbox"
                   className="sr-only peer"
-                  checked={!autonomous}
-                  onChange={(e) => setAutonomous(!e.target.checked)}
+                  checked={enableClarification}
+                  onChange={(e) => setEnableClarification(e.target.checked)}
                 />
                 <div className="w-11 h-6 bg-edge peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sage/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sage" />
               </label>
@@ -297,14 +297,14 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
             {loading ? (
               <>
                 <span className="material-symbols-outlined animate-spin">progress_activity</span>
-                {showClarification ? "Starting Research..." : "Generating Questions..."}
+                {showClarification ? "Starting Research..." : (enableClarification ? "Generating Questions..." : "Starting Research...")}
               </>
             ) : (
               <>
                 <span className="material-symbols-outlined group-hover/btn:animate-soft-pulse">
-                  {showClarification ? "rocket_launch" : "psychology"}
+                  {showClarification ? "rocket_launch" : (enableClarification ? "psychology" : "rocket_launch")}
                 </span>
-                {showClarification ? "Start Research" : (autonomous ? "Start Research" : "Get Clarification Questions")}
+                {showClarification ? "Start Research" : (enableClarification ? "Get Clarification Questions" : "Start Research")}
               </>
             )}
           </button>

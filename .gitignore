@@ -1,5 +1,7 @@
 /myenv
 *.db
+*.db-shm
+*.db-wal
 *.pyc
 /output
 /docs

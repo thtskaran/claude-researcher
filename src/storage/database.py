@@ -117,8 +117,9 @@ class _ConnectionPool:
         for _ in range(self._size):
             conn = await aiosqlite.connect(self._db_path)
             conn.row_factory = aiosqlite.Row
-            await conn.execute("PRAGMA journal_mode=WAL")
+            # Set busy_timeout BEFORE WAL so the journal mode switch can wait for locks
             await conn.execute("PRAGMA busy_timeout=5000")
+            await conn.execute("PRAGMA journal_mode=WAL")
             await self._pool.put(conn)
         self._initialized = True
 

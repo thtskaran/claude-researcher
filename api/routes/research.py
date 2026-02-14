@@ -104,12 +104,14 @@ async def run_research_background(session_id: str, goal: str, max_iterations: in
         await db.update_session_status(session_id, "running")
 
         # Create interaction config
+        # Pre-research clarification is handled by the UI via /clarify + /enrich endpoints,
+        # so it's always disabled here. Mid-research questions use a 30s timeout.
         print("⚙️  Creating interaction config...")
         interaction_config = InteractionConfig(
-            enable_clarification=False,  # Pre-research clarification handled separately
-            enable_async_questions=enable_mid_questions,  # Enable mid-research questions
+            enable_clarification=False,
+            enable_async_questions=enable_mid_questions,
             autonomous_mode=autonomous and not enable_mid_questions,
-            question_timeout=60,
+            question_timeout=30,
             max_questions_per_session=5,
         )
         print(f"✓ Config created (mid_questions: {enable_mid_questions}, autonomous: {autonomous})")

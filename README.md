@@ -16,7 +16,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e .
 
 # Run research from CLI (results viewable in UI later)
-researcher "Your research question" --time 30
+researcher "Your research question" --iterations 10
 
 # Or launch the web UI directly
 researcher ui
@@ -70,7 +70,7 @@ When the research topic contains academic indicators (e.g., "research", "study",
 
 ### vs ChatGPT Deep Research / Gemini Deep Research / Perplexity
 
-Same topic: **"AI-powered penetration testing systems"** (1 hour)
+Same topic: **"AI-powered penetration testing systems"** (10 iterations)
 
 | | claude-researcher | ChatGPT Deep Research |
 |---|---|---|
@@ -97,14 +97,14 @@ The difference isn't just "more sources." It's that the system builds a knowledg
 ### CLI (start research, view later in UI)
 
 ```bash
-# Basic research (default 60 min)
+# Basic research (default 5 iterations)
 researcher "Your research question here"
 
-# Quick research
-researcher "What is WebAssembly?" --time 5
+# More iterations for deeper research
+researcher "What is WebAssembly?" --iterations 10
 
-# Long deep dive
-researcher "Comprehensive overview of quantum computing" --time 120
+# Quick shallow pass
+researcher "Comprehensive overview of quantum computing" -n 3
 
 # Fully autonomous (no interaction)
 researcher "AI safety" --autonomous
@@ -130,6 +130,7 @@ researcher ui
 
 This starts the API server (port 8080) and Next.js frontend (port 3000), then opens your browser. From the UI you can:
 
+- **Start new research** -- Launch research sessions directly from the UI with configurable iterations and clarification
 - **Sessions list** -- See all past and active research sessions
 - **Live progress** -- Watch agents work in real-time via WebSocket
 - **Report** -- Read the full report with working table of contents, inline citations, tables, and proper formatting
@@ -148,13 +149,16 @@ researcher ui --port 9000
 
 # Start without opening browser
 researcher ui --no-browser
+
+# Don't restart existing servers on port conflicts
+researcher ui --no-restart
 ```
 
 ### CLI Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--time`, `-t` | Time limit in minutes | 60 |
+| `--iterations`, `-n` | Number of research iterations (1-30) | 5 |
 | `--db`, `-d` | SQLite database path | research.db |
 | `--no-clarify` | Skip pre-research clarification | False |
 | `--autonomous`, `-a` | No user interaction at all | False |
@@ -183,7 +187,7 @@ The Director talks to you. The Manager thinks. The Interns search.
 3. **Parallel search** -- 3 interns simultaneously search the web + academic APIs (Semantic Scholar, arXiv), extract findings, save to DB
 4. **Knowledge graph** -- Entities and relations extracted in real-time (spaCy NER + LLM)
 5. **Critique loop** -- Manager reviews findings, identifies gaps and contradictions, queues follow-up research
-6. **Deep dive** -- Iterative cycles of search/critique/follow-up until time runs out
+6. **Deep dive** -- Iterative cycles of search/critique/follow-up for the configured number of iterations
 7. **Verification** -- Chain-of-Verification + CRITIC pipeline on high-stakes claims
 8. **Synthesis** -- Report generated with section-relevant finding selection and inline citations
 
@@ -288,7 +292,7 @@ The system tracks API costs and shows an estimate at the end:
 | Haiku | $0.80 | $4 |
 | Web Search | $0.01/search | |
 
-A typical 30-min session costs $2-5. A 60-min deep dive costs $5-15 depending on topic complexity.
+A typical 5-iteration session costs $2-5. A 10+ iteration deep dive costs $5-15 depending on topic complexity.
 
 ---
 

@@ -64,6 +64,8 @@ class APIDatabase:
         if self._connection is None:
             self._connection = await aiosqlite.connect(self.db_path)
             self._connection.row_factory = aiosqlite.Row
+            await self._connection.execute("PRAGMA busy_timeout=5000")
+            await self._connection.execute("PRAGMA journal_mode=WAL")
             await self._ensure_schema()
 
     async def _ensure_schema(self) -> None:
