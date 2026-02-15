@@ -15,8 +15,8 @@ import re
 import time
 from collections.abc import Callable
 
-from .confidence import ConfidenceCalibrator
 from ..logging_config import get_logger
+from .confidence import ConfidenceCalibrator
 from .models import (
     VerificationConfig,
     VerificationMethod,
@@ -603,9 +603,36 @@ class ChainOfVerification:
 
             return q
 
-        # Run all questions in parallel
-        answered = await asyncio.gather(*[answer_and_compare(q) for q in questions])
-        return list(answered)
+        # Run all questions in parallel with return_exceptions=True so a
+        # single failure (including CancelledError from parent timeout)
+        # doesn't discard all other answers.
+        try:
+            results = await asyncio.gather(
+                *[answer_and_compare(q) for q in questions],
+                return_exceptions=True,
+            )
+        except asyncio.CancelledError:
+            logger.warning("CoVe answer_questions_parallel was cancelled")
+            for q in questions:
+                if q.independent_answer is None:
+                    q.confidence = 0.0
+                    q.supports_original = None
+                    q.error = "Cancelled"
+            return list(questions)
+
+        answered = []
+        for i, result in enumerate(results):
+            if isinstance(result, BaseException):
+                logger.warning("CoVe answer failed for question %d: %s", i, result)
+                q = questions[i]
+                q.independent_answer = None
+                q.confidence = 0.0
+                q.supports_original = None
+                q.error = f"{type(result).__name__}: {result}"
+                answered.append(q)
+            else:
+                answered.append(result)
+        return answered
 
     def _calculate_consistency(self, questions: list[VerificationQuestion]) -> float:
         """Calculate consistency score from answered questions.
@@ -655,8 +682,14 @@ class ChainOfVerification:
         return (support_ratio * 0.80) + (answered_ratio * 0.10) + (avg_confidence * 0.10)
 
     def _parse_questions(self, response: str) -> list[VerificationQuestion]:
-        """Parse verification questions from LLM response."""
+        """Parse verification questions from LLM response.
+
+        Tries JSON first, then falls back to extracting plain-text questions
+        (numbered lists, bullet points, or sentences ending with '?').
+        """
         questions = []
+
+        # Strategy 1: JSON array
         data = self._extract_json_array(response)
         if data:
             for item in data:
@@ -666,6 +699,17 @@ class ChainOfVerification:
                             question=item["question"],
                             aspect=item.get("aspect", "factual"),
                         )
+                    )
+
+        # Strategy 2: Plain text fallback — extract lines that look like questions
+        if not questions:
+            for line in response.splitlines():
+                line = line.strip()
+                # Strip numbered/bulleted prefixes: "1. ", "- ", "* ", "1) "
+                line = re.sub(r"^(?:\d+[.)]\s*|[-*•]\s*)", "", line).strip()
+                if line.endswith("?") and len(line) > 15:
+                    questions.append(
+                        VerificationQuestion(question=line, aspect="factual")
                     )
 
         # Limit to configured max

@@ -1560,7 +1560,15 @@ Be thorough and insightful. Note where findings have lower confidence."""
             # Phase 1: Parallel initial research (if enabled and pool available)
             if use_parallel_init and self.intern_pool:
                 self._current_phase = "parallel_init"
-                await self._run_parallel_initial_research(goal, max_aspects=self.pool_size)
+                try:
+                    await self._run_parallel_initial_research(goal, max_aspects=self.pool_size)
+                except Exception as e:
+                    logger.error("Parallel initial research failed: %s", e, exc_info=True)
+                    self._log(
+                        f"[PARALLEL] Initial research failed ({type(e).__name__}), "
+                        "continuing with sequential research",
+                        style="yellow",
+                    )
 
             # Initialize with the main goal as the first topic (if not enough findings yet)
             if len(self.all_findings) < 5:

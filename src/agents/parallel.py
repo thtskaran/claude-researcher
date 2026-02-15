@@ -9,12 +9,11 @@ from typing import TYPE_CHECKING, Optional
 from rich.console import Console
 
 from ..events import emit_agent_event
+from ..logging_config import get_logger
 from ..models.findings import Finding, InternReport, ManagerDirective
 from ..storage.database import ResearchDatabase
 from .base import AgentConfig
 from .intern import InternAgent
-
-from ..logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -123,20 +122,47 @@ class ParallelInternPool:
             task = self._execute_with_error_handling(intern, directive, session_id, i)
             tasks.append(task)
 
-        # Execute all tasks in parallel with 15-minute timeout per batch
+        # Execute all tasks in parallel with 15-minute timeout per batch.
+        # Use asyncio.wait instead of wait_for(gather(...)) so we preserve
+        # results from interns that completed before the timeout.
+        task_objects = [asyncio.ensure_future(t) for t in tasks]
         try:
-            results = await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=900,
+            done, pending = await asyncio.wait(task_objects, timeout=900)
+        except asyncio.CancelledError:
+            # Parent was cancelled — cancel children and re-raise
+            for t in task_objects:
+                t.cancel()
+            await asyncio.gather(*task_objects, return_exceptions=True)
+            self._active_interns = []
+            raise
+
+        if pending:
+            logger.warning(
+                "Parallel research timed out: %d/%d tasks still pending",
+                len(pending), len(task_objects),
             )
-        except TimeoutError:
-            logger.error("Parallel research timed out after 15 minutes")
-            self._log("Parallel research timed out after 15 minutes", style="red")
-            # Cancel any still-running intern tasks
+            self._log(
+                f"Parallel research timed out: {len(done)}/{len(task_objects)} interns completed",
+                style="yellow",
+            )
+            for t in pending:
+                t.cancel()
+            # Wait for cancellation to finish cleanly
+            await asyncio.gather(*pending, return_exceptions=True)
             for intern in self._active_interns:
                 intern.stop()
-            results = [TimeoutError("Intern timed out")] * len(tasks)
+
         self._active_interns = []
+
+        # Collect results — completed tasks keep their results,
+        # timed-out/cancelled tasks are recorded as errors
+        results = []
+        for task_obj in task_objects:
+            if task_obj.done() and not task_obj.cancelled():
+                exc = task_obj.exception()
+                results.append(exc if exc else task_obj.result())
+            else:
+                results.append(TimeoutError("Intern timed out"))
 
         # Aggregate results
         reports = []
@@ -198,6 +224,10 @@ class ParallelInternPool:
             self._log(f"Intern {intern_id} starting: {directive.topic}", style="cyan")
             report = await intern.execute_directive(directive, session_id)
             return report
+        except asyncio.CancelledError:
+            # Don't log as error — this is expected during timeout cancellation
+            logger.info("Intern %d cancelled: %s", intern_id, directive.topic)
+            raise
         except Exception as e:
             logger.error("Intern %d error on topic '%s': %s", intern_id, directive.topic, e, exc_info=True)
             self._log(f"Intern {intern_id} error: {e}", style="red")
