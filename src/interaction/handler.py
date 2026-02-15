@@ -177,25 +177,39 @@ class UserInteraction:
             },
         }
 
+        json_prompt = (
+            prompt
+            + "\n\nRespond ONLY with a JSON object in this exact format, no other text:\n"
+            '{"questions": [{"id": 1, "question": "...", "options": ["option1", "option2"], '
+            '"category": "scope"}]}'
+        )
+
         try:
             try:
                 response = await self.llm_callback(
-                    prompt, output_format=clarify_schema,
+                    json_prompt, output_format=clarify_schema,
                 )
             except TypeError:
-                response = await self.llm_callback(prompt)
+                response = await self.llm_callback(json_prompt)
 
             if isinstance(response, dict):
                 data = response.get("questions", [])
             else:
-                start = response.find("[")
-                end = response.rfind("]") + 1
-                if start == -1 or end <= start:
-                    return []
-                data = json.loads(response[start:end])
+                # Try parsing as full JSON object first
+                text = response.strip()
+                try:
+                    parsed = json.loads(text)
+                    data = parsed.get("questions", [])
+                except json.JSONDecodeError:
+                    # Fallback: extract JSON array from response
+                    start = text.find("[")
+                    end = text.rfind("]") + 1
+                    if start == -1 or end <= start:
+                        return []
+                    data = json.loads(text[start:end])
 
             return [ClarificationQuestion(**item) for item in data]
-        except (json.JSONDecodeError, KeyError, TypeError):
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             pass
 
         return []

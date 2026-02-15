@@ -43,7 +43,7 @@ class EnrichRequest(BaseModel):
     answers: dict[str, str]
 
 
-async def _haiku_callback(prompt: str) -> str:
+async def _haiku_callback(prompt: str, **kwargs) -> str:
     from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
 
     options = ClaudeAgentOptions(

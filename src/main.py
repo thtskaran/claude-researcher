@@ -206,7 +206,7 @@ def ui(
         if not restart:
             return
         try:
-            import signal
+            import signal as sig
             result = subprocess.run(
                 ["lsof", f"-ti:{port_num}"],
                 capture_output=True,
@@ -221,11 +221,18 @@ def ui(
             )
             for pid in pids:
                 try:
-                    os.kill(int(pid), signal.SIGKILL)
+                    os.kill(int(pid), sig.SIGKILL)
                 except Exception:
                     pass
-            # Give the OS a moment to release the port
-            time.sleep(0.5)
+            # Wait for port to actually be released (up to 5s)
+            for _ in range(10):
+                time.sleep(0.5)
+                if not check_port(port_num):
+                    break
+            else:
+                console.print(
+                    f"[red]Warning: {label} port {port_num} still in use after kill[/red]"
+                )
         except Exception:
             # If lsof isn't available or kill fails, we fall back to current behavior
             pass
