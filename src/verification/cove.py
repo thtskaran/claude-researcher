@@ -16,6 +16,7 @@ import time
 from collections.abc import Callable
 
 from .confidence import ConfidenceCalibrator
+from ..logging_config import get_logger
 from .models import (
     VerificationConfig,
     VerificationMethod,
@@ -23,6 +24,8 @@ from .models import (
     VerificationResult,
     VerificationStatus,
 )
+
+logger = get_logger(__name__)
 
 # JSON schemas for structured output
 QUESTIONS_SCHEMA = {
@@ -125,15 +128,16 @@ class ChainOfVerification:
             VerificationResult with calibrated confidence
         """
         start_time = time.time()
+        logger.info("CoVe streaming: finding=%s, confidence=%.2f", finding_id, original_confidence)
 
         try:
             # Step 1: Generate 1-2 quick verification questions
-            questions = await self._generate_questions_streaming(
+            questions, question_error = await self._generate_questions_streaming(
                 finding_content, source_url, search_query
             )
 
             if not questions:
-                # Fallback: no verification possible
+                logger.warning("CoVe streaming failed for %s: %s", finding_id, question_error)
                 return VerificationResult(
                     finding_id=finding_id,
                     original_confidence=original_confidence,
@@ -141,7 +145,7 @@ class ChainOfVerification:
                     verification_status=VerificationStatus.SKIPPED,
                     verification_method=VerificationMethod.STREAMING,
                     verification_time_ms=(time.time() - start_time) * 1000,
-                    error="Could not generate verification questions",
+                    error=question_error or "No verification questions generated (unknown reason)",
                 )
 
             # Step 2: Answer questions independently (parallel for speed)
@@ -167,6 +171,7 @@ class ChainOfVerification:
             )
 
         except Exception as e:
+            logger.error("CoVe streaming error for %s: %s", finding_id, e, exc_info=True)
             return VerificationResult(
                 finding_id=finding_id,
                 original_confidence=original_confidence,
@@ -205,14 +210,16 @@ class ChainOfVerification:
             VerificationResult with calibrated confidence
         """
         start_time = time.time()
+        logger.info("CoVe batch: finding=%s, confidence=%.2f", finding_id, original_confidence)
 
         try:
             # Step 1: Generate 3-5 comprehensive verification questions
-            questions = await self._generate_questions_batch(
+            questions, question_error = await self._generate_questions_batch(
                 finding_content, source_url, search_query
             )
 
             if not questions:
+                logger.warning("CoVe batch failed for %s: %s", finding_id, question_error)
                 return VerificationResult(
                     finding_id=finding_id,
                     original_confidence=original_confidence,
@@ -220,7 +227,7 @@ class ChainOfVerification:
                     verification_status=VerificationStatus.SKIPPED,
                     verification_method=VerificationMethod.BATCH,
                     verification_time_ms=(time.time() - start_time) * 1000,
-                    error="Could not generate verification questions",
+                    error=question_error or "No verification questions generated (unknown reason)",
                 )
 
             # Step 2: Answer questions independently
@@ -252,6 +259,7 @@ class ChainOfVerification:
             )
 
         except Exception as e:
+            logger.error("CoVe batch error for %s: %s", finding_id, e, exc_info=True)
             return VerificationResult(
                 finding_id=finding_id,
                 original_confidence=original_confidence,
@@ -267,8 +275,12 @@ class ChainOfVerification:
         finding_content: str,
         source_url: str | None,
         search_query: str | None,
-    ) -> list[VerificationQuestion]:
-        """Generate 1-2 quick verification questions."""
+    ) -> tuple[list[VerificationQuestion], str | None]:
+        """Generate 1-2 quick verification questions.
+
+        Returns:
+            Tuple of (questions, error_reason). error_reason is None on success.
+        """
         context = f"Source: {source_url}" if source_url else ""
         if search_query:
             context += f"\nSearch query: {search_query}"
@@ -291,8 +303,12 @@ class ChainOfVerification:
         finding_content: str,
         source_url: str | None,
         search_query: str | None,
-    ) -> list[VerificationQuestion]:
-        """Generate 3-5 comprehensive verification questions."""
+    ) -> tuple[list[VerificationQuestion], str | None]:
+        """Generate 3-5 comprehensive verification questions.
+
+        Returns:
+            Tuple of (questions, error_reason). error_reason is None on success.
+        """
         context = f"Source: {source_url}" if source_url else ""
         if search_query:
             context += f"\nSearch query: {search_query}"
@@ -320,10 +336,13 @@ class ChainOfVerification:
         prompt: str,
         model: str,
         max_q: int,
-    ) -> list[VerificationQuestion]:
+    ) -> tuple[list[VerificationQuestion], str | None]:
         """Call LLM for verification questions using structured output.
 
         Tries structured output first, falls back to text parsing.
+
+        Returns:
+            Tuple of (questions, error_reason). error_reason is None on success.
         """
         schema_fmt = {
             "type": "json_schema",
@@ -331,19 +350,23 @@ class ChainOfVerification:
         }
 
         try:
-            response = await self.llm_callback(
-                prompt,
-                model,
-                output_format=schema_fmt,
-            )
-        except TypeError:
-            # Callback doesn't support output_format kwarg -- fall back
-            response = await self.llm_callback(prompt, model)
+            try:
+                response = await self.llm_callback(
+                    prompt,
+                    model,
+                    output_format=schema_fmt,
+                )
+            except TypeError:
+                # Callback doesn't support output_format kwarg -- fall back
+                response = await self.llm_callback(prompt, model)
+        except Exception as e:
+            logger.error("CoVe question generation LLM error: %s", e, exc_info=True)
+            return [], f"LLM call failed: {type(e).__name__}: {e}"
 
         # If structured output returned a dict directly, use it
         if isinstance(response, dict):
             items = response.get("questions", [])
-            return [
+            questions = [
                 VerificationQuestion(
                     question=q["question"],
                     aspect=q.get("aspect", "factual"),
@@ -351,13 +374,20 @@ class ChainOfVerification:
                 for q in items
                 if isinstance(q, dict) and q.get("question")
             ][:max_q]
+            if not questions:
+                return [], "LLM returned structured response but no valid questions"
+            return questions, None
 
         # Guard against None/empty response
         if not response:
-            return []
+            logger.warning("CoVe got empty LLM response for questions")
+            return [], "LLM returned empty response"
 
         # Fallback: parse text response
-        return self._parse_questions(response)[:max_q]
+        parsed = self._parse_questions(response)[:max_q]
+        if not parsed:
+            return [], f"Could not parse questions from LLM text response ({len(response)} chars)"
+        return parsed, None
 
     async def _search_for_evidence(self, question: str) -> str:
         """Search the web for evidence to answer a verification question.
@@ -389,6 +419,7 @@ class ChainOfVerification:
                 return "\n\n".join(evidence_parts) if evidence_parts else ""
             return str(results)[:1200]
         except Exception:
+            logger.debug("Evidence search failed for question: %s", question[:100], exc_info=True)
             return ""
 
     async def _answer_questions_parallel(
@@ -563,10 +594,12 @@ class ChainOfVerification:
                 else:
                     q.supports_original = None
 
-            except Exception:
+            except Exception as e:
                 q.independent_answer = None
                 q.confidence = 0.0
                 q.supports_original = None
+                q.error = f"{type(e).__name__}: {e}"
+                logger.warning("CoVe answer failed for question '%s': %s", q.question[:100], e, exc_info=True)
 
             return q
 

@@ -5,12 +5,13 @@ knowledge graph gaps, and FAIR-RAG sufficiency evaluation.
 """
 
 import json
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
-logger = logging.getLogger(__name__)
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from ..knowledge.query import ManagerQueryInterface

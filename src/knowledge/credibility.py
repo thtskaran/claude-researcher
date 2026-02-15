@@ -5,6 +5,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from urllib.parse import urlparse
 
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class CredibilityScore:
@@ -145,6 +149,7 @@ class CredibilityScorer:
             parsed = urlparse(url)
             domain = parsed.netloc.lower().replace('www.', '')
         except Exception:
+            logger.debug("URL parse failed: %s", url, exc_info=True)
             domain = url[:50]
             return CredibilityScore(score=0.3, signals={'error': 1.0}, domain=domain, url=url)
 
@@ -321,6 +326,7 @@ class CredibilityScorer:
             else:
                 return 0.3  # Old source
         except Exception:
+            logger.debug("Timestamp parse failed", exc_info=True)
             return 0.5  # Could not parse, neutral score
 
     def _score_citation_count(self, citation_count: int) -> float:

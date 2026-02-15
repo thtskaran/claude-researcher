@@ -15,6 +15,7 @@ from ..knowledge import (
     KGFinding,
     ManagerQueryInterface,
 )
+from ..logging_config import get_logger
 from ..memory import ExternalMemoryStore, HybridMemory
 from ..models.findings import (
     AgentRole,
@@ -35,6 +36,8 @@ from ..verification import (
 from .base import AgentConfig, BaseAgent, DecisionType
 from .intern import InternAgent
 from .parallel import ParallelInternPool
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from ..interaction import UserInteraction
@@ -83,9 +86,8 @@ class ManagerAgent(BaseAgent):
 
         # Locks for thread-safe state access (prevents race conditions in parallel execution)
         self._state_lock = asyncio.Lock()  # Protects topics_queue, all_findings, all_reports
-        # [HARDENED] BUG-001: Lock to prevent race condition on self.config.model
-        # when multiple callbacks run concurrently during parallel intern execution
-        self._model_switch_lock = asyncio.Lock()
+        # BUG-001 resolved: model_override parameter on call_claude() eliminates
+        # the need for lock + mutable config.model pattern
 
         # User interaction support
         self.interaction = interaction
@@ -153,14 +155,8 @@ class ManagerAgent(BaseAgent):
         **kwargs,
     ) -> str | dict | list:
         """LLM callback for knowledge graph extraction (uses faster model)."""
-        # [HARDENED] BUG-001: Use lock to prevent race on shared self.config.model
-        async with self._model_switch_lock:
-            original_model = self.config.model
-            self.config.model = "sonnet"
-            try:
-                return await self.call_claude(prompt, **kwargs)
-            finally:
-                self.config.model = original_model
+        logger.debug("KG LLM callback: prompt_len=%d", len(prompt))
+        return await self.call_claude(prompt, model_override="sonnet", **kwargs)
 
     async def _save_credibility_audit(self, audit_data: dict) -> None:
         """Save credibility audit to database (fire-and-forget)."""
@@ -181,20 +177,11 @@ class ManagerAgent(BaseAgent):
         except Exception as e:
             # Log error but don't stop processing
             self._log(f"[Credibility Audit Error] Failed to save audit: {e}", style="bold red")
-            import traceback
-
-            traceback.print_exc()
+            logger.warning("Failed to save credibility audit: %s", e, exc_info=True)
 
     async def _memory_llm_callback(self, prompt: str) -> str:
         """LLM callback for memory summarization (uses faster model)."""
-        # [HARDENED] BUG-001: Use lock to prevent race on shared self.config.model
-        async with self._model_switch_lock:
-            original_model = self.config.model
-            self.config.model = "haiku"  # Fast model for summarization
-            try:
-                return await self.call_claude(prompt)
-            finally:
-                self.config.model = original_model
+        return await self.call_claude(prompt, model_override="haiku")
 
     async def _verification_llm_callback(
         self,
@@ -209,14 +196,10 @@ class ManagerAgent(BaseAgent):
             model: Model to use (e.g. "haiku", "sonnet")
             output_format: Optional JSON schema for structured output
         """
-        # [HARDENED] BUG-001: Use lock to prevent race on shared self.config.model
-        async with self._model_switch_lock:
-            original_model = self.config.model
-            self.config.model = model
-            try:
-                return await self.call_claude(prompt, output_format=output_format)
-            finally:
-                self.config.model = original_model
+        logger.debug("Verification LLM callback: model=%s, prompt_len=%d", model, len(prompt))
+        return await self.call_claude(
+            prompt, output_format=output_format, model_override=model,
+        )
 
     async def _verification_search_callback(self, query: str) -> list[dict]:
         """Web search callback for CoVe/CRITIC independent verification.
@@ -229,6 +212,7 @@ class ManagerAgent(BaseAgent):
         when available, so the LLM can evaluate actual source material
         rather than just search snippets.
         """
+        logger.debug("Verification search: query=%s", query)
         try:
             results, _ = await self.intern.search_tool.search(query)
             if not results:
@@ -249,11 +233,13 @@ class ManagerAgent(BaseAgent):
                 page_content = await self.intern.search_tool.fetch_page(results[0].url)
                 if page_content and len(page_content) > 100:
                     output[0]["content"] = page_content[:1500]
-            except Exception:
+            except Exception as e:
+                logger.debug("Verification search scrape fallback: %s", e, exc_info=True)
                 pass  # Snippet fallback is fine
 
             return output
-        except Exception:
+        except Exception as e:
+            logger.warning("Verification search failed: %s", e, exc_info=True)
             return []
 
     @property
@@ -299,6 +285,7 @@ Provide structured analysis with clear reasoning. When creating directives:
 
     async def think(self, context: dict[str, Any]) -> str:
         """Reason about research progress and next steps."""
+        logger.debug("Manager think: iteration=%d, findings=%d, topics=%d", self.state.iteration, len(self.all_findings), len(self.topics_queue))
         time_elapsed = self._get_elapsed_minutes()
         iterations_remaining = self.config.max_iterations - self.state.iteration
 
@@ -344,6 +331,7 @@ Provide structured analysis with clear reasoning. When creating directives:
                         relevant_findings_text += f"- [{r.finding.finding_type.value}] {r.finding.content[:200]}... (score: {r.score:.2f})\n"
             except Exception as e:
                 self._log(f"[RETRIEVAL] Search error: {e}", style="dim")
+                logger.warning("Retrieval search error: %s", e, exc_info=True)
 
         # Get memory context for continuity
         memory_context = self.memory.get_context_for_prompt(max_tokens=2000)
@@ -400,6 +388,7 @@ Think step by step about the best next action."""
 
     async def act(self, thought: str, context: dict[str, Any]) -> dict[str, Any]:
         """Execute management actions based on thinking."""
+        logger.info("Manager act: thought=%s", thought[:200])
         # Check if pause was requested before starting any long operation
         if self._pause_requested:
             return {"action": "paused"}
@@ -436,6 +425,7 @@ Think step by step about the best next action."""
 
                 # Execute the directive via the intern
                 intern_report = await self.intern.execute_directive(directive, self.session_id)
+                logger.info("Intern directive complete: topic=%s, findings=%d", directive.topic, len(intern_report.findings))
                 async with self._state_lock:
                     self.all_reports.append(intern_report)
                     self.all_findings.extend(intern_report.findings)
@@ -576,6 +566,7 @@ Think step by step about the best next action."""
             self._log("═" * 70, style="bold blue")
 
             intern_report = await self.intern.execute_directive(directive, self.session_id)
+            logger.info("Intern directive complete: topic=%s, findings=%d", directive.topic, len(intern_report.findings))
             async with self._state_lock:
                 self.all_reports.append(intern_report)
                 self.all_findings.extend(intern_report.findings)
@@ -635,7 +626,7 @@ Think step by step about the best next action."""
                 if session:
                     asyncio.create_task(self._periodic_checkpoint(session))
             except Exception:
-                pass
+                logger.debug("Periodic checkpoint failed", exc_info=True)
 
     async def observe(self, action_result: dict[str, Any]) -> str:
         """Process the result of a management action."""
@@ -780,6 +771,7 @@ Think step by step about the best next action."""
             )
         except Exception as e:
             self._log(f"[RETRIEVAL] Error indexing findings: {e}", style="yellow")
+            logger.warning("KG processing error: %s", e, exc_info=True)
 
         # Convert all findings to KGFindings
         kg_findings = []
@@ -798,6 +790,7 @@ Think step by step about the best next action."""
                 kg_findings.append(kg_finding)
             except Exception as e:
                 self._log(f"[KG] Error converting finding: {e}", style="dim")
+                logger.warning("KG processing error: %s", e, exc_info=True)
 
         # Use batch processing for speed (5 findings per LLM call)
         if len(kg_findings) > 3:
@@ -824,6 +817,7 @@ Think step by step about the best next action."""
                         )
                 except Exception as e:
                     self._log(f"[KG] Error processing finding: {e}", style="dim")
+                    logger.warning("KG processing error: %s", e, exc_info=True)
 
     def _should_synthesize(self, thought: str) -> bool:
         """Determine if it's time to synthesize results (iteration-based)."""
@@ -976,8 +970,8 @@ Think step by step about the best next action."""
             )
 
             return directive
-        except (json.JSONDecodeError, KeyError):
-            pass
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning("Failed to create directive from LLM response: %s", e, exc_info=True)
 
         return None
 
@@ -1027,6 +1021,7 @@ Think step by step about the best next action."""
                                         "independent_answer": q.independent_answer,
                                         "supports_original": q.supports_original,
                                         "confidence": q.confidence,
+                                        "error": q.error,
                                     }
                                     for q in result.questions_asked
                                 ],
@@ -1046,6 +1041,7 @@ Think step by step about the best next action."""
             self._log(
                 f"[VERIFY] Running batch verification on {len(unverified)} findings...", style="dim"
             )
+            logger.info("Running batch verification on %d findings", len(unverified))
             batch_result = await self.verification_pipeline.verify_batch(
                 unverified, self.session_id
             )
@@ -1059,6 +1055,7 @@ Think step by step about the best next action."""
                 f"{batch_result.flagged_count} flagged, {batch_result.rejected_count} rejected",
                 style="dim",
             )
+            logger.info("Verification results: verified=%d, flagged=%d, rejected=%d", batch_result.verified_count, batch_result.flagged_count, batch_result.rejected_count)
 
         # Separate findings by verification status
         verified = [f for f in report.findings if f.verification_status == "verified"]
@@ -1151,6 +1148,7 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
 
     async def _synthesize_report(self) -> ManagerReport:
         """Synthesize all findings into a final report with verification awareness."""
+        logger.info("Synthesizing final report: findings=%d", len(self.all_findings))
         time_elapsed = self._get_elapsed_minutes()
 
         # Run batch verification on findings that haven't had thorough verification.
@@ -1389,6 +1387,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
         ]
 
         self._log(f"[PARALLEL] Running {len(directives)} topics in parallel", style="cyan")
+        logger.info("Running parallel topics: count=%d", len(directives))
 
         result = await self.intern_pool.research_parallel(directives, self.session_id)
 
@@ -1436,7 +1435,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
             session.phase = self._current_phase
             await self.db.update_session(session)
         except Exception:
-            pass  # Non-critical
+            logger.debug("Periodic checkpoint update failed", exc_info=True)
 
     async def restore_state(self, session: ResearchSession) -> None:
         """Rebuild Manager state from DB for resume after pause/crash."""
@@ -1491,7 +1490,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
                     session_id=session.id,
                 )
             except Exception:
-                pass  # Non-critical
+                logger.warning("Failed to index findings during restore", exc_info=True)
 
         # KG auto-loads from its SQLite DB, just set session_id
         self.knowledge_graph.session_id = session.id
@@ -1537,7 +1536,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
         try:
             await self.external_memory._ensure_initialized()
         except Exception:
-            pass  # Non-critical
+            logger.debug("External memory initialization failed", exc_info=True)
 
         if resume and session:
             # Resume from checkpoint
@@ -1656,7 +1655,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
             try:
                 self.findings_retriever.clear()
             except Exception:
-                pass
+                logger.debug("Failed to clear findings retriever", exc_info=True)
 
     def search_past_research(
         self,

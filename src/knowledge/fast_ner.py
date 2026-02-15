@@ -17,7 +17,10 @@ try:
 except ImportError:
     HAS_SPACY = False
 
+from ..logging_config import get_logger
 from .models import ENTITY_TYPES, Entity
+
+logger = get_logger(__name__)
 
 # Allowed spaCy models (whitelist for security)
 ALLOWED_SPACY_MODELS = {
@@ -155,10 +158,15 @@ class FastNER:
         except OSError:
             # Model not installed - try to download it if allowed
             if not self.config.auto_download_model:
+                logger.error("spaCy model load failed", exc_info=True)
                 return None
 
             # Validate model name against whitelist (security)
             if self.config.model_name not in ALLOWED_SPACY_MODELS:
+                logger.error(
+                    "spaCy model load failed: model %s not in whitelist",
+                    self.config.model_name,
+                )
                 return None
 
             try:
@@ -167,6 +175,7 @@ class FastNER:
                 self._nlp = spacy.load(self.config.model_name)
                 return self._nlp
             except Exception:
+                logger.error("spaCy model load failed", exc_info=True)
                 return None
 
     def extract(self, text: str, source_id: str = "") -> list[ExtractedEntity]:
@@ -219,6 +228,9 @@ class FastNER:
 
         # Also extract noun chunks as potential concepts
         entities.extend(self._extract_noun_chunks(doc, seen))
+
+        if not entities:
+            logger.warning("NER extraction returned empty")
 
         return entities
 
@@ -503,6 +515,7 @@ class FastNER:
             return entities[:8]
 
         except Exception:
+            logger.warning("LLM domain type extraction failed", exc_info=True)
             return []
 
     def extract_batch(

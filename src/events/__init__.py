@@ -7,6 +7,10 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
+
 # Add api directory to path for importing
 api_path = str(Path(__file__).parent.parent.parent / "api")
 if api_path not in sys.path:
@@ -50,6 +54,7 @@ async def _emit_remote_event(
             )
     except Exception:
         # Silent failure - don't interrupt research if API is unavailable
+        logger.debug("Remote event emission failed", exc_info=True)
         return
 
 

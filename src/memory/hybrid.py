@@ -6,6 +6,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class MemoryMessage:
@@ -113,6 +117,7 @@ class HybridMemory:
         Returns:
             True if compression was performed
         """
+        logger.debug("Memory compression check")
         # First check if compression is needed (with lock)
         async with self._lock:
             threshold = int(self.max_recent_tokens * self.summary_threshold)
@@ -159,7 +164,7 @@ Output ONLY the summary, no preamble."""
             new_summary = await self.llm_callback(prompt)
         except Exception:
             # If summarization fails, we'll still truncate the buffer
-            pass
+            logger.warning("Memory compression failed", exc_info=True)
 
         # Update state with lock
         async with self._lock:

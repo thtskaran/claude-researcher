@@ -6,7 +6,10 @@ try:
 except ImportError:
     HAS_NETWORKX = False
 
+from ..logging_config import get_logger
 from .store import HybridKnowledgeGraphStore
+
+logger = get_logger(__name__)
 
 
 class KnowledgeGraphVisualizer:
@@ -40,6 +43,7 @@ class KnowledgeGraphVisualizer:
                 )[:max_nodes]
                 included_nodes = {n[0] for n in top_nodes}
             except Exception:
+                logger.debug("PageRank failed for mermaid diagram, using first %d nodes", max_nodes, exc_info=True)
                 included_nodes = set(list(self.store.graph.nodes())[:max_nodes])
         else:
             included_nodes = set(self.store.graph.nodes())

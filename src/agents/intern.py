@@ -31,6 +31,10 @@ from ..retrieval.query_expansion import (
 from ..storage.database import ResearchDatabase
 from ..tools.web_search import SearchResult, WebSearchTool
 
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
+
 if TYPE_CHECKING:
     from ..verification import VerificationPipeline
 
@@ -113,6 +117,7 @@ class InternAgent(BaseAgent):
             self.academic_search = AcademicSearchTool(max_results=10)
         except Exception as e:
             self.academic_search = None
+            logger.warning("Academic search initialization failed: %s", e, exc_info=True)
             if console:
                 console.print(f"[dim]Academic search unavailable: {e}[/dim]")
 
@@ -202,6 +207,7 @@ When generating a search query, output ONLY the query text, nothing else."""
 
     async def think(self, context: dict[str, Any]) -> str:
         """Reason about current search progress and next steps."""
+        logger.debug("Intern think: iteration=%d", self.state.iteration)
         directive = context.get("directive")
 
         # For first iteration, just indicate we need to search
@@ -225,6 +231,7 @@ Be brief - just state your decision and reason."""
 
     async def act(self, thought: str, context: dict[str, Any]) -> dict[str, Any]:
         """Execute a search or compile a report based on thinking."""
+        logger.debug("Intern act: thought=%s", thought[:200])
         directive: ManagerDirective = context.get("directive")
         session_id = context.get("session_id", 0)
 
@@ -400,6 +407,8 @@ Be brief - just state your decision and reason."""
             )
 
         # Execute searches in parallel
+        for q in queries:
+            logger.debug("Search: query=%s", q)
         tasks = [self.search_tool.search(q) for q in queries]
 
         # Also search academic databases if the topic seems academic
@@ -716,6 +725,7 @@ Output ONLY the search query (15-25 words max), nothing else."""
                         finding.kg_support_score = verification_result.kg_support_score
 
                     except Exception as e:
+                        logger.warning("Verification error: %s", e, exc_info=True)
                         self._log(f"[VERIFY] Error: {e}", style="dim")
 
                 await self.db.save_finding(finding)
@@ -728,6 +738,7 @@ Output ONLY the search query (15-25 words max), nothing else."""
                             result_dict=verification_result.to_dict(),
                         )
                     except Exception:
+                        logger.warning("Failed to save verification result for finding %s", finding.id, exc_info=True)
                         pass
 
                 findings.append(finding)
@@ -820,6 +831,7 @@ Output ONLY the search query (15-25 words max), nothing else."""
                             )
                             finding.kg_support_score = verification_result.kg_support_score
                         except Exception:
+                            logger.warning("Verification error during fallback finding extraction", exc_info=True)
                             pass
 
                     await self.db.save_finding(finding)
@@ -833,6 +845,7 @@ Output ONLY the search query (15-25 words max), nothing else."""
                                 result_dict=verification_result.to_dict(),
                             )
                         except Exception:
+                            logger.warning("Failed to save verification result for fallback finding %s", finding.id, exc_info=True)
                             pass
 
                     findings.append(finding)
@@ -869,6 +882,7 @@ Output ONLY the search query (15-25 words max), nothing else."""
 
     async def execute_directive(self, directive: ManagerDirective, session_id: str) -> InternReport:
         """Execute a directive from the Manager and return a report."""
+        logger.info("Executing directive: topic=%s, max_searches=%d", directive.topic, directive.max_searches)
         self.reset()
         self.current_directive = directive
         # Ensure WebSocket event emission uses the correct session ID

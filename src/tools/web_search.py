@@ -9,6 +9,10 @@ from urllib.parse import quote
 
 from dotenv import load_dotenv
 
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
+
 # Load environment variables from .env file
 dotenv_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(dotenv_path=dotenv_path)
@@ -68,6 +72,7 @@ class WebSearchTool:
         import httpx
 
         self._search_count += 1
+        logger.info("Web search: query=%s", query_text[:200])
         search_url = f"https://www.google.com/search?q={quote(query_text)}"
 
         for attempt in range(3):
@@ -94,6 +99,7 @@ class WebSearchTool:
                 if attempt < 2:
                     await asyncio.sleep((2**attempt) + random.uniform(0, 0.5))
                 else:
+                    logger.error("Web search failed: %s", e, exc_info=True)
                     return [], f"Search error: {e}"
 
         return [], ""
@@ -110,6 +116,7 @@ class WebSearchTool:
         """
         import httpx
 
+        logger.debug("Fetching page: %s", url[:200])
         for attempt in range(3):
             try:
                 async with httpx.AsyncClient(timeout=60.0) as client:
@@ -126,9 +133,11 @@ class WebSearchTool:
                     response.raise_for_status()
                     return response.text
 
-            except Exception:
+            except Exception as e:
                 if attempt < 2:
                     await asyncio.sleep((2**attempt) + random.uniform(0, 0.5))
+                else:
+                    logger.warning("Page fetch failed: %s", url[:100], exc_info=True)
 
         return None
 

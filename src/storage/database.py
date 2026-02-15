@@ -10,6 +10,7 @@ from pathlib import Path
 
 import aiosqlite
 
+from ..logging_config import get_logger
 from ..models.findings import (
     AgentMessage,
     AgentRole,
@@ -18,6 +19,8 @@ from ..models.findings import (
     ResearchSession,
     ResearchTopic,
 )
+
+logger = get_logger(__name__)
 
 
 def _generate_session_id() -> str:
@@ -151,6 +154,7 @@ class ResearchDatabase:
         """Connect to the database and create tables if needed."""
         if self._pool is not None and self._pool._initialized:
             return  # Already connected
+        logger.info("Database connecting: %s", self.db_path)
         self._pool = _ConnectionPool(self.db_path)
         await self._pool.init()
         async with self._pool.acquire() as conn:
@@ -354,12 +358,14 @@ class ResearchDatabase:
                     break
                 except Exception as e:
                     await conn.rollback()
+                    logger.error("DB error in create_session: %s", e, exc_info=True)
                     last_err = e
                     if "unique" in str(e).lower() or "constraint" in str(e).lower():
                         continue
                     raise
         else:
             raise last_err  # type: ignore[misc]
+        logger.info("Session created: %s", session_id)
         return ResearchSession(
             id=session_id,
             goal=goal,
@@ -430,8 +436,9 @@ class ResearchDatabase:
                     ),
                 )
                 await conn.commit()
-            except Exception:
+            except Exception as e:
                 await conn.rollback()
+                logger.error("DB error in update_session: %s", e, exc_info=True)
                 raise
 
     # Topic methods
@@ -456,8 +463,9 @@ class ResearchDatabase:
                 )
                 await conn.commit()
                 lastrowid = cursor.lastrowid
-            except Exception:
+            except Exception as e:
                 await conn.rollback()
+                logger.error("DB error in create_topic: %s", e, exc_info=True)
                 raise
         return ResearchTopic(
             id=lastrowid,
@@ -511,8 +519,9 @@ class ResearchDatabase:
                     (status, completed_at, findings_count, topic_id),
                 )
                 await conn.commit()
-            except Exception:
+            except Exception as e:
                 await conn.rollback()
+                logger.error("DB error in update_topic_status: %s", e, exc_info=True)
                 raise
 
     async def get_all_topics(self, session_id: str) -> list[ResearchTopic]:
@@ -554,8 +563,9 @@ class ResearchDatabase:
                     (session_id,),
                 )
                 await conn.commit()
-            except Exception:
+            except Exception as e:
                 await conn.rollback()
+                logger.error("DB error in reset_in_progress_topics: %s", e, exc_info=True)
                 raise
 
     # Finding methods
@@ -591,8 +601,9 @@ class ResearchDatabase:
                 )
                 await conn.commit()
                 finding.id = cursor.lastrowid
-            except Exception:
+            except Exception as e:
                 await conn.rollback()
+                logger.error("DB error in save_finding: %s", e, exc_info=True)
                 raise
         return finding
 
@@ -632,8 +643,9 @@ class ResearchDatabase:
                     tuple(params),
                 )
                 await conn.commit()
-            except Exception:
+            except Exception as e:
                 await conn.rollback()
+                logger.error("DB error in update_finding_verification: %s", e, exc_info=True)
                 raise
 
     async def save_verification_result(
@@ -679,8 +691,9 @@ class ResearchDatabase:
                 )
                 await conn.commit()
                 return cursor.lastrowid
-            except Exception:
+            except Exception as e:
                 await conn.rollback()
+                logger.error("DB error in save_verification_result: %s", e, exc_info=True)
                 raise
 
     async def get_verification_stats(self, session_id: str) -> dict:
@@ -788,8 +801,9 @@ class ResearchDatabase:
                 )
                 await conn.commit()
                 message.id = cursor.lastrowid
-            except Exception:
+            except Exception as e:
                 await conn.rollback()
+                logger.error("DB error in save_message: %s", e, exc_info=True)
                 raise
         return message
 
@@ -910,8 +924,9 @@ class ResearchDatabase:
                 )
                 await conn.commit()
                 return cursor.lastrowid
-            except Exception:
+            except Exception as e:
                 await conn.rollback()
+                logger.error("DB error in save_credibility_audit: %s", e, exc_info=True)
                 raise
 
     async def get_credibility_audits(self, session_id: str) -> list[dict]:
@@ -966,8 +981,9 @@ class ResearchDatabase:
                 )
                 await conn.commit()
                 return cursor.lastrowid
-            except Exception:
+            except Exception as e:
                 await conn.rollback()
+                logger.error("DB error in save_agent_decision: %s", e, exc_info=True)
                 raise
 
     async def save_agent_decisions_batch(
@@ -1005,8 +1021,9 @@ class ResearchDatabase:
                 )
                 await conn.commit()
                 return len(decisions)
-            except Exception:
+            except Exception as e:
                 await conn.rollback()
+                logger.error("DB error in save_agent_decisions_batch: %s", e, exc_info=True)
                 raise
 
     async def get_agent_decisions(

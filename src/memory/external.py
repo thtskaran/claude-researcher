@@ -8,6 +8,10 @@ from pathlib import Path
 
 import aiosqlite
 
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class StoredMemory:
@@ -151,6 +155,7 @@ class ExternalMemoryStore:
                 await conn.commit()
             except Exception:
                 await conn.rollback()
+                logger.error("External memory error", exc_info=True)
                 raise
 
         return memory_id
@@ -377,6 +382,7 @@ class ExternalMemoryStore:
                 await conn.commit()
             except Exception:
                 await conn.rollback()
+                logger.error("External memory error", exc_info=True)
                 raise
 
         return count

@@ -11,6 +11,10 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
+
 if TYPE_CHECKING:
     from ..storage.database import ResearchDatabase
 
@@ -160,7 +164,7 @@ class DecisionLogger:
                 break
             except Exception:
                 # Don't let errors stop the flush loop
-                pass
+                logger.debug("Decision logger flush failed", exc_info=True)
 
     async def _flush(self) -> None:
         """Flush all queued records to the database."""
@@ -179,6 +183,7 @@ class DecisionLogger:
             await self.db.save_agent_decisions_batch([r.to_dict() for r in records])
         except Exception:
             # Re-queue on failure (best effort)
+            logger.debug("Decision flush error", exc_info=True)
             async with self._queue_lock:
                 self._queue.extend(records)
 

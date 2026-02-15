@@ -35,6 +35,7 @@ class VerificationQuestion:
     independent_answer: str | None = None
     supports_original: bool | None = None
     confidence: float = 0.0
+    error: str | None = None  # Error message if answering failed
 
 
 @dataclass
@@ -100,6 +101,7 @@ class VerificationResult:
                     "independent_answer": q.independent_answer,
                     "supports_original": q.supports_original,
                     "confidence": q.confidence,
+                    "error": q.error,
                 }
                 for q in self.questions_asked
             ],

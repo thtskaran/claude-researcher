@@ -59,6 +59,7 @@ const pipelineStages = [
 function getStageFromResult(result: VerificationResult): number {
     const status = result.verification_status?.toLowerCase();
     if (status === "verified" || status === "flagged" || status === "rejected") return 4; // all stages done
+    if (status === "skipped") return 4; // skipped is a terminal state, not pending
     if (status === "processing" || status === "in_progress") return 2;
     return 0;
 }
@@ -69,6 +70,7 @@ function mapStatus(status: string | null): string {
     if (s === "verified" || s === "confirmed") return "verified";
     if (s === "rejected" || s === "contradicted") return "contradicted";
     if (s === "flagged") return "flagged";
+    if (s === "skipped") return "skipped";
     if (s === "processing" || s === "in_progress") return "processing";
     return "pending";
 }
@@ -463,6 +465,7 @@ function StatusDot({ status }: { status: string }) {
         pending: "bg-ink-muted",
         contradicted: "bg-coral",
         flagged: "bg-gold",
+        skipped: "bg-amber-400",
     };
     return <span className={`w-2 h-2 rounded-full ${colors[status] || "bg-ink-muted"}`} />;
 }
@@ -500,6 +503,7 @@ function getStatusColor(status: string): string {
         case "processing": return "text-sage";
         case "contradicted": return "text-coral";
         case "flagged": return "text-gold";
+        case "skipped": return "text-amber-400";
         default: return "text-ink-muted";
     }
 }

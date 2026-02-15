@@ -12,7 +12,10 @@ try:
 except ImportError:
     HAS_NETWORKX = False
 
+from ..logging_config import get_logger
 from .models import Contradiction, Entity, Relation
+
+logger = get_logger(__name__)
 
 
 class HybridKnowledgeGraphStore:
@@ -38,6 +41,7 @@ class HybridKnowledgeGraphStore:
 
     async def connect(self):
         """Initialize async DB connection, create schema, and load graph."""
+        logger.info("KG store connecting: %s", self.db_path)
         self._connection = await aiosqlite.connect(self.db_path)
         # Set busy_timeout BEFORE WAL so the journal mode switch can wait for locks
         await self._connection.execute("PRAGMA busy_timeout=5000")
@@ -305,6 +309,10 @@ class HybridKnowledgeGraphStore:
                 import numpy as np
                 embedding = np.array(json.loads(embedding_blob))
             except (json.JSONDecodeError, TypeError, ValueError):
+                logger.warning(
+                    "KG store: corrupted embedding blob for entity %s",
+                    entity_id, exc_info=True,
+                )
                 pass  # Corrupted or old-format blob — skip embedding
 
         return Entity(

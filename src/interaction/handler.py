@@ -8,6 +8,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
+from ..logging_config import get_logger
 from .config import InteractionConfig
 from .models import (
     ClarificationQuestion,
@@ -15,6 +16,8 @@ from .models import (
     PendingQuestion,
     UserMessage,
 )
+
+logger = get_logger(__name__)
 
 
 class UserInteraction:
@@ -210,7 +213,7 @@ class UserInteraction:
 
             return [ClarificationQuestion(**item) for item in data]
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-            pass
+            logger.warning("Clarification question generation failed", exc_info=True)
 
         return []
 
@@ -236,6 +239,7 @@ class UserInteraction:
             )
             return answer.strip() if answer else None
         except TimeoutError:
+            logger.debug("Clarification question timed out")
             self.console.print("[dim]Timeout - skipping question[/dim]")
             return None
 
@@ -272,6 +276,7 @@ Keep it concise but complete. Do not add any preamble or explanation - just outp
             enriched = await self.llm_callback(prompt)
             return enriched.strip()
         except Exception:
+            logger.warning("Goal enrichment failed", exc_info=True)
             return original_goal
 
     async def ask_with_timeout(

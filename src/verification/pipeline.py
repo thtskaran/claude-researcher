@@ -5,6 +5,7 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional
 
+from ..logging_config import get_logger
 from .confidence import ConfidenceCalibrator
 from .cove import ChainOfVerification
 from .critic import CRITICVerifier, HighStakesDetector
@@ -18,6 +19,8 @@ from .models import (
     VerificationResult,
     VerificationStatus,
 )
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from ..knowledge.graph import IncrementalKnowledgeGraph
@@ -191,6 +194,7 @@ class VerificationPipeline:
             BatchVerificationResult with all verification results
         """
         start_time = time.time()
+        logger.info("Verification pipeline: %d findings for session %s", len(findings), session_id)
 
         if not self.config.enable_batch_verification:
             return BatchVerificationResult(
@@ -254,6 +258,7 @@ class VerificationPipeline:
         processed_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
+                logger.error("Batch verification failed for finding: %s", result, exc_info=True)
                 # Create a fallback result for failed verification
                 finding = findings[i]
                 processed_results.append(
@@ -369,6 +374,7 @@ class VerificationPipeline:
                 source_url=finding.source_url,
             )
         except Exception:
+            logger.warning("KG support score retrieval failed", exc_info=True)
             return 0.0, 0, 0
 
     async def _check_kg_contradictions(self, finding: "Finding") -> dict:
@@ -381,6 +387,7 @@ class VerificationPipeline:
                 content=finding.content,
             )
         except Exception:
+            logger.warning("KG contradiction check failed", exc_info=True)
             return {"has_contradictions": False, "contradictions": []}
 
     def get_metrics_summary(self) -> dict:

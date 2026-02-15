@@ -19,6 +19,12 @@ load_dotenv(dotenv_path=dotenv_path)
 # Mark this process as the API server to avoid event proxy loops
 os.environ.setdefault("CLAUDE_RESEARCHER_IN_API", "1")
 
+from src.logging_config import setup_logging, get_logger
+
+# Initialize centralized file logging for API server
+setup_logging()
+_api_logger = get_logger(__name__)
+
 from api.db import close_db, get_db
 from api.events import emit_event, get_event_emitter
 from api.models import HealthResponse

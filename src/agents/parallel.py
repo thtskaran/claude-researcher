@@ -14,6 +14,10 @@ from ..storage.database import ResearchDatabase
 from .base import AgentConfig
 from .intern import InternAgent
 
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
+
 if TYPE_CHECKING:
     from ..verification import VerificationPipeline
 
@@ -96,6 +100,7 @@ class ParallelInternPool:
         # Limit directives to pool size
         active_directives = directives[:self.pool_size]
 
+        logger.info("Parallel research starting: %d directives", len(active_directives))
         self._log(f"Starting parallel research with {len(active_directives)} interns")
 
         # Create tasks for parallel execution
@@ -118,8 +123,19 @@ class ParallelInternPool:
             task = self._execute_with_error_handling(intern, directive, session_id, i)
             tasks.append(task)
 
-        # Execute all tasks in parallel
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Execute all tasks in parallel with 15-minute timeout per batch
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=900,
+            )
+        except TimeoutError:
+            logger.error("Parallel research timed out after 15 minutes")
+            self._log("Parallel research timed out after 15 minutes", style="red")
+            # Cancel any still-running intern tasks
+            for intern in self._active_interns:
+                intern.stop()
+            results = [TimeoutError("Intern timed out")] * len(tasks)
         self._active_interns = []
 
         # Aggregate results
@@ -131,6 +147,7 @@ class ParallelInternPool:
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 errors.append(f"Intern {i}: {str(result)}")
+                logger.error("Intern %d failed: %s", i, result)
                 self._log(f"Intern {i} failed: {result}", style="red")
             elif isinstance(result, InternReport):
                 reports.append(result)
@@ -143,6 +160,7 @@ class ParallelInternPool:
 
         execution_time = (datetime.now() - start_time).total_seconds()
 
+        logger.info("Parallel research complete: %d findings in %.1fs", len(all_findings), execution_time)
         self._log(
             f"Parallel research complete: {len(all_findings)} total findings in {execution_time:.1f}s"
         )
@@ -176,10 +194,12 @@ class ParallelInternPool:
             InternReport with findings
         """
         try:
+            logger.info("Intern %d starting: %s", intern_id, directive.topic)
             self._log(f"Intern {intern_id} starting: {directive.topic}", style="cyan")
             report = await intern.execute_directive(directive, session_id)
             return report
         except Exception as e:
+            logger.error("Intern %d error on topic '%s': %s", intern_id, directive.topic, e, exc_info=True)
             self._log(f"Intern {intern_id} error: {e}", style="red")
             raise
 
@@ -204,6 +224,7 @@ class ParallelInternPool:
         Returns:
             ParallelResearchResult with aggregated findings
         """
+        logger.info("Decomposing goal into aspects: %s", goal[:200])
         # Decompose the goal into research aspects
         aspects = await self._decompose_goal(goal, llm_callback, max_aspects)
 

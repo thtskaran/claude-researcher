@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import random
 import subprocess
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -22,8 +23,11 @@ from rich.console import Console
 from ..audit import DecisionType, get_decision_logger
 from ..costs.tracker import get_cost_tracker
 from ..events import emit_action, emit_agent_event, emit_error, emit_thinking
+from ..logging_config import get_logger
 from ..models.findings import AgentMessage, AgentRole
 from ..storage.database import ResearchDatabase
+
+logger = get_logger(__name__)
 
 
 def _get_api_key() -> str | None:
@@ -163,6 +167,8 @@ class BaseAgent(ABC):
         self._callbacks: list[Callable] = []
         self.session_id = session_id  # For WebSocket events
         self._background_tasks: set[asyncio.Task] = set()  # Track fire-and-forget tasks
+        self._consecutive_errors = 0
+        self._max_consecutive_errors = 3  # Break after 3 consecutive failures
 
     @property
     @abstractmethod
@@ -210,6 +216,7 @@ class BaseAgent(ABC):
             and self.state.iteration < self.config.max_iterations
         ):
             self.state.iteration += 1
+            logger.debug("ReAct iteration %d started for %s", self.state.iteration, self.role.value)
             self._log(f"Iteration {self.state.iteration}", style="dim")
 
             try:
@@ -264,9 +271,20 @@ class BaseAgent(ABC):
                 for callback in self._callbacks:
                     await self._safe_callback(callback, context)
 
+                # Reset consecutive error counter on success
+                self._consecutive_errors = 0
+
             except Exception as e:
+                self._consecutive_errors += 1
+                logger.error("ReAct loop error in %s iteration %d: %s", self.role.value, self.state.iteration, e, exc_info=True)
                 self.state.error = str(e)
-                self._log(f"[Error] {e}", style="red")
+                recoverable = self._consecutive_errors < self._max_consecutive_errors
+                attempts = self._consecutive_errors
+                max_err = self._max_consecutive_errors
+                self._log(
+                    f"[Error] {e} (attempt {attempts}/{max_err})",
+                    style="red",
+                )
 
                 # Emit error event
                 if self.session_id:
@@ -274,10 +292,18 @@ class BaseAgent(ABC):
                         session_id=self.session_id,
                         agent=self.role.value,
                         error=str(e),
-                        recoverable=False
+                        recoverable=recoverable,
                     )
 
-                break
+                if not recoverable:
+                    self._log("Too many consecutive errors, stopping agent", style="red")
+                    logger.critical("Agent %s stopped after %d consecutive errors", self.role.value, self._max_consecutive_errors)
+                    break
+
+                # Exponential backoff before retry
+                backoff = (2 ** self._consecutive_errors) + random.uniform(0, 0.5)
+                self._log(f"Retrying in {backoff:.1f}s...", style="yellow")
+                await asyncio.sleep(backoff)
 
         if self._pause_requested:
             context["paused"] = True
@@ -289,6 +315,7 @@ class BaseAgent(ABC):
             f"Agent {status}: iterations={self.state.iteration}, "
             f"actions={self.state.total_actions}"
         )
+        logger.info("Agent %s finished: iterations=%d, actions=%d, error=%s", self.role.value, self.state.iteration, self.state.total_actions, self.state.error)
 
         return context
 
@@ -342,6 +369,7 @@ class BaseAgent(ABC):
         use_thinking: bool = False,
         task_type: str | None = None,
         output_format: dict | None = None,
+        model_override: str | None = None,
     ) -> str | dict | list | None:
         """Call Claude via the Agent SDK.
 
@@ -353,6 +381,7 @@ class BaseAgent(ABC):
             output_format: Optional JSON schema for structured output.
                 Example: {"type": "json_schema", "schema": {"type": "object", ...}}
                 When provided, returns parsed structured data instead of text.
+            model_override: Explicit model to use, bypassing config and task routing.
 
         Returns:
             Text response (str), or parsed structured data (dict/list) if
@@ -363,9 +392,9 @@ class BaseAgent(ABC):
         if api_key := _get_api_key():
             env["ANTHROPIC_API_KEY"] = api_key
 
-        # Use model routing if task_type specified
-        model = self.config.model
-        if task_type:
+        # Model selection priority: explicit override > task routing > config
+        model = model_override or self.config.model
+        if not model_override and task_type:
             model = ModelRouter.get_model_for_task(task_type, default=self.config.model)
             # Also check if we should use thinking for this task
             if not use_thinking and ModelRouter.should_use_thinking(task_type):
@@ -387,7 +416,10 @@ class BaseAgent(ABC):
 
         response_text = ""
         structured_output = None
-        try:
+
+        # 5-minute timeout prevents indefinite hangs on stalled LLM calls
+        async def _run_query():
+            nonlocal response_text, structured_output
             async for message in query(prompt=prompt, options=options):
                 if isinstance(message, AssistantMessage):
                     for block in message.content:
@@ -397,19 +429,27 @@ class BaseAgent(ABC):
                             isinstance(block, ToolUseBlock)
                             and block.name == "StructuredOutput"
                         ):
-                            # SDK emits structured output as a ToolUseBlock
-                            # with name="StructuredOutput" — capture it here
-                            # because ResultMessage.structured_output is
-                            # often None even when the data exists.
                             structured_output = block.input
                 elif isinstance(message, ResultMessage):
                     if message.structured_output is not None:
                         structured_output = message.structured_output
+
+        try:
+            await asyncio.wait_for(_run_query(), timeout=300)
+        except asyncio.TimeoutError:
+            self._log("LLM call timed out after 5 minutes", style="red")
+            logger.error(
+                "LLM call timed out after 5 minutes, model=%s, prompt_len=%d",
+                model, len(prompt),
+            )
+            raise
         except Exception as e:
             self._log(f"Error calling Claude: {e}", style="red")
-            if output_format:
-                return None
-            response_text = f"Error: {e}"
+            logger.error(
+                "LLM call failed: %s, model=%s, prompt_len=%d",
+                e, model, len(prompt), exc_info=True,
+            )
+            raise
 
         # Track costs
         tracker = get_cost_tracker()
@@ -422,8 +462,10 @@ class BaseAgent(ABC):
 
         # Return structured output if available and requested
         if output_format and structured_output is not None:
+            logger.debug("LLM call OK: model=%s, response_len=%d", model, len(response_text))
             return structured_output
 
+        logger.debug("LLM call OK: model=%s, response_len=%d", model, len(response_text))
         return response_text
 
     async def call_claude_with_tools(
@@ -458,7 +500,9 @@ class BaseAgent(ABC):
         response_text = ""
         tool_results = []
 
-        try:
+        # 10-minute timeout for tool-use calls (tools like WebSearch take longer)
+        async def _run_tool_query():
+            nonlocal response_text
             async for message in query(prompt=prompt, options=options):
                 if isinstance(message, AssistantMessage):
                     for block in message.content:
@@ -471,14 +515,27 @@ class BaseAgent(ABC):
                                 "input": block.input,
                             })
                         elif isinstance(block, ToolResultBlock):
-                            # Find matching tool use and add result
                             for tr in tool_results:
                                 if tr.get("id") == block.tool_use_id:
                                     tr["result"] = block.content
                                     tr["is_error"] = block.is_error
+
+        try:
+            await asyncio.wait_for(_run_tool_query(), timeout=600)
+        except asyncio.TimeoutError:
+            self._log("LLM tool call timed out after 10 minutes", style="red")
+            logger.error(
+                "LLM tool call timed out after 10 minutes, model=%s",
+                self.config.model,
+            )
+            raise
         except Exception as e:
             self._log(f"Error calling Claude with tools: {e}", style="red")
-            response_text = f"Error: {e}"
+            logger.error(
+                "LLM tool call failed: %s, model=%s",
+                e, self.config.model, exc_info=True,
+            )
+            raise
 
         # Track costs
         tracker = get_cost_tracker()
@@ -501,6 +558,7 @@ class BaseAgent(ABC):
 
     def _log(self, message: str, style: str | None = None) -> None:
         """Log a message to the console."""
+        logger.debug("[%s] %s", self.role.value.upper(), message)
         prefix = f"[{self.role.value.upper()}]"
         if style:
             self.console.print(f"{prefix} {message}", style=style)

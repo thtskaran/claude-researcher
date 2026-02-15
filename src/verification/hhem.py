@@ -5,9 +5,10 @@ Scores (source_text, finding_text) pairs for factual consistency.
 """
 
 import asyncio
-import logging
 
-logger = logging.getLogger(__name__)
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Maximum source text length to keep inference fast
 _MAX_SOURCE_CHARS = 2000

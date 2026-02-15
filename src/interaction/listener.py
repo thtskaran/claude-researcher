@@ -8,7 +8,10 @@ from collections.abc import Callable
 from rich.console import Console
 from rich.prompt import Prompt
 
+from ..logging_config import get_logger
 from .handler import UserInteraction
+
+logger = get_logger(__name__)
 
 
 class InputListener:
@@ -101,6 +104,7 @@ class InputListener:
                     )
 
             except Exception:
+                logger.debug("Input listener read error", exc_info=True)
                 if not self._stop_event.is_set():
                     continue
                 break
@@ -143,6 +147,7 @@ class InputListener:
                 self.interaction.inject_message(final_text)
 
         except Exception as e:
+            logger.warning("Input handling failed: %s", e, exc_info=True)
             self.console.print(f"[red]Error: {e}[/red]")
 
         finally:

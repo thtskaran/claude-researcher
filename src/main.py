@@ -12,6 +12,11 @@ from rich.panel import Panel
 
 from .agents.director import ResearchHarness
 from .interaction import InputListener, InteractionConfig
+from .logging_config import get_logger, setup_logging
+
+# Initialize centralized file logging on import
+setup_logging()
+logger = get_logger(__name__)
 
 console = Console()
 
@@ -202,40 +207,88 @@ def ui(
         sock.close()
         return result
 
+    def _get_pids_on_port(port_num: int) -> list[str]:
+        """Get PIDs listening on a port using lsof or ss."""
+        # Try lsof first
+        result = subprocess.run(
+            ["lsof", f"-ti:{port_num}"],
+            capture_output=True, text=True, check=False,
+        )
+        pids = [p.strip() for p in result.stdout.splitlines() if p.strip()]
+        if pids:
+            return pids
+        # Fallback: ss + parse
+        result = subprocess.run(
+            ["ss", "-tlnp", f"sport = :{port_num}"],
+            capture_output=True, text=True, check=False,
+        )
+        import re as _re
+        for line in result.stdout.splitlines():
+            for m in _re.finditer(r"pid=(\d+)", line):
+                pids.append(m.group(1))
+        return pids
+
     def kill_port(port_num: int, label: str) -> None:
         if not restart:
             return
         try:
             import signal as sig
-            result = subprocess.run(
-                ["lsof", f"-ti:{port_num}"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            pids = [pid for pid in result.stdout.splitlines() if pid.strip()]
+
+            pids = _get_pids_on_port(port_num)
             if not pids:
                 return
             console.print(
-                f"[yellow]{label} port {port_num} is in use. Restarting it...[/yellow]"
+                f"[yellow]{label} port {port_num} is in use."
+                " Restarting it...[/yellow]"
             )
+            # SIGTERM first — gives processes time to clean up
             for pid in pids:
                 try:
-                    os.kill(int(pid), sig.SIGKILL)
+                    os.kill(int(pid), sig.SIGTERM)
                 except Exception:
                     pass
-            # Wait for port to actually be released (up to 5s)
-            for _ in range(10):
+            # Wait up to 3s for graceful shutdown
+            for _ in range(6):
                 time.sleep(0.5)
-                if not check_port(port_num):
+                if not _get_pids_on_port(port_num):
                     break
             else:
+                # Escalate to SIGKILL
+                for pid in _get_pids_on_port(port_num):
+                    try:
+                        os.kill(int(pid), sig.SIGKILL)
+                    except Exception:
+                        logger.debug(
+                            "Failed to kill PID %s on port %d",
+                            pid, port_num, exc_info=True,
+                        )
+                # Wait for SIGKILL to take effect
+                for _ in range(6):
+                    time.sleep(0.5)
+                    if not _get_pids_on_port(port_num):
+                        break
+
+            # Clean up Next.js stale lock file if killing UI
+            if port_num == 3000:
+                lock_file = (
+                    Path(__file__).parent.parent / "ui" / ".next"
+                    / "dev" / "lock"
+                )
+                if lock_file.exists():
+                    lock_file.unlink(missing_ok=True)
+                    logger.debug("Removed stale Next.js lock file")
+
+            # Final check
+            if _get_pids_on_port(port_num):
                 console.print(
-                    f"[red]Warning: {label} port {port_num} still in use after kill[/red]"
+                    f"[red]Warning: {label} port {port_num}"
+                    " still in use after kill[/red]"
                 )
         except Exception:
-            # If lsof isn't available or kill fails, we fall back to current behavior
-            pass
+            logger.debug(
+                "Port kill failed for %s port %d",
+                label, port_num, exc_info=True,
+            )
 
     api_running = check_port(port)
     ui_running = check_port(3000)
@@ -305,6 +358,11 @@ def ui(
     else:
         console.print("[cyan]Starting Next.js UI server on port 3000...[/cyan]")
         try:
+            # Remove stale lock before starting
+            lock_file = ui_path / ".next" / "dev" / "lock"
+            if lock_file.exists():
+                lock_file.unlink(missing_ok=True)
+
             # Start Next.js dev server (output visible for debugging)
             subprocess.Popen(
                 ["npm", "run", "dev"],
@@ -313,13 +371,19 @@ def ui(
                 env=os.environ.copy(),
             )
 
-            # Wait for UI server to start
-            max_wait = 15
+            # Wait for UI server to start (use HTTP check — more
+            # reliable than TCP connect for Next.js)
+            import urllib.request
+            max_wait = 20
             for i in range(max_wait):
-                if check_port(3000):
+                try:
+                    urllib.request.urlopen(
+                        "http://localhost:3000", timeout=1,
+                    )
                     console.print("[green]✓ UI server started[/green]")
                     break
-                time.sleep(1)
+                except Exception:
+                    time.sleep(1)
             else:
                 console.print("[red]✗ Failed to start UI server[/red]")
                 sys.exit(1)

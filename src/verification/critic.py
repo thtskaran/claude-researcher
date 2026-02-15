@@ -15,6 +15,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from ..logging_config import get_logger
 from .confidence import ConfidenceCalibrator
 from .models import (
     VerificationConfig,
@@ -22,6 +23,8 @@ from .models import (
     VerificationResult,
     VerificationStatus,
 )
+
+logger = get_logger(__name__)
 
 CRITIQUE_SCHEMA = {
     "type": "object",
@@ -96,6 +99,7 @@ class CRITICVerifier:
             VerificationResult with corrections and calibrated confidence
         """
         start_time = time.time()
+        logger.info("CRITIC verify: finding=%s", finding_id)
 
         current_content = finding_content
         corrections = []
@@ -184,6 +188,7 @@ class CRITICVerifier:
             )
 
         except Exception as e:
+            logger.warning("CRITIC error", exc_info=True)
             return VerificationResult(
                 finding_id=finding_id,
                 original_confidence=original_confidence,
@@ -266,7 +271,7 @@ class CRITICVerifier:
                     )
                 return str(results)[:1000]
         except Exception:
-            pass
+            logger.warning("CRITIC error", exc_info=True)
 
         return None
 

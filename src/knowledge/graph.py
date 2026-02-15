@@ -13,10 +13,13 @@ try:
 except ImportError:
     HAS_NUMPY = False
 
+from ..logging_config import get_logger
 from .credibility import CredibilityScorer
 from .fast_ner import get_fast_ner
 from .models import ENTITY_TYPES, Contradiction, Entity, KGFinding, Relation
 from .store import HybridKnowledgeGraphStore
+
+logger = get_logger(__name__)
 
 # Canonical predicate mapping — normalizes free-form predicates to a fixed set
 # for better graph connectivity. ~130 synonyms → ~20 canonical forms.
@@ -193,6 +196,7 @@ class IncrementalKnowledgeGraph:
                 await result
         except Exception:
             # Don't let audit errors affect main processing
+            logger.debug("Credibility audit save failed", exc_info=True)
             pass
 
     async def add_finding(self, finding: KGFinding, fast_mode: bool = True) -> dict:
@@ -205,6 +209,7 @@ class IncrementalKnowledgeGraph:
         Returns:
             Dict with extracted entities, relations, and any contradictions found
         """
+        logger.info("KG add_finding: id=%s, fast_mode=%s", finding.id, fast_mode)
         async with self._processing_lock:
             result = {
                 'entities': [],
@@ -270,6 +275,7 @@ class IncrementalKnowledgeGraph:
         - Domain-specific entity types (CONCEPT, CLAIM, METHOD, etc.)
         - Relation extraction between entities
         """
+        logger.debug("KG fast_extract: finding=%s", finding.id)
         result = {
             'entities': [],
             'relations': [],
@@ -333,6 +339,7 @@ class IncrementalKnowledgeGraph:
 
     async def _llm_only_extract(self, finding: KGFinding) -> dict:
         """Fallback LLM-only extraction when spaCy is unavailable."""
+        logger.debug("KG llm_only_extract: finding=%s", finding.id)
         result = {
             'entities': [],
             'relations': [],
@@ -474,9 +481,10 @@ class IncrementalKnowledgeGraph:
                 await self.store.add_relation(relation, self.session_id)
                 result['relations'].append(relation)
 
-        except Exception:
-            # Silently fail - KG is optional
-            pass
+        except Exception as e:
+            # KG extraction is non-blocking but we surface the error in the result
+            logger.error("KG llm_only_extract failed: %s", e, exc_info=True)
+            result['error'] = f"{type(e).__name__}: {e}"
 
         return result
 
@@ -572,6 +580,7 @@ class IncrementalKnowledgeGraph:
             return relations
 
         except Exception:
+            logger.warning("KG extract_relations_fast failed", exc_info=True)
             return []
 
     async def add_findings_batch(self, findings: list[KGFinding], batch_size: int = 5) -> dict:
@@ -586,6 +595,7 @@ class IncrementalKnowledgeGraph:
         Returns:
             Aggregated results from all findings
         """
+        logger.info("KG batch: %d findings, batch_size=%d", len(findings), batch_size)
         result = {
             'total_entities': 0,
             'total_relations': 0,
@@ -781,8 +791,9 @@ class IncrementalKnowledgeGraph:
                             await self.store.add_relation(relation, self.session_id)
                             result['relations_count'] += 1
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("KG extract_batch failed: %s", e, exc_info=True)
+            result['error'] = f"{type(e).__name__}: {e}"
 
         return result
 

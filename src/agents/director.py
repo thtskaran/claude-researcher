@@ -13,12 +13,15 @@ from rich.table import Table
 from ..costs.tracker import get_cost_tracker, reset_cost_tracker
 from ..events import emit_synthesis
 from ..interaction import InteractionConfig, UserInteraction
+from ..logging_config import get_logger
 from ..models.findings import AgentRole, ManagerReport, ResearchSession
 from ..reports.writer import DeepReportWriter
 from ..storage.database import ResearchDatabase
 from .base import AgentConfig, BaseAgent
 from .intern import InternAgent
 from .manager import ManagerAgent
+
+logger = get_logger(__name__)
 
 
 class DirectorAgent(BaseAgent):
@@ -91,12 +94,7 @@ class DirectorAgent(BaseAgent):
 
     async def _interaction_llm_callback(self, prompt: str) -> str:
         """LLM callback for interaction module (uses fast model)."""
-        original_model = self.config.model
-        self.config.model = "haiku"  # Fast model for clarification questions
-        try:
-            return await self.call_claude(prompt)
-        finally:
-            self.config.model = original_model
+        return await self.call_claude(prompt, model_override="haiku")
 
     @property
     def system_prompt(self) -> str:
@@ -255,6 +253,7 @@ When presenting results:
             return report
 
         except asyncio.CancelledError:
+            logger.info("Research cancelled by user: session=%s", self.current_session.id)
             self.console.print("\n[yellow]Research interrupted by user[/yellow]")
             self.current_session.status = "interrupted"
             self.current_session.ended_at = datetime.now()
@@ -262,6 +261,10 @@ When presenting results:
             raise
 
         except Exception as e:
+            logger.error(
+                "Research failed: session=%s, error=%s",
+                self.current_session.id, e, exc_info=True,
+            )
             self.console.print(f"\n[red]Error during research: {e}[/red]")
             self.current_session.status = "error"
             self.current_session.ended_at = datetime.now()
@@ -527,6 +530,7 @@ When presenting results:
             kg_exports = await self.manager.get_knowledge_graph_exports(str(output_dir))
             self.console.print(f"  [dim]Knowledge graph: {kg_exports.get('stats', {}).get('num_entities', 0)} entities, {kg_exports.get('stats', {}).get('num_relations', 0)} relations[/dim]")
         except Exception as e:
+            logger.warning("Knowledge graph export failed: %s", e, exc_info=True)
             self.console.print(f"  [dim]Knowledge graph export skipped: {e}[/dim]")
             kg_exports = None
 

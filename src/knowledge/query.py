@@ -6,8 +6,11 @@ try:
 except ImportError:
     HAS_NETWORKX = False
 
+from ..logging_config import get_logger
 from .models import KnowledgeGap
 from .store import HybridKnowledgeGraphStore
+
+logger = get_logger(__name__)
 
 
 class ManagerQueryInterface:
@@ -186,6 +189,7 @@ class ManagerQueryInterface:
                             importance=bc,
                         ))
             except Exception:
+                logger.debug("Betweenness centrality computation failed", exc_info=True)
                 pass  # Graph too small or disconnected
 
         # 4. Find missing entity types
@@ -234,6 +238,7 @@ class ManagerQueryInterface:
             # Use PageRank for importance
             pagerank = nx.pagerank(self.store.graph)
         except Exception:
+            logger.debug("PageRank computation failed", exc_info=True)
             return []
 
         # Sort by importance

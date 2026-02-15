@@ -16,6 +16,10 @@ from typing import Any
 
 import numpy as np
 
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class BM25Config:
@@ -405,7 +409,7 @@ class BM25Index:
                 state = json.load(f)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 # Old pickle format or corrupted file — rebuild from scratch
-                print(f"[BM25] Could not load index from {path}, rebuilding")
+                logger.warning("Could not load BM25 index from %s, rebuilding", path)
                 return
 
         self._documents = {

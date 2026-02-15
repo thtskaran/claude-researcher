@@ -11,7 +11,10 @@ from enum import Enum
 
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
 
+from ..logging_config import get_logger
 from ..models.findings import Finding, ResearchSession
+
+logger = get_logger(__name__)
 
 
 class SectionType(str, Enum):
@@ -110,19 +113,17 @@ class DeepReportWriter:
 
             except Exception as e:
                 error_str = str(e).lower()
-                print(f"[REPORT] Attempt {attempt + 1}/{max_retries} failed ({use_model}): {e}")
+                logger.warning("Report LLM call failed (attempt %d/%d, model=%s): %s", attempt + 1, max_retries, use_model, e, exc_info=True)
 
                 if attempt < max_retries - 1:
                     delay = base_delay * (2**attempt) + random.uniform(0, 2.0)
-                    print(f"[REPORT] Retrying in {delay:.1f}s...")
+                    logger.info("Retrying report LLM call in %.1fs...", delay)
                     await asyncio.sleep(delay)
                     response_text = ""  # Reset for retry
                 else:
                     # All retries exhausted with primary model — try fallback
                     if use_model == "opus":
-                        print(
-                            f"[REPORT] Opus failed after {max_retries} attempts, falling back to sonnet..."
-                        )
+                        logger.warning("Opus failed after %d attempts, falling back to sonnet", max_retries)
                         return await self._call_claude(prompt, system_prompt, model="sonnet")
                     return f"[Error generating report section: {str(e)[:200]}]"
 
@@ -153,6 +154,7 @@ class DeepReportWriter:
         Returns:
             Complete markdown report
         """
+        logger.info("Report generation started: session=%s, findings=%d", session.id, len(findings))
         # Use dynamic report generation by default
         if dynamic:
             return await self.generate_dynamic_report(
@@ -171,25 +173,25 @@ class DeepReportWriter:
 
         # Generate report sections using Claude
         await _emit_progress(progress_callback, "Generating executive summary...", 10)
-        print("[REPORT] Generating executive summary...")
+        logger.info("Generating executive summary...")
         executive_summary = await self._generate_executive_summary(
             session.goal, findings, topics_explored
         )
 
         await _emit_progress(progress_callback, "Generating introduction...", 25)
-        print("[REPORT] Generating introduction...")
+        logger.info("Generating introduction...")
         introduction = await self._generate_introduction(session.goal, findings)
 
         await _emit_progress(progress_callback, "Generating main sections...", 45)
-        print("[REPORT] Generating main narrative sections...")
+        logger.info("Generating main narrative sections...")
         main_sections = await self._generate_main_sections(session.goal, findings)
 
         await _emit_progress(progress_callback, "Generating analysis and insights...", 70)
-        print("[REPORT] Generating analysis and insights...")
+        logger.info("Generating analysis and insights...")
         analysis = await self._generate_analysis(session.goal, findings, findings_by_type)
 
         await _emit_progress(progress_callback, "Generating conclusions...", 85)
-        print("[REPORT] Generating conclusions...")
+        logger.info("Generating conclusions...")
         conclusions = await self._generate_conclusions(session.goal, findings, topics_remaining)
 
         # Compile the full report
@@ -251,6 +253,7 @@ class DeepReportWriter:
                     if not title or len(title) < 5:
                         title = domain.split(".")[0].title()
                 except Exception:
+                    logger.warning("Source URL parsing failed: %s", f.source_url[:100], exc_info=True)
                     domain = f.source_url[:50]
                     title = domain
 
@@ -287,6 +290,7 @@ class DeepReportWriter:
 
                     domain = urlparse(f.source_url).netloc.replace("www.", "")
                 except Exception:
+                    logger.warning("Finding source URL parsing failed", exc_info=True)
                     domain = f.source_url[:40]
                 source_ref = f" [Source: [{ref_num}] {domain}]"
 
@@ -491,6 +495,7 @@ Choose themes that:
                 themes = json.loads(match.group())
         except Exception:
             # Fallback themes
+            logger.warning("Theme parsing failed, using fallback themes", exc_info=True)
             themes = [
                 "Current State and Recent Developments",
                 "Key Technical Advances",
@@ -748,6 +753,7 @@ Return ONLY the JSON array, no explanation."""
                     )
         except (json.JSONDecodeError, KeyError):
             # Fallback to basic structure
+            logger.warning("Report structure planning failed, using fallback", exc_info=True)
             planned_sections = [
                 PlannedSection(SectionType.TLDR, "TL;DR", "Bottom-line answer"),
                 PlannedSection(SectionType.NARRATIVE, "Background", "Context and background"),
@@ -1281,14 +1287,12 @@ Output ONLY the conclusions content."""
 
         # Phase 1: Plan the report structure
         await _emit_progress(progress_callback, "Planning report structure...", 5)
-        print("[REPORT] Planning report structure...")
+        logger.info("Planning report structure...")
         planned_sections = await self._plan_report_structure(
             session.goal, findings, topics_explored
         )
         await _emit_progress(progress_callback, "Planned report structure", 10)
-        print(
-            f"[REPORT] Planned {len(planned_sections)} sections: {[s.title for s in planned_sections]}"
-        )
+        logger.info("Planned %d sections: %s", len(planned_sections), [s.title for s in planned_sections])
 
         # Phase 2: Generate each section (with pacing to avoid rate limits)
         for i, section in enumerate(planned_sections):
@@ -1298,9 +1302,7 @@ Output ONLY the conclusions content."""
                 f"Generating section {i + 1}/{len(planned_sections)}: {section.title}",
                 progress,
             )
-            print(
-                f"[REPORT] Generating section {i + 1}/{len(planned_sections)}: {section.title}..."
-            )
+            logger.info("Generating section %d/%d: %s", i + 1, len(planned_sections), section.title)
             section.content = await self._generate_dynamic_section(
                 section, session.goal, findings, kg_exports=kg_exports
             )
@@ -1309,6 +1311,7 @@ Output ONLY the conclusions content."""
                 await asyncio.sleep(2)
 
         # Compile the report
+        logger.info("Report generation complete: %d sections", len(planned_sections))
         await _emit_progress(progress_callback, "Compiling report...", 95)
         return self._compile_dynamic_report(
             session=session,
@@ -1717,4 +1720,5 @@ async def _emit_progress(
     try:
         await callback(message, progress)
     except Exception:
+        logger.warning("Progress callback failed: %s", message, exc_info=True)
         return

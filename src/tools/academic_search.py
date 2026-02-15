@@ -8,16 +8,16 @@ All APIs are free and require no API keys for basic usage.
 """
 
 import asyncio
-import logging
 import random
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from urllib.parse import quote
 
+from ..logging_config import get_logger
 from ..tools.web_search import SearchResult
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # Maximum retries and backoff defaults
@@ -288,6 +288,7 @@ class SemanticScholarSearch:
         Returns:
             List of AcademicPaper objects
         """
+        logger.info("Semantic Scholar search: query=%s", query[:200])
         params = {
             "query": query,
             "limit": min(limit, 100),
@@ -474,6 +475,7 @@ class ArxivSearch:
         Returns:
             List of AcademicPaper objects
         """
+        logger.info("arXiv search: query=%s", query[:200])
         # Build search query
         search_query = f"all:{quote(query)}"
         if categories:
@@ -622,6 +624,7 @@ class AcademicSearchTool:
         Returns:
             Tuple of (list of SearchResult, summary string)
         """
+        logger.info("Academic search: query=%s", query[:200])
         papers = await self.search_papers(query)
         results = [p.to_search_result() for p in papers]
         summary = self._build_summary(query, papers)
@@ -723,6 +726,7 @@ class AcademicSearchTool:
                             nodes[l2_id] = l2
                         edges.append({"source": l2_id, "target": cp_id, "type": "cites"})
                 except Exception:
+                    logger.debug("L2 citation fetch failed for %s", cp_id, exc_info=True)
                     continue
 
         return {"nodes": nodes, "edges": edges}
