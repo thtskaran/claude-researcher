@@ -1151,6 +1151,13 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
         logger.info("Synthesizing final report: findings=%d", len(self.all_findings))
         time_elapsed = self._get_elapsed_minutes()
 
+        self._log("═" * 70, style="bold cyan")
+        self._log(
+            f"[SYNTHESIS] Starting report synthesis with {len(self.all_findings)} findings",
+            style="bold cyan",
+        )
+        self._log("═" * 70, style="bold cyan")
+
         # Run batch verification on findings that haven't had thorough verification.
         # Includes: unverified findings, streaming-only verified findings (lightweight
         # CoVe only), and findings that were rejected/flagged by streaming and deserve
@@ -1162,7 +1169,11 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
             if not f.verification_status or (f.verification_method or "") in _streaming_methods
         ]
         if needs_batch and self.verification_config.enable_batch_verification:
-            self._log(f"[VERIFY] Batch verification on {len(needs_batch)} findings...", style="dim")
+            self._log(
+                f"[VERIFY] Running thorough verification on {len(needs_batch)} findings "
+                "(this may take several minutes)...",
+                style="yellow",
+            )
             batch_result = await self.verification_pipeline.verify_batch(
                 needs_batch, self.session_id
             )

@@ -5,6 +5,7 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional
 
+from ..events import emit_agent_event
 from ..logging_config import get_logger
 from .confidence import ConfidenceCalibrator
 from .cove import ChainOfVerification
@@ -206,12 +207,50 @@ class VerificationPipeline:
                 skipped_count=len(findings),
             )
 
+        # Emit progress so UI doesn't look stuck during lengthy verification
+        total = len(findings)
+        try:
+            await emit_agent_event(
+                session_id=session_id,
+                event_type="system",
+                agent="manager",
+                data={
+                    "message": (
+                        f"[VERIFY] Starting batch verification of {total} findings "
+                        f"(this may take several minutes)..."
+                    ),
+                },
+            )
+        except Exception:
+            pass
+
         # Process in parallel batches
         results = []
         all_contradictions = []
 
         for i in range(0, len(findings), self.config.parallel_batch_size):
             batch = findings[i : i + self.config.parallel_batch_size]
+            batch_num = (i // self.config.parallel_batch_size) + 1
+            batch_size = self.config.parallel_batch_size
+            total_batches = (total + batch_size - 1) // batch_size
+            logger.info(
+                "Verification batch %d/%d: findings %d-%d of %d",
+                batch_num, total_batches, i + 1, min(i + len(batch), total), total,
+            )
+            try:
+                await emit_agent_event(
+                    session_id=session_id,
+                    event_type="system",
+                    agent="manager",
+                    data={
+                        "message": (
+                            f"[VERIFY] Verifying batch {batch_num}/{total_batches} "
+                            f"({len(results)}/{total} complete)..."
+                        ),
+                    },
+                )
+            except Exception:
+                pass
             batch_results = await self._verify_batch_parallel(batch, session_id)
             results.extend(batch_results)
 
@@ -226,6 +265,23 @@ class VerificationPipeline:
         skipped = sum(1 for r in results if r.verification_status == VerificationStatus.SKIPPED)
 
         total_time = (time.time() - start_time) * 1000
+
+        try:
+            await emit_agent_event(
+                session_id=session_id,
+                event_type="system",
+                agent="manager",
+                data={
+                    "message": (
+                        f"[VERIFY] Batch verification complete: "
+                        f"{verified} verified, {flagged} flagged, "
+                        f"{rejected} rejected, {skipped} skipped "
+                        f"({total_time / 1000:.0f}s)"
+                    ),
+                },
+            )
+        except Exception:
+            pass
 
         batch_result = BatchVerificationResult(
             session_id=session_id,

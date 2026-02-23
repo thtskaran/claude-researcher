@@ -206,7 +206,7 @@ class VerificationConfig:
     critic_confidence_threshold: float = 0.8  # Use CRITIC if below this
 
     # Model selection
-    streaming_model: str = "haiku"  # Fast for streaming
+    streaming_model: str = "sonnet"  # Haiku fails structured JSON too often
     batch_model: str = "sonnet"  # Thorough for batch
 
     # KG settings
