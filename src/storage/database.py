@@ -130,10 +130,30 @@ class _ConnectionPool:
     async def acquire(self):
         """Acquire a connection from the pool."""
         conn = await self._pool.get()
+        healthy = True
         try:
             yield conn
+        except Exception:
+            # Connection may be in a bad state after an error; discard it
+            healthy = False
+            raise
         finally:
-            await self._pool.put(conn)
+            if healthy:
+                await self._pool.put(conn)
+            else:
+                # Discard the broken connection and create a fresh one
+                try:
+                    await conn.close()
+                except Exception:
+                    pass
+                try:
+                    new_conn = await aiosqlite.connect(self._db_path)
+                    new_conn.row_factory = aiosqlite.Row
+                    await new_conn.execute("PRAGMA busy_timeout=5000")
+                    await new_conn.execute("PRAGMA journal_mode=WAL")
+                    await self._pool.put(new_conn)
+                except Exception:
+                    pass  # Pool shrinks by one; next acquire will block until one returns
 
     async def close(self):
         """Close all pooled connections."""

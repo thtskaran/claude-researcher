@@ -83,6 +83,7 @@ class ManagerAgent(BaseAgent):
         self.max_depth: int = 5
         self.start_time: datetime | None = None
         self.time_limit_minutes: int = 0  # Kept for stats only, not used for stopping
+        self._current_phase: str = "init"
 
         # Locks for thread-safe state access (prevents race conditions in parallel execution)
         self._state_lock = asyncio.Lock()  # Protects topics_queue, all_findings, all_reports

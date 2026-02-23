@@ -1303,9 +1303,18 @@ Output ONLY the conclusions content."""
                 progress,
             )
             logger.info("Generating section %d/%d: %s", i + 1, len(planned_sections), section.title)
-            section.content = await self._generate_dynamic_section(
-                section, session.goal, findings, kg_exports=kg_exports
-            )
+            try:
+                section.content = await self._generate_dynamic_section(
+                    section, session.goal, findings, kg_exports=kg_exports
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to generate section '%s': %s", section.title, e, exc_info=True
+                )
+                section.content = (
+                    f"*[Section generation failed: {type(e).__name__}. "
+                    f"The research data for this section was collected but could not be synthesized.]*"
+                )
             # Brief pause between sections to reduce rate limit pressure
             if i < len(planned_sections) - 1:
                 await asyncio.sleep(2)

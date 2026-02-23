@@ -233,7 +233,7 @@ Be brief - just state your decision and reason."""
         """Execute a search or compile a report based on thinking."""
         logger.debug("Intern act: thought=%s", thought[:200])
         directive: ManagerDirective = context.get("directive")
-        session_id = context.get("session_id", 0)
+        session_id = context.get("session_id", "")
 
         # Check if we should stop
         if self._should_stop_searching(thought, directive):

@@ -112,10 +112,9 @@ async def _request_with_retry(
                     max_retries,
                 )
                 await asyncio.sleep(delay)
-                try:
-                    response.raise_for_status()
-                except httpx.HTTPStatusError as e:
-                    last_exception = e
+                last_exception = httpx.HTTPStatusError(
+                    f"Rate limited (429)", request=response.request, response=response,
+                )
                 continue
 
             # Server error — retryable
@@ -130,10 +129,11 @@ async def _request_with_retry(
                     max_retries,
                 )
                 await asyncio.sleep(delay)
-                try:
-                    response.raise_for_status()
-                except httpx.HTTPStatusError as e:
-                    last_exception = e
+                last_exception = httpx.HTTPStatusError(
+                    f"Server error ({response.status_code})",
+                    request=response.request,
+                    response=response,
+                )
                 continue
 
             # Non-retryable client error (400, 403, 404, etc.)

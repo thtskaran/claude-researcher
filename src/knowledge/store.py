@@ -203,28 +203,36 @@ class HybridKnowledgeGraphStore:
             **entity.properties,
         })
 
-        await conn.execute("""
-            INSERT OR REPLACE INTO kg_entities
-            (id, name, entity_type, properties, embedding, session_id, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            entity.id, entity.name, entity.entity_type, properties,
-            embedding_blob, session_id, datetime.now().isoformat(),
-        ))
-        await conn.commit()
+        try:
+            await conn.execute("""
+                INSERT OR REPLACE INTO kg_entities
+                (id, name, entity_type, properties, embedding, session_id, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                entity.id, entity.name, entity.entity_type, properties,
+                embedding_blob, session_id, datetime.now().isoformat(),
+            ))
 
-        # Add to NetworkX
-        if HAS_NETWORKX and self.graph is not None:
-            self.graph.add_node(
-                entity.id,
-                name=entity.name,
-                entity_type=entity.entity_type,
-                aliases=entity.aliases,
-                sources=entity.sources,
-                confidence=entity.confidence,
-                session_id=session_id,
-                **entity.properties
-            )
+            # Add to NetworkX before committing so we can rollback on failure
+            if HAS_NETWORKX and self.graph is not None:
+                self.graph.add_node(
+                    entity.id,
+                    name=entity.name,
+                    entity_type=entity.entity_type,
+                    aliases=entity.aliases,
+                    sources=entity.sources,
+                    confidence=entity.confidence,
+                    session_id=session_id,
+                    **entity.properties
+                )
+
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            # Remove from NetworkX if it was added
+            if HAS_NETWORKX and self.graph is not None and entity.id in self.graph:
+                self.graph.remove_node(entity.id)
+            raise
 
         return entity.id
 
@@ -239,28 +247,39 @@ class HybridKnowledgeGraphStore:
             **relation.properties,
         })
 
-        await conn.execute("""
-            INSERT INTO kg_relations
-            (id, subject_id, predicate, object_id, source_id, confidence, properties, session_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            relation.id, relation.subject_id, relation.predicate,
-            relation.object_id, relation.source_id, relation.confidence,
-            properties, session_id
-        ))
-        await conn.commit()
+        try:
+            await conn.execute("""
+                INSERT INTO kg_relations
+                (id, subject_id, predicate, object_id, source_id, confidence, properties, session_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                relation.id, relation.subject_id, relation.predicate,
+                relation.object_id, relation.source_id, relation.confidence,
+                properties, session_id
+            ))
 
-        # Add to NetworkX
-        if HAS_NETWORKX and self.graph is not None:
-            self.graph.add_edge(
-                relation.subject_id,
-                relation.object_id,
-                relation_id=relation.id,
-                predicate=relation.predicate,
-                confidence=relation.confidence,
-                source_id=relation.source_id,
-                session_id=session_id
-            )
+            # Add to NetworkX before committing so we can rollback on failure
+            if HAS_NETWORKX and self.graph is not None:
+                self.graph.add_edge(
+                    relation.subject_id,
+                    relation.object_id,
+                    relation_id=relation.id,
+                    predicate=relation.predicate,
+                    confidence=relation.confidence,
+                    source_id=relation.source_id,
+                    session_id=session_id
+                )
+
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            # Remove edge from NetworkX if it was added
+            if HAS_NETWORKX and self.graph is not None:
+                try:
+                    self.graph.remove_edge(relation.subject_id, relation.object_id)
+                except Exception:
+                    pass
+            raise
 
         return relation.id
 
@@ -359,6 +378,7 @@ class HybridKnowledgeGraphStore:
         outgoing = []
         for _, target, data in self.graph.out_edges(entity_id, data=True):
             outgoing.append({
+                'relation_id': data.get('relation_id', ''),
                 'predicate': data.get('predicate', ''),
                 'target_id': target,
                 'target_name': self.graph.nodes[target].get('name', target),
@@ -368,6 +388,7 @@ class HybridKnowledgeGraphStore:
         incoming = []
         for source, _, data in self.graph.in_edges(entity_id, data=True):
             incoming.append({
+                'relation_id': data.get('relation_id', ''),
                 'predicate': data.get('predicate', ''),
                 'source_id': source,
                 'source_name': self.graph.nodes[source].get('name', source),
@@ -382,7 +403,7 @@ class HybridKnowledgeGraphStore:
 
         # Outgoing relations
         cursor = await conn.execute("""
-            SELECT r.predicate, r.object_id, e.name, r.confidence
+            SELECT r.id, r.predicate, r.object_id, e.name, r.confidence
             FROM kg_relations r
             JOIN kg_entities e ON r.object_id = e.id
             WHERE r.subject_id = ?
@@ -390,15 +411,15 @@ class HybridKnowledgeGraphStore:
 
         outgoing = [
             {
-                'predicate': row[0], 'target_id': row[1],
-                'target_name': row[2], 'confidence': row[3],
+                'relation_id': row[0], 'predicate': row[1], 'target_id': row[2],
+                'target_name': row[3], 'confidence': row[4],
             }
             for row in await cursor.fetchall()
         ]
 
         # Incoming relations
         cursor = await conn.execute("""
-            SELECT r.predicate, r.subject_id, e.name, r.confidence
+            SELECT r.id, r.predicate, r.subject_id, e.name, r.confidence
             FROM kg_relations r
             JOIN kg_entities e ON r.subject_id = e.id
             WHERE r.object_id = ?
@@ -406,8 +427,8 @@ class HybridKnowledgeGraphStore:
 
         incoming = [
             {
-                'predicate': row[0], 'source_id': row[1],
-                'source_name': row[2], 'confidence': row[3],
+                'relation_id': row[0], 'predicate': row[1], 'source_id': row[2],
+                'source_name': row[3], 'confidence': row[4],
             }
             for row in await cursor.fetchall()
         ]
