@@ -9,7 +9,6 @@ CRITIC is a tool-interactive verification method that:
 Reference: "CRITIC: Large Language Models Can Self-Correct with Tool-Interactive Critiquing"
 """
 
-import json
 import re
 import time
 from collections.abc import Callable
@@ -17,6 +16,7 @@ from typing import Any
 
 from ..logging_config import get_logger
 from .confidence import ConfidenceCalibrator
+from .json_utils import parse_json_object
 from .models import (
     VerificationConfig,
     VerificationMethod,
@@ -322,46 +322,7 @@ Return ONLY the corrected finding text, no explanation."""
         return corrected if corrected else None
 
     def _parse_json(self, response: str) -> dict | None:
-        """Parse JSON object from LLM response with multiple fallbacks."""
-        if not response or not isinstance(response, str):
-            return None
-
-        # Strip markdown code blocks
-        cleaned = re.sub(r"```(?:json)?\s*", "", response).strip()
-        cleaned = re.sub(r"```\s*$", "", cleaned).strip()
-
-        # Strategy 1: Try parsing the whole cleaned response
-        try:
-            parsed = json.loads(cleaned)
-            if isinstance(parsed, dict):
-                return parsed
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-        # Strategy 2: Greedy regex - match from first { to last }
-        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group())
-            except json.JSONDecodeError:
-                pass
-
-        # Strategy 3: Find balanced braces
-        start = cleaned.find("{")
-        if start >= 0:
-            depth = 0
-            for i in range(start, len(cleaned)):
-                if cleaned[i] == "{":
-                    depth += 1
-                elif cleaned[i] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            return json.loads(cleaned[start : i + 1])
-                        except json.JSONDecodeError:
-                            break
-
-        return None
+        return parse_json_object(response)
 
 
 class HighStakesDetector:

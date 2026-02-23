@@ -14,6 +14,7 @@ except ImportError:
     HAS_NUMPY = False
 
 from ..logging_config import get_logger
+from ..verification.json_utils import extract_json_array
 from .credibility import CredibilityScorer
 from .fast_ner import get_fast_ner
 from .models import ENTITY_TYPES, Contradiction, Entity, KGFinding, Relation
@@ -1165,48 +1166,12 @@ Return as JSON array:
         if isinstance(text, list):
             return text
         if isinstance(text, dict):
-            # Try common wrapper keys
             for key in ("results", "entities", "relations", "facts"):
                 if key in text and isinstance(text[key], list):
                     return text[key]
             return []
 
-        # Strip markdown code blocks
-        cleaned = re.sub(r'```(?:json)?\s*', '', text).strip()
-        cleaned = re.sub(r'```\s*$', '', cleaned).strip()
-
-        # Strategy 1: Try parsing the whole cleaned response
-        try:
-            parsed = json.loads(cleaned)
-            if isinstance(parsed, list):
-                return parsed
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-        # Strategy 2: Greedy regex - match from first [ to last ]
-        match = re.search(r'\[.*\]', cleaned, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group())
-            except json.JSONDecodeError:
-                pass
-
-        # Strategy 3: Find balanced brackets
-        start = cleaned.find('[')
-        if start >= 0:
-            depth = 0
-            for i in range(start, len(cleaned)):
-                if cleaned[i] == '[':
-                    depth += 1
-                elif cleaned[i] == ']':
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            return json.loads(cleaned[start:i + 1])
-                        except json.JSONDecodeError:
-                            break
-
-        return []
+        return extract_json_array(text) or []
 
     async def get_stats(self) -> dict:
         """Get knowledge graph statistics."""

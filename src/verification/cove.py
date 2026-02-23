@@ -10,13 +10,13 @@ Reference: "Chain-of-Verification Reduces Hallucination in Large Language Models
 """
 
 import asyncio
-import json
 import re
 import time
 from collections.abc import Callable
 
 from ..logging_config import get_logger
 from .confidence import ConfidenceCalibrator
+from .json_utils import extract_json_array, parse_json_object
 from .models import (
     VerificationConfig,
     VerificationMethod,
@@ -717,85 +717,7 @@ class ChainOfVerification:
         return questions[:limit]
 
     def _extract_json_array(self, response: str) -> list | None:
-        """Extract a JSON array from LLM response with multiple fallbacks."""
-        if not response or not isinstance(response, str):
-            return None
-
-        # Strip markdown code blocks
-        cleaned = re.sub(r"```(?:json)?\s*", "", response).strip()
-        cleaned = re.sub(r"```\s*$", "", cleaned).strip()
-
-        # Strategy 1: Try parsing the whole cleaned response as JSON
-        try:
-            parsed = json.loads(cleaned)
-            if isinstance(parsed, list):
-                return parsed
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-        # Strategy 2: Greedy regex - match from first [ to last ]
-        match = re.search(r"\[.*\]", cleaned, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group())
-            except json.JSONDecodeError:
-                pass
-
-        # Strategy 3: Find balanced brackets
-        start = cleaned.find("[")
-        if start >= 0:
-            depth = 0
-            for i in range(start, len(cleaned)):
-                if cleaned[i] == "[":
-                    depth += 1
-                elif cleaned[i] == "]":
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            return json.loads(cleaned[start : i + 1])
-                        except json.JSONDecodeError:
-                            break
-
-        return None
+        return extract_json_array(response)
 
     def _parse_json(self, response: str) -> dict | None:
-        """Parse JSON object from LLM response with multiple fallbacks."""
-        if not response or not isinstance(response, str):
-            return None
-
-        # Strip markdown code blocks
-        cleaned = re.sub(r"```(?:json)?\s*", "", response).strip()
-        cleaned = re.sub(r"```\s*$", "", cleaned).strip()
-
-        # Strategy 1: Try parsing the whole cleaned response
-        try:
-            parsed = json.loads(cleaned)
-            if isinstance(parsed, dict):
-                return parsed
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-        # Strategy 2: Greedy regex - match from first { to last }
-        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group())
-            except json.JSONDecodeError:
-                pass
-
-        # Strategy 3: Find balanced braces
-        start = cleaned.find("{")
-        if start >= 0:
-            depth = 0
-            for i in range(start, len(cleaned)):
-                if cleaned[i] == "{":
-                    depth += 1
-                elif cleaned[i] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            return json.loads(cleaned[start : i + 1])
-                        except json.JSONDecodeError:
-                            break
-
-        return None
+        return parse_json_object(response)

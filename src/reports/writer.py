@@ -47,6 +47,294 @@ class PlannedSection:
 MAX_FINDINGS_CHARS = 15000  # ~4k tokens for findings context
 
 
+# --- Section generation configuration ---
+
+_SECTION_SYSTEM_PROMPT = "You are writing a sourced, evidence-based research report."
+
+_CITATION_INSTRUCTIONS = """\
+CITATION INSTRUCTIONS:
+- Each finding includes a source like [Source: [N] domain].
+- Cite claims inline using [N] notation, e.g., "accuracy improved 40% [3]."
+- Aim for 3-8 citations per section. Do NOT list references at the end."""
+
+
+@dataclass
+class _SectionConfig:
+    """Configuration for generating a specific section type."""
+
+    prompt_template: str
+    system_suffix: str = (
+        " Every major claim must cite its source using [N]."
+        " When findings disagree, present both sides."
+    )
+    use_citations: bool = True
+    use_kg_context: bool = True
+    max_findings: int = 20
+    max_findings_chars: int | None = None
+    selection_title: str | None = None
+    selection_description: str | None = None
+    pre_filter: str | None = None
+    skip_selection: bool = False
+    allow_empty: bool = False
+
+
+def _filter_meta_questions(findings: list) -> list:
+    """Filter out meta-questions and placeholder content."""
+    meta_phrases = [
+        "please provide",
+        "what information",
+        "could you clarify",
+        "what are you looking for",
+        "template or placeholder",
+    ]
+    return [
+        f for f in findings
+        if not any(phrase in f.content.lower() for phrase in meta_phrases)
+    ]
+
+
+def _filter_numeric(findings: list) -> list:
+    """Keep only findings containing numeric data."""
+    return [f for f in findings if any(c.isdigit() for c in f.content)][:20]
+
+
+def _filter_temporal(findings: list) -> list:
+    """Keep findings with temporal references."""
+    current_year = datetime.now().year
+    year_keywords = [str(y) for y in range(current_year - 5, current_year + 1)]
+    temporal_keywords = [
+        *year_keywords,
+        "january", "february", "march", "april", "may", "june",
+        "july", "august", "september", "october", "november", "december",
+        "released", "launched", "announced", "introduced",
+    ]
+    result = [
+        f for f in findings
+        if any(kw in f.content.lower() for kw in temporal_keywords)
+    ][:25]
+    return result if result else findings[:20]
+
+
+_PRE_FILTERS: dict[str, Callable] = {
+    "meta_questions": _filter_meta_questions,
+    "numeric": _filter_numeric,
+    "temporal": _filter_temporal,
+}
+
+_SECTION_CONFIGS: dict[SectionType, _SectionConfig] = {
+    SectionType.TLDR: _SectionConfig(
+        prompt_template="""\
+Write a TL;DR (Too Long; Didn't Read) summary for this research.
+
+RESEARCH QUESTION: {goal}
+
+KEY FINDINGS (focus on these substantive findings):
+{findings}
+
+Write 2-3 sentences that directly answer the research question with the most important takeaways.
+Be specific and definitive — use exact numbers, names, and details from findings.
+Do NOT say the research is incomplete or a placeholder — summarize what was actually found.
+
+Format as a blockquote (start each line with >).
+Output ONLY the blockquote, nothing else.""",
+        system_suffix=" Distill findings into a precise summary.",
+        use_citations=False,
+        use_kg_context=False,
+        max_findings=15,
+        selection_title="TL;DR summary",
+        selection_description="Bottom-line answer",
+        pre_filter="meta_questions",
+    ),
+    SectionType.FLASH_NUMBERS: _SectionConfig(
+        prompt_template="""\
+Extract the most impactful numbers/statistics from these research findings.
+
+RESEARCH QUESTION: {goal}
+
+FINDINGS WITH DATA:
+{findings}
+
+Format each key metric as:
+**[NUMBER/STAT]** — [Brief description of what it means] [N]
+
+Where [N] is the source reference number from the finding.
+
+Example:
+**94.4%** — LLM agents vulnerable to prompt injection attacks [3]
+**10-15 min** — Time to generate working CVE exploits with AI [7]
+
+Select 3-6 of the most compelling, relevant statistics.
+Output ONLY the formatted metrics, one per line. No introductory text.""",
+        system_suffix=" Highlight key statistics with their sources.",
+        use_citations=False,
+        use_kg_context=False,
+        pre_filter="numeric",
+        skip_selection=True,
+        allow_empty=True,
+    ),
+    SectionType.STATS_TABLE: _SectionConfig(
+        prompt_template="""\
+Create a comparison table from these research findings.
+
+RESEARCH QUESTION: {goal}
+SECTION DESCRIPTION: {description}
+
+FINDINGS:
+{findings}
+
+Create a markdown table comparing the key items/options/approaches found in the research.
+Choose appropriate column headers based on what's being compared.
+Include a "Source" column with [N] references where data comes from specific findings.
+
+Output ONLY the markdown table. No introductory text.""",
+        system_suffix=" Create precise comparison tables.",
+        use_citations=False,
+        use_kg_context=False,
+        max_findings=25,
+    ),
+    SectionType.COMPARISON: _SectionConfig(
+        prompt_template="""\
+Write a side-by-side comparison analysis.
+
+RESEARCH QUESTION: {goal}
+SECTION TITLE: {title}
+SECTION DESCRIPTION: {description}
+
+AVAILABLE FINDINGS:
+{findings}
+{kg_context}{citations}
+
+Write 3-4 paragraphs that:
+1. Identify the key items/approaches being compared
+2. Analyze strengths and weaknesses of each
+3. Highlight key differentiators
+4. Provide guidance on when to use each
+
+Name specific sources, organizations, or tools when available.
+Use exact numbers, dates, and details from findings.
+Use subheadings if helpful.
+Output ONLY the comparison content.""",
+    ),
+    SectionType.TIMELINE: _SectionConfig(
+        prompt_template="""\
+Create a chronological timeline from these research findings.
+
+RESEARCH QUESTION: {goal}
+SECTION TITLE: {title}
+
+FINDINGS:
+{findings}
+{citations}
+
+Format as a timeline with clear dates/periods:
+
+**[Date/Period]**: [Event/Development] [N]
+- Key details
+
+Order from earliest to most recent.
+Output ONLY the timeline content.""",
+        system_suffix=" Every major claim must cite its source using [N].",
+        use_kg_context=False,
+        pre_filter="temporal",
+        skip_selection=True,
+    ),
+    SectionType.GAPS: _SectionConfig(
+        prompt_template="""\
+Identify knowledge gaps and open questions from this research.
+
+RESEARCH QUESTION: {goal}
+
+FINDINGS:
+{findings}
+{kg_context}{citations}
+
+Write 2-3 paragraphs covering:
+1. What important questions remain unanswered
+2. Areas where more research is needed
+3. Any contradictions or debates that aren't resolved
+4. Limitations of current knowledge
+
+If findings are marked [VERIFIED], note where confidence is high.
+If [UNVERIFIED] or [FLAGGED], note these as areas needing further investigation.
+Be specific about what we don't know yet.
+Output ONLY the gaps content.""",
+        selection_title="Open questions gaps unknowns",
+        selection_description="Knowledge gaps and uncertainties",
+    ),
+    SectionType.NARRATIVE: _SectionConfig(
+        prompt_template="""\
+Write a section of a deep research report.
+
+RESEARCH QUESTION: {goal}
+SECTION TITLE: {title}
+SECTION DESCRIPTION: {description}
+
+AVAILABLE FINDINGS:
+{findings}
+{kg_context}{citations}
+
+Write 4-6 paragraphs that:
+1. Open with the key point for this theme
+2. Develop with supporting details and evidence
+3. Explain significance and implications
+4. Connect to the broader research question
+
+Guidelines:
+- Write flowing prose, not bullet points
+- Name specific sources, organizations, or tools when available
+- Use exact numbers, dates, and details from findings
+- If marked [VERIFIED], state with confidence. If [UNVERIFIED], hedge appropriately.
+
+Output ONLY the section content, no headers.""",
+        max_findings_chars=12000,
+    ),
+    SectionType.ANALYSIS: _SectionConfig(
+        prompt_template="""\
+Write an analysis section synthesizing research findings.
+
+RESEARCH QUESTION: {goal}
+SECTION TITLE: {title}
+SECTION DESCRIPTION: {description}
+
+AVAILABLE FINDINGS:
+{findings}
+{kg_context}{citations}
+
+Write 3-4 paragraphs that:
+1. Synthesize the most important insights
+2. Identify patterns, trends, and connections
+3. Address contradictions or debates
+4. Draw conclusions the reader might not see
+
+Name specific sources, organizations, or tools when available.
+If marked [VERIFIED], state with confidence. If [UNVERIFIED], hedge appropriately.
+Output ONLY the analysis content.""",
+    ),
+    SectionType.CONCLUSIONS: _SectionConfig(
+        prompt_template="""\
+Write the conclusions section of a research report.
+
+RESEARCH QUESTION: {goal}
+
+KEY FINDINGS:
+{findings}
+{kg_context}{citations}
+
+Write 2-3 paragraphs that:
+1. Directly answer the research question
+2. Summarize the most important takeaways with specific evidence
+3. Provide actionable recommendations
+4. Suggest areas for further investigation
+
+Be definitive where evidence is [VERIFIED], hedged where [UNVERIFIED].
+Output ONLY the conclusions content.""",
+        system_suffix=" Every major claim must cite its source using [N].",
+        selection_title="Conclusions recommendations takeaways",
+        selection_description="Final answer and recommendations",
+    ),
+}
+
+
 @dataclass
 class ReportSection:
     """A section in the research report."""
@@ -810,448 +1098,63 @@ Return ONLY the JSON array, no explanation."""
         findings: list[Finding],
         kg_exports: dict | None = None,
     ) -> str:
-        """Generate content for a planned section based on its type."""
-        generators = {
-            SectionType.TLDR: self._gen_tldr,
-            SectionType.FLASH_NUMBERS: self._gen_flash_numbers,
-            SectionType.STATS_TABLE: self._gen_stats_table,
-            SectionType.COMPARISON: self._gen_comparison,
-            SectionType.TIMELINE: self._gen_timeline,
-            SectionType.GAPS: self._gen_gaps,
-            SectionType.NARRATIVE: self._gen_narrative,
-            SectionType.ANALYSIS: self._gen_analysis_section,
-            SectionType.CONCLUSIONS: self._gen_conclusions_section,
-        }
+        """Generate content for a planned section based on its type.
 
-        generator = generators.get(section.section_type, self._gen_narrative)
-        return await generator(section, goal, findings, kg_exports=kg_exports)
+        Uses data-driven _SECTION_CONFIGS to avoid duplicating scaffolding
+        across section types. Each config specifies: prompt template, finding
+        selection params, pre-filters, and whether to include KG context /
+        citation instructions.
+        """
+        config = _SECTION_CONFIGS.get(
+            section.section_type, _SECTION_CONFIGS[SectionType.NARRATIVE]
+        )
 
-    async def _gen_tldr(
-        self,
-        _section: PlannedSection,
-        goal: str,
-        findings: list[Finding],
-        kg_exports: dict | None = None,
-    ) -> str:
-        """Generate a 2-3 sentence TL;DR summary."""
-        # Filter out any meta-questions or placeholder content from findings
-        valid_findings = [
-            f
-            for f in findings
-            if not any(
-                phrase in f.content.lower()
-                for phrase in [
-                    "please provide",
-                    "what information",
-                    "could you clarify",
-                    "what are you looking for",
-                    "template or placeholder",
-                ]
+        # Pre-filter findings if configured
+        filtered = findings
+        if config.pre_filter:
+            filter_fn = _PRE_FILTERS.get(config.pre_filter)
+            if filter_fn:
+                filtered = filter_fn(findings)
+                if config.allow_empty and not filtered:
+                    return ""
+
+        # Select relevant findings or use pre-filtered directly
+        if config.skip_selection:
+            selected = filtered
+        else:
+            selected = self._select_findings_for_section(
+                filtered,
+                config.selection_title or section.title,
+                config.selection_description or section.description,
+                section_type=section.section_type,
+                max_findings=config.max_findings,
             )
-        ]
-        selected = self._select_findings_for_section(
-            valid_findings,
-            "TL;DR summary",
-            "Bottom-line answer",
-            section_type=SectionType.TLDR,
-            max_findings=15,
+
+        # Format findings, KG context, and citation instructions
+        findings_text = self._format_findings_block(selected, config.max_findings_chars)
+        kg_context = (
+            self._format_kg_context(kg_exports, section.section_type)
+            if config.use_kg_context else ""
         )
-        findings_text = self._format_findings_block(selected)
+        citations = _CITATION_INSTRUCTIONS if config.use_citations else ""
 
-        prompt = f"""Write a TL;DR (Too Long; Didn't Read) summary for this research.
-
-RESEARCH QUESTION: {goal}
-
-KEY FINDINGS (focus on these substantive findings):
-{findings_text}
-
-Write 2-3 sentences that directly answer the research question with the most important takeaways.
-Be specific and definitive — use exact numbers, names, and details from findings.
-Do NOT say the research is incomplete or a placeholder — summarize what was actually found.
-
-Format as a blockquote (start each line with >).
-Output ONLY the blockquote, nothing else."""
+        # Build prompt from template (unused placeholders are silently ignored)
+        prompt = config.prompt_template.format(
+            goal=goal,
+            title=section.title,
+            description=section.description,
+            findings=findings_text,
+            kg_context=kg_context,
+            citations=citations,
+        )
 
         return await self._call_claude(
-            prompt,
-            "You are writing a sourced, evidence-based research report. Distill findings into a precise summary.",
+            prompt, _SECTION_SYSTEM_PROMPT + config.system_suffix
         )
 
-    async def _gen_flash_numbers(
-        self,
-        _section: PlannedSection,
-        goal: str,
-        findings: list[Finding],
-        kg_exports: dict | None = None,
-    ) -> str:
-        """Generate key metrics callouts."""
-        # Find findings with numbers
-        numeric_findings = [f for f in findings if any(c.isdigit() for c in f.content)][:20]
 
-        if not numeric_findings:
-            return ""
 
-        findings_text = self._format_findings_block(numeric_findings)
 
-        prompt = f"""Extract the most impactful numbers/statistics from these research findings.
-
-RESEARCH QUESTION: {goal}
-
-FINDINGS WITH DATA:
-{findings_text}
-
-Format each key metric as:
-**[NUMBER/STAT]** — [Brief description of what it means] [N]
-
-Where [N] is the source reference number from the finding.
-
-Example:
-**94.4%** — LLM agents vulnerable to prompt injection attacks [3]
-**10-15 min** — Time to generate working CVE exploits with AI [7]
-
-Select 3-6 of the most compelling, relevant statistics.
-Output ONLY the formatted metrics, one per line. No introductory text."""
-
-        return await self._call_claude(
-            prompt,
-            "You are writing a sourced, evidence-based research report. Highlight key statistics with their sources.",
-        )
-
-    async def _gen_stats_table(
-        self,
-        section: PlannedSection,
-        goal: str,
-        findings: list[Finding],
-        kg_exports: dict | None = None,
-    ) -> str:
-        """Generate a markdown comparison table."""
-        selected = self._select_findings_for_section(
-            findings,
-            section.title,
-            section.description,
-            section_type=SectionType.STATS_TABLE,
-            max_findings=25,
-        )
-        findings_text = self._format_findings_block(selected)
-
-        prompt = f"""Create a comparison table from these research findings.
-
-RESEARCH QUESTION: {goal}
-SECTION DESCRIPTION: {section.description}
-
-FINDINGS:
-{findings_text}
-
-Create a markdown table comparing the key items/options/approaches found in the research.
-Choose appropriate column headers based on what's being compared.
-Include a "Source" column with [N] references where data comes from specific findings.
-
-Output ONLY the markdown table. No introductory text."""
-
-        return await self._call_claude(
-            prompt,
-            "You are writing a sourced, evidence-based research report. Create precise comparison tables.",
-        )
-
-    async def _gen_comparison(
-        self,
-        section: PlannedSection,
-        goal: str,
-        findings: list[Finding],
-        kg_exports: dict | None = None,
-    ) -> str:
-        """Generate side-by-side comparison analysis."""
-        selected = self._select_findings_for_section(
-            findings,
-            section.title,
-            section.description,
-            section_type=SectionType.COMPARISON,
-            max_findings=20,
-        )
-        findings_text = self._format_findings_block(selected)
-        kg_context = self._format_kg_context(kg_exports, SectionType.COMPARISON)
-
-        prompt = f"""Write a side-by-side comparison analysis.
-
-RESEARCH QUESTION: {goal}
-SECTION TITLE: {section.title}
-SECTION DESCRIPTION: {section.description}
-
-AVAILABLE FINDINGS:
-{findings_text}
-{kg_context}
-CITATION INSTRUCTIONS:
-- Each finding includes a source like [Source: [N] domain].
-- Cite claims inline using [N] notation, e.g., "accuracy improved 40% [3]."
-- Aim for 3-8 citations per section. Do NOT list references at the end.
-
-Write 3-4 paragraphs that:
-1. Identify the key items/approaches being compared
-2. Analyze strengths and weaknesses of each
-3. Highlight key differentiators
-4. Provide guidance on when to use each
-
-Name specific sources, organizations, or tools when available.
-Use exact numbers, dates, and details from findings.
-Use subheadings if helpful.
-Output ONLY the comparison content."""
-
-        return await self._call_claude(
-            prompt,
-            "You are writing a sourced, evidence-based research report. Every major claim must cite its source using [N]. When findings disagree, present both sides.",
-        )
-
-    async def _gen_timeline(
-        self,
-        section: PlannedSection,
-        goal: str,
-        findings: list[Finding],
-        kg_exports: dict | None = None,
-    ) -> str:
-        """Generate chronological timeline view."""
-        # Find findings with dates/years
-        # [HARDENED] CONF-003: Generate year range dynamically
-        current_year = datetime.now().year
-        year_keywords = [str(y) for y in range(current_year - 5, current_year + 1)]
-        temporal_keywords = [
-            *year_keywords,
-            "january",
-            "february",
-            "march",
-            "april",
-            "may",
-            "june",
-            "july",
-            "august",
-            "september",
-            "october",
-            "november",
-            "december",
-            "released",
-            "launched",
-            "announced",
-            "introduced",
-        ]
-
-        temporal_findings = [
-            f for f in findings if any(kw in f.content.lower() for kw in temporal_keywords)
-        ][:25]
-
-        if not temporal_findings:
-            temporal_findings = findings[:20]
-
-        findings_text = self._format_findings_block(temporal_findings)
-
-        prompt = f"""Create a chronological timeline from these research findings.
-
-RESEARCH QUESTION: {goal}
-SECTION TITLE: {section.title}
-
-FINDINGS:
-{findings_text}
-
-CITATION INSTRUCTIONS:
-- Each finding includes a source like [Source: [N] domain].
-- Cite claims inline using [N] notation, e.g., "Released in March 2024 [3]."
-
-Format as a timeline with clear dates/periods:
-
-**[Date/Period]**: [Event/Development] [N]
-- Key details
-
-Order from earliest to most recent.
-Output ONLY the timeline content."""
-
-        return await self._call_claude(
-            prompt,
-            "You are writing a sourced, evidence-based research report. Every major claim must cite its source using [N].",
-        )
-
-    async def _gen_gaps(
-        self,
-        _section: PlannedSection,
-        goal: str,
-        findings: list[Finding],
-        kg_exports: dict | None = None,
-    ) -> str:
-        """Generate open questions and knowledge gaps section."""
-        selected = self._select_findings_for_section(
-            findings,
-            "Open questions gaps unknowns",
-            "Knowledge gaps and uncertainties",
-            section_type=SectionType.GAPS,
-            max_findings=20,
-        )
-        findings_text = self._format_findings_block(selected)
-        kg_context = self._format_kg_context(kg_exports, SectionType.GAPS)
-
-        prompt = f"""Identify knowledge gaps and open questions from this research.
-
-RESEARCH QUESTION: {goal}
-
-FINDINGS:
-{findings_text}
-{kg_context}
-CITATION INSTRUCTIONS:
-- Each finding includes a source like [Source: [N] domain].
-- When referencing a specific claim or contradiction, cite it inline using [N].
-
-Write 2-3 paragraphs covering:
-1. What important questions remain unanswered
-2. Areas where more research is needed
-3. Any contradictions or debates that aren't resolved
-4. Limitations of current knowledge
-
-If findings are marked [VERIFIED], note where confidence is high.
-If [UNVERIFIED] or [FLAGGED], note these as areas needing further investigation.
-Be specific about what we don't know yet.
-Output ONLY the gaps content."""
-
-        return await self._call_claude(
-            prompt,
-            "You are writing a sourced, evidence-based research report. Every major claim must cite its source using [N]. When findings disagree, present both sides.",
-        )
-
-    async def _gen_narrative(
-        self,
-        section: PlannedSection,
-        goal: str,
-        findings: list[Finding],
-        kg_exports: dict | None = None,
-    ) -> str:
-        """Generate standard narrative prose section."""
-        selected = self._select_findings_for_section(
-            findings,
-            section.title,
-            section.description,
-            section_type=SectionType.NARRATIVE,
-            max_findings=20,
-        )
-        findings_text = self._format_findings_block(selected, 12000)
-        kg_context = self._format_kg_context(kg_exports, SectionType.NARRATIVE)
-
-        prompt = f"""Write a section of a deep research report.
-
-RESEARCH QUESTION: {goal}
-SECTION TITLE: {section.title}
-SECTION DESCRIPTION: {section.description}
-
-AVAILABLE FINDINGS:
-{findings_text}
-{kg_context}
-CITATION INSTRUCTIONS:
-- Each finding includes a source like [Source: [N] domain].
-- Cite claims inline using [N] notation, e.g., "accuracy improved 40% [3]."
-- Aim for 3-8 citations per section. Do NOT list references at the end.
-
-Write 4-6 paragraphs that:
-1. Open with the key point for this theme
-2. Develop with supporting details and evidence
-3. Explain significance and implications
-4. Connect to the broader research question
-
-Guidelines:
-- Write flowing prose, not bullet points
-- Name specific sources, organizations, or tools when available
-- Use exact numbers, dates, and details from findings
-- If marked [VERIFIED], state with confidence. If [UNVERIFIED], hedge appropriately.
-
-Output ONLY the section content, no headers."""
-
-        return await self._call_claude(
-            prompt,
-            "You are writing a sourced, evidence-based research report. Every major claim must cite its source using [N]. When findings disagree, present both sides.",
-        )
-
-    async def _gen_analysis_section(
-        self,
-        section: PlannedSection,
-        goal: str,
-        findings: list[Finding],
-        kg_exports: dict | None = None,
-    ) -> str:
-        """Generate analysis and insights section."""
-        selected = self._select_findings_for_section(
-            findings,
-            section.title,
-            section.description,
-            section_type=SectionType.ANALYSIS,
-            max_findings=20,
-        )
-        findings_text = self._format_findings_block(selected)
-        kg_context = self._format_kg_context(kg_exports, SectionType.ANALYSIS)
-
-        prompt = f"""Write an analysis section synthesizing research findings.
-
-RESEARCH QUESTION: {goal}
-SECTION TITLE: {section.title}
-SECTION DESCRIPTION: {section.description}
-
-AVAILABLE FINDINGS:
-{findings_text}
-{kg_context}
-CITATION INSTRUCTIONS:
-- Each finding includes a source like [Source: [N] domain].
-- Cite claims inline using [N] notation, e.g., "accuracy improved 40% [3]."
-- Aim for 3-8 citations per section. Do NOT list references at the end.
-
-Write 3-4 paragraphs that:
-1. Synthesize the most important insights
-2. Identify patterns, trends, and connections
-3. Address contradictions or debates
-4. Draw conclusions the reader might not see
-
-Name specific sources, organizations, or tools when available.
-If marked [VERIFIED], state with confidence. If [UNVERIFIED], hedge appropriately.
-Output ONLY the analysis content."""
-
-        return await self._call_claude(
-            prompt,
-            "You are writing a sourced, evidence-based research report. Every major claim must cite its source using [N]. When findings disagree, present both sides.",
-        )
-
-    async def _gen_conclusions_section(
-        self,
-        _section: PlannedSection,
-        goal: str,
-        findings: list[Finding],
-        kg_exports: dict | None = None,
-    ) -> str:
-        """Generate conclusions section."""
-        selected = self._select_findings_for_section(
-            findings,
-            "Conclusions recommendations takeaways",
-            "Final answer and recommendations",
-            section_type=SectionType.CONCLUSIONS,
-            max_findings=20,
-        )
-        findings_text = self._format_findings_block(selected)
-        kg_context = self._format_kg_context(kg_exports, SectionType.CONCLUSIONS)
-
-        prompt = f"""Write the conclusions section of a research report.
-
-RESEARCH QUESTION: {goal}
-
-KEY FINDINGS:
-{findings_text}
-{kg_context}
-CITATION INSTRUCTIONS:
-- Each finding includes a source like [Source: [N] domain].
-- Cite key claims inline using [N] notation.
-
-Write 2-3 paragraphs that:
-1. Directly answer the research question
-2. Summarize the most important takeaways with specific evidence
-3. Provide actionable recommendations
-4. Suggest areas for further investigation
-
-Be definitive where evidence is [VERIFIED], hedged where [UNVERIFIED].
-Output ONLY the conclusions content."""
-
-        return await self._call_claude(
-            prompt,
-            "You are writing a sourced, evidence-based research report. Every major claim must cite its source using [N].",
-        )
 
     async def generate_dynamic_report(
         self,

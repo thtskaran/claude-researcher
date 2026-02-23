@@ -12,12 +12,12 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 
 def _session_response(s) -> ResearchSessionResponse:
-    """Build a ResearchSessionResponse from a SessionRecord."""
+    """Build a ResearchSessionResponse from a ResearchSession."""
     return ResearchSessionResponse(
         session_id=s.id,
         goal=s.goal,
         max_iterations=s.max_iterations,
-        time_limit=s.time_limit,
+        time_limit=s.time_limit_minutes,
         status=s.status,
         created_at=s.started_at,
         completed_at=s.ended_at,

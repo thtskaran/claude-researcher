@@ -49,17 +49,8 @@ async def lifespan(app: FastAPI):
 
     # Crash recovery: mark any sessions left as 'running' as 'crashed'
     try:
-        cursor = await db._connection.execute(
-            "SELECT COUNT(*) as count FROM sessions WHERE status = 'running'"
-        )
-        row = await cursor.fetchone()
-        crashed_count = row["count"] if row else 0
-
+        crashed_count = await db.mark_crashed_sessions()
         if crashed_count > 0:
-            await db._connection.execute(
-                "UPDATE sessions SET status = 'crashed' WHERE status = 'running'"
-            )
-            await db._connection.commit()
             print(f"⚠️  Marked {crashed_count} previously-running session(s) as 'crashed'")
     except Exception as e:
         print(f"⚠️  Could not check for crashed sessions: {e}")

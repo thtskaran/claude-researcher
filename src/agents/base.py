@@ -362,6 +362,24 @@ class BaseAgent(ABC):
         )
         return await self.db.save_message(message)
 
+    @staticmethod
+    def _build_env() -> dict[str, str]:
+        """Build environment dict with API key for LLM calls."""
+        env: dict[str, str] = {}
+        if api_key := _get_api_key():
+            env["ANTHROPIC_API_KEY"] = api_key
+        return env
+
+    def _track_llm_cost(self, model: str, prompt: str, response_text: str) -> None:
+        """Track cost for an LLM call."""
+        tracker = get_cost_tracker()
+        tracker.track_call(
+            model=model,
+            input_text=prompt,
+            output_text=response_text,
+            system_prompt=self.system_prompt,
+        )
+
     async def call_claude(
         self,
         prompt: str,
@@ -389,10 +407,7 @@ class BaseAgent(ABC):
             Text response (str), or parsed structured data (dict/list) if
             output_format is provided.
         """
-        # Build environment with API key
-        env = {}
-        if api_key := _get_api_key():
-            env["ANTHROPIC_API_KEY"] = api_key
+        env = self._build_env()
 
         # Model selection priority: explicit override > task routing > config
         model = model_override or self.config.model
@@ -453,14 +468,7 @@ class BaseAgent(ABC):
             )
             raise
 
-        # Track costs
-        tracker = get_cost_tracker()
-        tracker.track_call(
-            model=model,
-            input_text=prompt,
-            output_text=response_text,
-            system_prompt=self.system_prompt,
-        )
+        self._track_llm_cost(model, prompt, response_text)
 
         # Return structured output if available and requested
         if output_format and structured_output is not None:
@@ -486,10 +494,7 @@ class BaseAgent(ABC):
         """
         from claude_agent_sdk import ToolResultBlock, ToolUseBlock
 
-        # Build environment with API key
-        env = {}
-        if api_key := _get_api_key():
-            env["ANTHROPIC_API_KEY"] = api_key
+        env = self._build_env()
 
         options = ClaudeAgentOptions(
             model=self.config.model,
@@ -539,14 +544,7 @@ class BaseAgent(ABC):
             )
             raise
 
-        # Track costs
-        tracker = get_cost_tracker()
-        tracker.track_call(
-            model=self.config.model,
-            input_text=prompt,
-            output_text=response_text,
-            system_prompt=self.system_prompt,
-        )
+        self._track_llm_cost(self.config.model, prompt, response_text)
 
         # Track web searches and fetches
         for tr in tool_results:

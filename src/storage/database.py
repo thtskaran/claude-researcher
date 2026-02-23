@@ -195,6 +195,119 @@ class ResearchDatabase:
             raise RuntimeError("Database not connected. Call connect() first.")
         return self._pool
 
+    # --- Low-level helpers to eliminate boilerplate ---
+
+    async def _fetch_one(self, sql: str, params: tuple = ()) -> aiosqlite.Row | None:
+        """Execute a read query and return a single row."""
+        pool = self._check_pool()
+        async with pool.acquire() as conn:
+            cursor = await conn.execute(sql, params)
+            return await cursor.fetchone()
+
+    async def _fetch_all(self, sql: str, params: tuple = ()) -> list[aiosqlite.Row]:
+        """Execute a read query and return all rows."""
+        pool = self._check_pool()
+        async with pool.acquire() as conn:
+            cursor = await conn.execute(sql, params)
+            return await cursor.fetchall()
+
+    async def _write(self, sql: str, params: tuple = (), *, op: str = "") -> int:
+        """Execute a write with commit/rollback. Returns lastrowid."""
+        pool = self._check_pool()
+        async with pool.acquire() as conn:
+            try:
+                cursor = await conn.execute(sql, params)
+                await conn.commit()
+                return cursor.lastrowid
+            except Exception as e:
+                await conn.rollback()
+                logger.error("DB error in %s: %s", op or "write", e, exc_info=True)
+                raise
+
+    async def _write_many(self, sql: str, params_list: list, *, op: str = "") -> int:
+        """Execute a batch write. Returns count of rows written."""
+        pool = self._check_pool()
+        async with pool.acquire() as conn:
+            try:
+                await conn.executemany(sql, params_list)
+                await conn.commit()
+                return len(params_list)
+            except Exception as e:
+                await conn.rollback()
+                logger.error("DB error in %s: %s", op or "write_many", e, exc_info=True)
+                raise
+
+    # --- Row mappers ---
+
+    @staticmethod
+    def _row_to_session(row: aiosqlite.Row) -> ResearchSession:
+        return ResearchSession(
+            id=row["id"],
+            goal=row["goal"],
+            slug=row["slug"],
+            max_iterations=row["max_iterations"] if "max_iterations" in row.keys() else 5,
+            time_limit_minutes=(
+                row["time_limit_minutes"] if "time_limit_minutes" in row.keys() else 0
+            ),
+            started_at=datetime.fromisoformat(row["started_at"]),
+            ended_at=datetime.fromisoformat(row["ended_at"]) if row["ended_at"] else None,
+            status=row["status"],
+            total_findings=row["total_findings"],
+            total_searches=row["total_searches"],
+            depth_reached=row["depth_reached"],
+            elapsed_seconds=row["elapsed_seconds"] or 0.0,
+            paused_at=(
+                datetime.fromisoformat(row["paused_at"]) if row["paused_at"] else None
+            ),
+            iteration_count=row["iteration_count"] or 0,
+            phase=row["phase"] or "init",
+        )
+
+    @staticmethod
+    def _row_to_topic(row: aiosqlite.Row) -> ResearchTopic:
+        return ResearchTopic(
+            id=row["id"],
+            session_id=row["session_id"],
+            topic=row["topic"],
+            parent_topic_id=row["parent_topic_id"],
+            depth=row["depth"],
+            status=row["status"],
+            priority=row["priority"],
+        )
+
+    @staticmethod
+    def _row_to_finding(row: aiosqlite.Row) -> Finding:
+        return Finding(
+            id=row["id"],
+            session_id=row["session_id"],
+            topic_id=row["topic_id"],
+            content=row["content"],
+            finding_type=FindingType(row["finding_type"]),
+            source_url=row["source_url"],
+            confidence=row["confidence"],
+            search_query=row["search_query"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            validated_by_manager=bool(row["validated_by_manager"]),
+            manager_notes=row["manager_notes"],
+            verification_status=row["verification_status"],
+            verification_method=row["verification_method"],
+            kg_support_score=row["kg_support_score"],
+            original_confidence=row["original_confidence"],
+        )
+
+    @staticmethod
+    def _row_to_message(row: aiosqlite.Row) -> AgentMessage:
+        return AgentMessage(
+            id=row["id"],
+            session_id=row["session_id"],
+            from_agent=AgentRole(row["from_agent"]),
+            to_agent=AgentRole(row["to_agent"]),
+            message_type=row["message_type"],
+            content=row["content"],
+            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
     async def _create_tables(self, conn: aiosqlite.Connection) -> None:
         """Create database tables if they don't exist."""
         await conn.executescript("""
@@ -358,31 +471,24 @@ class ResearchDatabase:
     # Session methods
     async def create_session(self, goal: str, max_iterations: int = 5) -> ResearchSession:
         """Create a new research session with unique hex ID."""
-        pool = self._check_pool()
-        # [HARDENED] BUG-011: Retry on ID collision (up to 3 attempts)
+        # Retry on ID collision (up to 3 attempts)
         last_err: Exception | None = None
         for _attempt in range(3):
             session_id = _generate_session_id()
             slug = _generate_slug(goal)
             now = datetime.now().isoformat()
-            async with pool.acquire() as conn:
-                try:
-                    await conn.execute(
-                        """
-                        INSERT INTO sessions (id, goal, slug, max_iterations, started_at, status)
-                        VALUES (?, ?, ?, ?, ?, 'active')
-                        """,
-                        (session_id, goal, slug, max_iterations, now),
-                    )
-                    await conn.commit()
-                    break
-                except Exception as e:
-                    await conn.rollback()
-                    logger.error("DB error in create_session: %s", e, exc_info=True)
-                    last_err = e
-                    if "unique" in str(e).lower() or "constraint" in str(e).lower():
-                        continue
-                    raise
+            try:
+                await self._write(
+                    "INSERT INTO sessions (id, goal, slug, max_iterations, started_at, status) VALUES (?, ?, ?, ?, ?, 'active')",
+                    (session_id, goal, slug, max_iterations, now),
+                    op="create_session",
+                )
+                break
+            except Exception as e:
+                last_err = e
+                if "unique" in str(e).lower() or "constraint" in str(e).lower():
+                    continue
+                raise
         else:
             raise last_err  # type: ignore[misc]
         logger.info("Session created: %s", session_id)
@@ -397,69 +503,33 @@ class ResearchDatabase:
 
     async def get_session(self, session_id: str) -> ResearchSession | None:
         """Get a session by ID."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM sessions WHERE id = ?", (session_id,)
-            )
-            row = await cursor.fetchone()
-        if not row:
-            return None
-        return ResearchSession(
-            id=row["id"],
-            goal=row["goal"],
-            slug=row["slug"],
-            max_iterations=row["max_iterations"] if "max_iterations" in row.keys() else 5,
-            time_limit_minutes=row["time_limit_minutes"] if "time_limit_minutes" in row.keys() else 0,
-            started_at=datetime.fromisoformat(row["started_at"]),
-            ended_at=datetime.fromisoformat(row["ended_at"]) if row["ended_at"] else None,
-            status=row["status"],
-            total_findings=row["total_findings"],
-            total_searches=row["total_searches"],
-            depth_reached=row["depth_reached"],
-            elapsed_seconds=row["elapsed_seconds"] or 0.0,
-            paused_at=datetime.fromisoformat(row["paused_at"]) if row["paused_at"] else None,
-            iteration_count=row["iteration_count"] or 0,
-            phase=row["phase"] or "init",
-        )
+        row = await self._fetch_one("SELECT * FROM sessions WHERE id = ?", (session_id,))
+        return self._row_to_session(row) if row else None
 
     async def update_session(self, session: ResearchSession) -> None:
         """Update a session."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            try:
-                await conn.execute(
-                    """
-                    UPDATE sessions SET
-                        status = ?,
-                        ended_at = ?,
-                        total_findings = ?,
-                        total_searches = ?,
-                        depth_reached = ?,
-                        elapsed_seconds = ?,
-                        paused_at = ?,
-                        iteration_count = ?,
-                        phase = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        session.status,
-                        session.ended_at.isoformat() if session.ended_at else None,
-                        session.total_findings,
-                        session.total_searches,
-                        session.depth_reached,
-                        session.elapsed_seconds,
-                        session.paused_at.isoformat() if session.paused_at else None,
-                        session.iteration_count,
-                        session.phase,
-                        session.id,
-                    ),
-                )
-                await conn.commit()
-            except Exception as e:
-                await conn.rollback()
-                logger.error("DB error in update_session: %s", e, exc_info=True)
-                raise
+        await self._write(
+            """
+            UPDATE sessions SET
+                status = ?, ended_at = ?, total_findings = ?, total_searches = ?,
+                depth_reached = ?, elapsed_seconds = ?, paused_at = ?,
+                iteration_count = ?, phase = ?
+            WHERE id = ?
+            """,
+            (
+                session.status,
+                session.ended_at.isoformat() if session.ended_at else None,
+                session.total_findings,
+                session.total_searches,
+                session.depth_reached,
+                session.elapsed_seconds,
+                session.paused_at.isoformat() if session.paused_at else None,
+                session.iteration_count,
+                session.phase,
+                session.id,
+            ),
+            op="update_session",
+        )
 
     # Topic methods
     async def create_topic(
@@ -471,22 +541,11 @@ class ResearchDatabase:
         priority: int = 5,
     ) -> ResearchTopic:
         """Create a new research topic."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            try:
-                cursor = await conn.execute(
-                    """
-                    INSERT INTO topics (session_id, topic, parent_topic_id, depth, priority)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (session_id, topic, parent_topic_id, depth, priority),
-                )
-                await conn.commit()
-                lastrowid = cursor.lastrowid
-            except Exception as e:
-                await conn.rollback()
-                logger.error("DB error in create_topic: %s", e, exc_info=True)
-                raise
+        lastrowid = await self._write(
+            "INSERT INTO topics (session_id, topic, parent_topic_id, depth, priority) VALUES (?, ?, ?, ?, ?)",
+            (session_id, topic, parent_topic_id, depth, priority),
+            op="create_topic",
+        )
         return ResearchTopic(
             id=lastrowid,
             session_id=session_id,
@@ -498,133 +557,58 @@ class ResearchDatabase:
 
     async def get_pending_topics(self, session_id: str, limit: int = 10) -> list[ResearchTopic]:
         """Get pending topics ordered by priority."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            cursor = await conn.execute(
-                """
-                SELECT * FROM topics
-                WHERE session_id = ? AND status = 'pending'
-                ORDER BY priority DESC, depth ASC
-                LIMIT ?
-                """,
-                (session_id, limit),
-            )
-            rows = await cursor.fetchall()
-        return [
-            ResearchTopic(
-                id=row["id"],
-                session_id=row["session_id"],
-                topic=row["topic"],
-                parent_topic_id=row["parent_topic_id"],
-                depth=row["depth"],
-                status=row["status"],
-                priority=row["priority"],
-            )
-            for row in rows
-        ]
+        rows = await self._fetch_all(
+            """SELECT * FROM topics WHERE session_id = ? AND status = 'pending'
+            ORDER BY priority DESC, depth ASC LIMIT ?""",
+            (session_id, limit),
+        )
+        return [self._row_to_topic(row) for row in rows]
 
     async def update_topic_status(
         self, topic_id: int, status: str, findings_count: int = 0
     ) -> None:
         """Update topic status."""
-        pool = self._check_pool()
         completed_at = datetime.now().isoformat() if status == "completed" else None
-        async with pool.acquire() as conn:
-            try:
-                await conn.execute(
-                    """
-                    UPDATE topics SET status = ?, completed_at = ?, findings_count = ?
-                    WHERE id = ?
-                    """,
-                    (status, completed_at, findings_count, topic_id),
-                )
-                await conn.commit()
-            except Exception as e:
-                await conn.rollback()
-                logger.error("DB error in update_topic_status: %s", e, exc_info=True)
-                raise
+        await self._write(
+            "UPDATE topics SET status = ?, completed_at = ?, findings_count = ? WHERE id = ?",
+            (status, completed_at, findings_count, topic_id),
+            op="update_topic_status",
+        )
 
     async def get_all_topics(self, session_id: str) -> list[ResearchTopic]:
         """Get all topics for a session (for state reconstruction on resume)."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            cursor = await conn.execute(
-                """
-                SELECT * FROM topics
-                WHERE session_id = ?
-                ORDER BY priority DESC, depth ASC
-                """,
-                (session_id,),
-            )
-            rows = await cursor.fetchall()
-        return [
-            ResearchTopic(
-                id=row["id"],
-                session_id=row["session_id"],
-                topic=row["topic"],
-                parent_topic_id=row["parent_topic_id"],
-                depth=row["depth"],
-                status=row["status"],
-                priority=row["priority"],
-            )
-            for row in rows
-        ]
+        rows = await self._fetch_all(
+            "SELECT * FROM topics WHERE session_id = ? ORDER BY priority DESC, depth ASC",
+            (session_id,),
+        )
+        return [self._row_to_topic(row) for row in rows]
 
     async def reset_in_progress_topics(self, session_id: str) -> None:
         """Reset any in_progress topics back to pending (for resume after pause/crash)."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            try:
-                await conn.execute(
-                    """
-                    UPDATE topics SET status = 'pending', assigned_at = NULL
-                    WHERE session_id = ? AND status = 'in_progress'
-                    """,
-                    (session_id,),
-                )
-                await conn.commit()
-            except Exception as e:
-                await conn.rollback()
-                logger.error("DB error in reset_in_progress_topics: %s", e, exc_info=True)
-                raise
+        await self._write(
+            "UPDATE topics SET status = 'pending', assigned_at = NULL WHERE session_id = ? AND status = 'in_progress'",
+            (session_id,),
+            op="reset_in_progress_topics",
+        )
 
     # Finding methods
     async def save_finding(self, finding: Finding, topic_id: int | None = None) -> Finding:
         """Save a research finding."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            try:
-                cursor = await conn.execute(
-                    """
-                    INSERT INTO findings (
-                        session_id, topic_id, content, finding_type, source_url,
-                        confidence, search_query, created_at, validated_by_manager, manager_notes,
-                        verification_status, verification_method, kg_support_score, original_confidence
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        finding.session_id,
-                        topic_id,
-                        finding.content,
-                        finding.finding_type.value,
-                        finding.source_url,
-                        finding.confidence,
-                        finding.search_query,
-                        finding.created_at.isoformat(),
-                        1 if finding.validated_by_manager else 0,
-                        finding.manager_notes,
-                        finding.verification_status,
-                        finding.verification_method,
-                        finding.kg_support_score,
-                        finding.original_confidence,
-                    ),
-                )
-                await conn.commit()
-                finding.id = cursor.lastrowid
-            except Exception as e:
-                await conn.rollback()
-                logger.error("DB error in save_finding: %s", e, exc_info=True)
-                raise
+        finding.id = await self._write(
+            """INSERT INTO findings (
+                session_id, topic_id, content, finding_type, source_url,
+                confidence, search_query, created_at, validated_by_manager, manager_notes,
+                verification_status, verification_method, kg_support_score, original_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                finding.session_id, topic_id, finding.content, finding.finding_type.value,
+                finding.source_url, finding.confidence, finding.search_query,
+                finding.created_at.isoformat(), 1 if finding.validated_by_manager else 0,
+                finding.manager_notes, finding.verification_status, finding.verification_method,
+                finding.kg_support_score, finding.original_confidence,
+            ),
+            op="save_finding",
+        )
         return finding
 
     async def update_finding_verification(
@@ -637,36 +621,22 @@ class ResearchDatabase:
         new_confidence: float | None = None,
     ) -> None:
         """Update a finding's verification status."""
-        pool = self._check_pool()
-        # [HARDENED] DRY-002: Consolidated duplicated SQL branches
         fields = [
             "verification_status = ?",
             "verification_method = ?",
             "kg_support_score = ?",
             "original_confidence = ?",
         ]
-        params: list = [
-            verification_status,
-            verification_method,
-            kg_support_score,
-            original_confidence,
-        ]
+        params: list = [verification_status, verification_method, kg_support_score, original_confidence]
         if new_confidence is not None:
             fields.append("confidence = ?")
             params.append(new_confidence)
         params.append(finding_id)
-
-        async with pool.acquire() as conn:
-            try:
-                await conn.execute(
-                    f"UPDATE findings SET {', '.join(fields)} WHERE id = ?",
-                    tuple(params),
-                )
-                await conn.commit()
-            except Exception as e:
-                await conn.rollback()
-                logger.error("DB error in update_finding_verification: %s", e, exc_info=True)
-                raise
+        await self._write(
+            f"UPDATE findings SET {', '.join(fields)} WHERE id = ?",
+            tuple(params),
+            op="update_finding_verification",
+        )
 
     async def save_verification_result(
         self,
@@ -675,67 +645,51 @@ class ResearchDatabase:
         result_dict: dict,
     ) -> int:
         """Save a verification result."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            try:
-                cursor = await conn.execute(
-                    """
-                    INSERT INTO verification_results (
-                        session_id, finding_id, original_confidence, verified_confidence,
-                        verification_status, verification_method, consistency_score,
-                        kg_support_score, kg_entity_matches, kg_supporting_relations,
-                        critic_iterations, corrections_made, questions_asked, external_verification_used,
-                        contradictions, verification_time_ms, created_at, error
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        session_id,
-                        finding_id,
-                        result_dict.get("original_confidence"),
-                        result_dict.get("verified_confidence"),
-                        result_dict.get("verification_status"),
-                        result_dict.get("verification_method"),
-                        result_dict.get("consistency_score"),
-                        result_dict.get("kg_support_score"),
-                        result_dict.get("kg_entity_matches"),
-                        result_dict.get("kg_supporting_relations"),
-                        result_dict.get("critic_iterations"),
-                        json.dumps(result_dict.get("corrections_made", [])),
-                        json.dumps(result_dict.get("questions_asked", [])),
-                        1 if result_dict.get("external_verification_used") else 0,
-                        json.dumps(result_dict.get("contradictions", [])),
-                        result_dict.get("verification_time_ms", 0.0),
-                        datetime.now().isoformat(),
-                        result_dict.get("error"),
-                    ),
-                )
-                await conn.commit()
-                return cursor.lastrowid
-            except Exception as e:
-                await conn.rollback()
-                logger.error("DB error in save_verification_result: %s", e, exc_info=True)
-                raise
+        return await self._write(
+            """INSERT INTO verification_results (
+                session_id, finding_id, original_confidence, verified_confidence,
+                verification_status, verification_method, consistency_score,
+                kg_support_score, kg_entity_matches, kg_supporting_relations,
+                critic_iterations, corrections_made, questions_asked, external_verification_used,
+                contradictions, verification_time_ms, created_at, error
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                session_id, finding_id,
+                result_dict.get("original_confidence"),
+                result_dict.get("verified_confidence"),
+                result_dict.get("verification_status"),
+                result_dict.get("verification_method"),
+                result_dict.get("consistency_score"),
+                result_dict.get("kg_support_score"),
+                result_dict.get("kg_entity_matches"),
+                result_dict.get("kg_supporting_relations"),
+                result_dict.get("critic_iterations"),
+                json.dumps(result_dict.get("corrections_made", [])),
+                json.dumps(result_dict.get("questions_asked", [])),
+                1 if result_dict.get("external_verification_used") else 0,
+                json.dumps(result_dict.get("contradictions", [])),
+                result_dict.get("verification_time_ms", 0.0),
+                datetime.now().isoformat(),
+                result_dict.get("error"),
+            ),
+            op="save_verification_result",
+        )
 
     async def get_verification_stats(self, session_id: str) -> dict:
         """Get verification statistics for a session."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            cursor = await conn.execute(
-                """
-                SELECT
-                    COUNT(*) as total,
-                    SUM(CASE WHEN verification_status = 'verified' THEN 1 ELSE 0 END) as verified,
-                    SUM(CASE WHEN verification_status = 'flagged' THEN 1 ELSE 0 END) as flagged,
-                    SUM(CASE WHEN verification_status = 'rejected' THEN 1 ELSE 0 END) as rejected,
-                    SUM(CASE WHEN verification_status = 'skipped' THEN 1 ELSE 0 END) as skipped,
-                    AVG(original_confidence) as avg_original,
-                    AVG(verified_confidence) as avg_calibrated,
-                    AVG(verification_time_ms) as avg_time_ms
-                FROM verification_results WHERE session_id = ?
-                """,
-                (session_id,),
-            )
-            row = await cursor.fetchone()
+        row = await self._fetch_one(
+            """SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN verification_status = 'verified' THEN 1 ELSE 0 END) as verified,
+                SUM(CASE WHEN verification_status = 'flagged' THEN 1 ELSE 0 END) as flagged,
+                SUM(CASE WHEN verification_status = 'rejected' THEN 1 ELSE 0 END) as rejected,
+                SUM(CASE WHEN verification_status = 'skipped' THEN 1 ELSE 0 END) as skipped,
+                AVG(original_confidence) as avg_original,
+                AVG(verified_confidence) as avg_calibrated,
+                AVG(verification_time_ms) as avg_time_ms
+            FROM verification_results WHERE session_id = ?""",
+            (session_id,),
+        )
 
         if not row or row["total"] == 0:
             return {
@@ -769,135 +723,67 @@ class ResearchDatabase:
 
     async def get_session_findings(self, session_id: str) -> list[Finding]:
         """Get all findings for a session."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM findings WHERE session_id = ? ORDER BY created_at",
-                (session_id,),
-            )
-            rows = await cursor.fetchall()
-        return [
-            Finding(
-                id=row["id"],
-                session_id=row["session_id"],
-                topic_id=row["topic_id"],
-                content=row["content"],
-                finding_type=FindingType(row["finding_type"]),
-                source_url=row["source_url"],
-                confidence=row["confidence"],
-                search_query=row["search_query"],
-                created_at=datetime.fromisoformat(row["created_at"]),
-                validated_by_manager=bool(row["validated_by_manager"]),
-                manager_notes=row["manager_notes"],
-                verification_status=row["verification_status"],
-                verification_method=row["verification_method"],
-                kg_support_score=row["kg_support_score"],
-                original_confidence=row["original_confidence"],
-            )
-            for row in rows
-        ]
+        rows = await self._fetch_all(
+            "SELECT * FROM findings WHERE session_id = ? ORDER BY created_at",
+            (session_id,),
+        )
+        return [self._row_to_finding(row) for row in rows]
 
     # Message methods
     async def save_message(self, message: AgentMessage) -> AgentMessage:
         """Save an agent message."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            try:
-                cursor = await conn.execute(
-                    """
-                    INSERT INTO messages (
-                        session_id, from_agent, to_agent, message_type, content, metadata, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        message.session_id,
-                        message.from_agent.value,
-                        message.to_agent.value,
-                        message.message_type,
-                        message.content,
-                        json.dumps(message.metadata),
-                        message.created_at.isoformat(),
-                    ),
-                )
-                await conn.commit()
-                message.id = cursor.lastrowid
-            except Exception as e:
-                await conn.rollback()
-                logger.error("DB error in save_message: %s", e, exc_info=True)
-                raise
+        message.id = await self._write(
+            """INSERT INTO messages (
+                session_id, from_agent, to_agent, message_type, content, metadata, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                message.session_id, message.from_agent.value, message.to_agent.value,
+                message.message_type, message.content, json.dumps(message.metadata),
+                message.created_at.isoformat(),
+            ),
+            op="save_message",
+        )
         return message
 
     async def get_session_messages(
         self, session_id: str, agent_filter: AgentRole | None = None
     ) -> list[AgentMessage]:
         """Get messages for a session, optionally filtered by agent."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            if agent_filter:
-                cursor = await conn.execute(
-                    """
-                    SELECT * FROM messages
-                    WHERE session_id = ? AND (from_agent = ? OR to_agent = ?)
-                    ORDER BY created_at
-                    """,
-                    (session_id, agent_filter.value, agent_filter.value),
-                )
-            else:
-                cursor = await conn.execute(
-                    "SELECT * FROM messages WHERE session_id = ? ORDER BY created_at",
-                    (session_id,),
-                )
-            rows = await cursor.fetchall()
-        return [
-            AgentMessage(
-                id=row["id"],
-                session_id=row["session_id"],
-                from_agent=AgentRole(row["from_agent"]),
-                to_agent=AgentRole(row["to_agent"]),
-                message_type=row["message_type"],
-                content=row["content"],
-                metadata=json.loads(row["metadata"]) if row["metadata"] else {},
-                created_at=datetime.fromisoformat(row["created_at"]),
+        if agent_filter:
+            rows = await self._fetch_all(
+                """SELECT * FROM messages
+                WHERE session_id = ? AND (from_agent = ? OR to_agent = ?)
+                ORDER BY created_at""",
+                (session_id, agent_filter.value, agent_filter.value),
             )
-            for row in rows
-        ]
+        else:
+            rows = await self._fetch_all(
+                "SELECT * FROM messages WHERE session_id = ? ORDER BY created_at",
+                (session_id,),
+            )
+        return [self._row_to_message(row) for row in rows]
 
     # Stats methods
     async def get_session_stats(self, session_id: str) -> dict:
         """Get statistics for a session."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            cursor = await conn.execute(
-                """
-                SELECT
-                    COUNT(*) as total_findings,
-                    COUNT(DISTINCT search_query) as unique_searches,
-                    AVG(confidence) as avg_confidence
-                FROM findings WHERE session_id = ?
-                """,
-                (session_id,),
-            )
-            findings_row = await cursor.fetchone()
-
-            cursor = await conn.execute(
-                """
-                SELECT
-                    COUNT(*) as total_topics,
-                    MAX(depth) as max_depth,
-                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_topics
-                FROM topics WHERE session_id = ?
-                """,
-                (session_id,),
-            )
-            topics_row = await cursor.fetchone()
-
+        findings_row = await self._fetch_one(
+            """SELECT COUNT(*) as total_findings, COUNT(DISTINCT search_query) as unique_searches,
+            AVG(confidence) as avg_confidence FROM findings WHERE session_id = ?""",
+            (session_id,),
+        )
+        topics_row = await self._fetch_one(
+            """SELECT COUNT(*) as total_topics, MAX(depth) as max_depth,
+            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_topics
+            FROM topics WHERE session_id = ?""",
+            (session_id,),
+        )
         return {
-            "total_findings": findings_row["total_findings"] or 0,
-            "unique_searches": findings_row["unique_searches"] or 0,
-            "avg_confidence": findings_row["avg_confidence"] or 0,
-            "total_topics": topics_row["total_topics"] or 0,
-            "max_depth": topics_row["max_depth"] or 0,
-            "completed_topics": topics_row["completed_topics"] or 0,
+            "total_findings": findings_row["total_findings"] or 0 if findings_row else 0,
+            "unique_searches": findings_row["unique_searches"] or 0 if findings_row else 0,
+            "avg_confidence": findings_row["avg_confidence"] or 0 if findings_row else 0,
+            "total_topics": topics_row["total_topics"] or 0 if topics_row else 0,
+            "max_depth": topics_row["max_depth"] or 0 if topics_row else 0,
+            "completed_topics": topics_row["completed_topics"] or 0 if topics_row else 0,
         }
 
     # Credibility Audit methods
@@ -916,52 +802,27 @@ class ResearchDatabase:
         credibility_label: str,
     ) -> int:
         """Save a credibility audit record."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            try:
-                cursor = await conn.execute(
-                    """
-                    INSERT INTO credibility_audit (
-                        session_id, finding_id, url, domain, final_score,
-                        domain_authority_score, recency_score, source_type_score,
-                        https_score, path_depth_score, credibility_label, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        session_id,
-                        finding_id,
-                        url,
-                        domain,
-                        final_score,
-                        domain_authority_score,
-                        recency_score,
-                        source_type_score,
-                        https_score,
-                        path_depth_score,
-                        credibility_label,
-                        datetime.now().isoformat(),
-                    ),
-                )
-                await conn.commit()
-                return cursor.lastrowid
-            except Exception as e:
-                await conn.rollback()
-                logger.error("DB error in save_credibility_audit: %s", e, exc_info=True)
-                raise
+        return await self._write(
+            """INSERT INTO credibility_audit (
+                session_id, finding_id, url, domain, final_score,
+                domain_authority_score, recency_score, source_type_score,
+                https_score, path_depth_score, credibility_label, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                session_id, finding_id, url, domain, final_score,
+                domain_authority_score, recency_score, source_type_score,
+                https_score, path_depth_score, credibility_label,
+                datetime.now().isoformat(),
+            ),
+            op="save_credibility_audit",
+        )
 
     async def get_credibility_audits(self, session_id: str) -> list[dict]:
         """Get all credibility audit records for a session."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            cursor = await conn.execute(
-                """
-                SELECT * FROM credibility_audit
-                WHERE session_id = ?
-                ORDER BY created_at
-                """,
-                (session_id,),
-            )
-            rows = await cursor.fetchall()
+        rows = await self._fetch_all(
+            "SELECT * FROM credibility_audit WHERE session_id = ? ORDER BY created_at",
+            (session_id,),
+        )
         return [dict(row) for row in rows]
 
     # Agent Decision methods
@@ -977,34 +838,19 @@ class ResearchDatabase:
         iteration: int | None = None,
     ) -> int:
         """Save an agent decision record."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            try:
-                cursor = await conn.execute(
-                    """
-                    INSERT INTO agent_decisions (
-                        session_id, agent_role, decision_type, decision_outcome,
-                        reasoning, inputs_json, metrics_json, iteration, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        session_id,
-                        agent_role,
-                        decision_type,
-                        decision_outcome,
-                        reasoning[:500] if reasoning else None,  # Truncate to 500 chars
-                        inputs_json,
-                        metrics_json,
-                        iteration,
-                        datetime.now().isoformat(),
-                    ),
-                )
-                await conn.commit()
-                return cursor.lastrowid
-            except Exception as e:
-                await conn.rollback()
-                logger.error("DB error in save_agent_decision: %s", e, exc_info=True)
-                raise
+        return await self._write(
+            """INSERT INTO agent_decisions (
+                session_id, agent_role, decision_type, decision_outcome,
+                reasoning, inputs_json, metrics_json, iteration, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                session_id, agent_role, decision_type, decision_outcome,
+                reasoning[:500] if reasoning else None,
+                inputs_json, metrics_json, iteration,
+                datetime.now().isoformat(),
+            ),
+            op="save_agent_decision",
+        )
 
     async def save_agent_decisions_batch(
         self,
@@ -1013,38 +859,24 @@ class ResearchDatabase:
         """Save multiple agent decisions in a batch."""
         if not decisions:
             return 0
-
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            try:
-                await conn.executemany(
-                    """
-                    INSERT INTO agent_decisions (
-                        session_id, agent_role, decision_type, decision_outcome,
-                        reasoning, inputs_json, metrics_json, iteration, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [
-                        (
-                            d.get("session_id"),
-                            d.get("agent_role"),
-                            d.get("decision_type"),
-                            d.get("decision_outcome"),
-                            d.get("reasoning", "")[:500] if d.get("reasoning") else None,
-                            d.get("inputs_json"),
-                            d.get("metrics_json"),
-                            d.get("iteration"),
-                            d.get("created_at", datetime.now().isoformat()),
-                        )
-                        for d in decisions
-                    ],
+        return await self._write_many(
+            """INSERT INTO agent_decisions (
+                session_id, agent_role, decision_type, decision_outcome,
+                reasoning, inputs_json, metrics_json, iteration, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                (
+                    d.get("session_id"), d.get("agent_role"),
+                    d.get("decision_type"), d.get("decision_outcome"),
+                    d.get("reasoning", "")[:500] if d.get("reasoning") else None,
+                    d.get("inputs_json"), d.get("metrics_json"),
+                    d.get("iteration"),
+                    d.get("created_at", datetime.now().isoformat()),
                 )
-                await conn.commit()
-                return len(decisions)
-            except Exception as e:
-                await conn.rollback()
-                logger.error("DB error in save_agent_decisions_batch: %s", e, exc_info=True)
-                raise
+                for d in decisions
+            ],
+            op="save_agent_decisions_batch",
+        )
 
     async def get_agent_decisions(
         self,
@@ -1053,41 +885,26 @@ class ResearchDatabase:
         decision_type: str | None = None,
     ) -> list[dict]:
         """Get agent decisions for a session, optionally filtered."""
-        pool = self._check_pool()
         query = "SELECT * FROM agent_decisions WHERE session_id = ?"
-        params = [session_id]
-
+        params: list = [session_id]
         if agent_role:
             query += " AND agent_role = ?"
             params.append(agent_role)
         if decision_type:
             query += " AND decision_type = ?"
             params.append(decision_type)
-
         query += " ORDER BY created_at"
-
-        async with pool.acquire() as conn:
-            cursor = await conn.execute(query, params)
-            rows = await cursor.fetchall()
+        rows = await self._fetch_all(query, tuple(params))
         return [dict(row) for row in rows]
 
     async def get_decision_stats(self, session_id: str) -> dict:
         """Get decision statistics for a session."""
-        pool = self._check_pool()
-        async with pool.acquire() as conn:
-            cursor = await conn.execute(
-                """
-                SELECT
-                    agent_role,
-                    decision_type,
-                    COUNT(*) as count
-                FROM agent_decisions
-                WHERE session_id = ?
-                GROUP BY agent_role, decision_type
-                """,
-                (session_id,),
-            )
-            rows = await cursor.fetchall()
+        rows = await self._fetch_all(
+            """SELECT agent_role, decision_type, COUNT(*) as count
+            FROM agent_decisions WHERE session_id = ?
+            GROUP BY agent_role, decision_type""",
+            (session_id,),
+        )
 
         stats = {"by_agent": {}, "by_type": {}, "total": 0}
         for row in rows:
