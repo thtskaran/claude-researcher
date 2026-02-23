@@ -370,6 +370,7 @@ class BaseAgent(ABC):
         task_type: str | None = None,
         output_format: dict | None = None,
         model_override: str | None = None,
+        system_prompt_override: str | None = None,
     ) -> str | dict | list | None:
         """Call Claude via the Agent SDK.
 
@@ -382,6 +383,7 @@ class BaseAgent(ABC):
                 Example: {"type": "json_schema", "schema": {"type": "object", ...}}
                 When provided, returns parsed structured data instead of text.
             model_override: Explicit model to use, bypassing config and task routing.
+            system_prompt_override: Override the agent's system prompt for this call.
 
         Returns:
             Text response (str), or parsed structured data (dict/list) if
@@ -408,7 +410,7 @@ class BaseAgent(ABC):
             model=model,
             max_turns=max_turns,
             allowed_tools=tools or [],
-            system_prompt=self.system_prompt,
+            system_prompt=system_prompt_override or self.system_prompt,
             env=env,
             max_thinking_tokens=self.config.max_thinking_tokens if use_thinking else None,
             output_format=output_format,

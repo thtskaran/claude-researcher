@@ -184,6 +184,12 @@ class ManagerAgent(BaseAgent):
         """LLM callback for memory summarization (uses faster model)."""
         return await self.call_claude(prompt, model_override="haiku")
 
+    _VERIFICATION_SYSTEM_PROMPT = (
+        "You are a fact-verification assistant. Your job is to generate verification "
+        "questions, independently answer them, and compare answers to assess factual "
+        "accuracy. Always respond using the requested structured output format."
+    )
+
     async def _verification_llm_callback(
         self,
         prompt: str,
@@ -199,7 +205,10 @@ class ManagerAgent(BaseAgent):
         """
         logger.debug("Verification LLM callback: model=%s, prompt_len=%d", model, len(prompt))
         return await self.call_claude(
-            prompt, output_format=output_format, model_override=model,
+            prompt,
+            output_format=output_format,
+            model_override=model,
+            system_prompt_override=self._VERIFICATION_SYSTEM_PROMPT,
         )
 
     async def _verification_search_callback(self, query: str) -> list[dict]:
