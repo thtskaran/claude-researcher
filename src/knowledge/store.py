@@ -43,11 +43,16 @@ class HybridKnowledgeGraphStore:
         """Initialize async DB connection, create schema, and load graph."""
         logger.info("KG store connecting: %s", self.db_path)
         self._connection = await aiosqlite.connect(self.db_path)
-        # Set busy_timeout BEFORE WAL so the journal mode switch can wait for locks
-        await self._connection.execute("PRAGMA busy_timeout=5000")
-        await self._connection.execute("PRAGMA journal_mode=WAL")
-        await self._init_db()
-        await self._load_from_db()
+        try:
+            # Set busy_timeout BEFORE WAL so the journal mode switch can wait for locks
+            await self._connection.execute("PRAGMA busy_timeout=5000")
+            await self._connection.execute("PRAGMA journal_mode=WAL")
+            await self._init_db()
+            await self._load_from_db()
+        except Exception:
+            await self._connection.close()
+            self._connection = None
+            raise
 
     async def close(self):
         """Close the async DB connection."""

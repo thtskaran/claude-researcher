@@ -306,6 +306,14 @@ Return ONLY the corrected finding text, no explanation."""
 
         response = await self.llm_callback(prompt, self.config.batch_model)
 
+        # Handle non-string responses (e.g., dict from structured output)
+        if response is None:
+            return None
+        if isinstance(response, dict):
+            response = response.get("corrected_text", response.get("text", str(response)))
+        if not isinstance(response, str):
+            response = str(response)
+
         # Clean up response
         corrected = response.strip()
         if corrected.startswith('"') and corrected.endswith('"'):

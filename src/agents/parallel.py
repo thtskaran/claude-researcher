@@ -68,6 +68,7 @@ class ParallelInternPool:
         self._current_session_id: str | None = None
         self._pause_requested = False
         self._active_interns: list[InternAgent] = []
+        self._background_tasks: set[asyncio.Task] = set()
 
         # Note: We no longer store intern instances - they are created fresh per directive
         # to prevent state corruption from concurrent access
@@ -356,7 +357,7 @@ class ParallelInternPool:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
                 return
-            loop.create_task(
+            task = loop.create_task(
                 emit_agent_event(
                     session_id=self._current_session_id,
                     event_type="system",
@@ -364,6 +365,8 @@ class ParallelInternPool:
                     data={"message": f"{prefix} {message}"},
                 )
             )
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
 
     def pause(self) -> None:
         """Request all active interns to pause."""

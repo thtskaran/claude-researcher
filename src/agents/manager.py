@@ -625,7 +625,9 @@ Think step by step about the best next action."""
             try:
                 session = await self.db.get_session(self.session_id)
                 if session:
-                    asyncio.create_task(self._periodic_checkpoint(session))
+                    task = asyncio.create_task(self._periodic_checkpoint(session))
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
             except Exception:
                 logger.debug("Periodic checkpoint failed", exc_info=True)
 
@@ -830,7 +832,7 @@ Think step by step about the best next action."""
 
         # On last iteration, always synthesize if we have findings
         if iterations_remaining <= 0 and self.all_findings:
-            asyncio.create_task(
+            task = asyncio.create_task(
                 self._log_decision(
                     session_id=self.session_id,
                     decision_type=DecisionType.SYNTHESIS_TRIGGER,
@@ -843,6 +845,8 @@ Think step by step about the best next action."""
                     },
                 )
             )
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
             return True
 
         # Don't allow early synthesis until at least 80% of iterations are done
@@ -867,7 +871,7 @@ Think step by step about the best next action."""
         should_synthesize = any(signal in thought_lower for signal in synthesis_signals)
 
         if should_synthesize:
-            asyncio.create_task(
+            task = asyncio.create_task(
                 self._log_decision(
                     session_id=self.session_id,
                     decision_type=DecisionType.SYNTHESIS_TRIGGER,
@@ -881,6 +885,8 @@ Think step by step about the best next action."""
                     },
                 )
             )
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
 
         return should_synthesize
 

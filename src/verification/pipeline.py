@@ -160,7 +160,7 @@ class VerificationPipeline:
             cove_score = (
                 result.consistency_score
                 if result.consistency_score is not None
-                and result.verification_status != VerificationStatus.SKIPPED
+                and result.verification_status not in (VerificationStatus.SKIPPED, VerificationStatus.ERROR)
                 else -1.0
             )
             calibration = self.calibrator.calibrate(
@@ -263,6 +263,7 @@ class VerificationPipeline:
         flagged = sum(1 for r in results if r.verification_status == VerificationStatus.FLAGGED)
         rejected = sum(1 for r in results if r.verification_status == VerificationStatus.REJECTED)
         skipped = sum(1 for r in results if r.verification_status == VerificationStatus.SKIPPED)
+        errored = sum(1 for r in results if r.verification_status == VerificationStatus.ERROR)
 
         total_time = (time.time() - start_time) * 1000
 
@@ -275,7 +276,8 @@ class VerificationPipeline:
                     "message": (
                         f"[VERIFY] Batch verification complete: "
                         f"{verified} verified, {flagged} flagged, "
-                        f"{rejected} rejected, {skipped} skipped "
+                        f"{rejected} rejected, {skipped} skipped"
+                        f"{f', {errored} errors' if errored else ''} "
                         f"({total_time / 1000:.0f}s)"
                     ),
                 },
@@ -322,7 +324,7 @@ class VerificationPipeline:
                         finding_id=str(finding.id or hash(finding.content)),
                         original_confidence=finding.confidence,
                         verified_confidence=finding.confidence,
-                        verification_status=VerificationStatus.SKIPPED,
+                        verification_status=VerificationStatus.ERROR,
                         verification_method=VerificationMethod.BATCH,
                         error=str(result),
                     )

@@ -64,7 +64,9 @@ class InputListener:
         """Stop the background input listener."""
         self._running = False
         self._stop_event.set()
-        self._thread = None
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+            self._thread = None
 
     def _listen_thread(self) -> None:
         """Background thread that reads stdin lines."""

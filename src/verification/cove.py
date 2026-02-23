@@ -384,7 +384,7 @@ class ChainOfVerification:
             return [], "LLM returned empty response"
 
         # Fallback: parse text response
-        parsed = self._parse_questions(response)[:max_q]
+        parsed = self._parse_questions(response, max_questions=max_q)
         if not parsed:
             return [], f"Could not parse questions from LLM text response ({len(response)} chars)"
         return parsed, None
@@ -681,7 +681,7 @@ class ChainOfVerification:
         # - 10% LLM confidence (unreliable, kept at low weight)
         return (support_ratio * 0.80) + (answered_ratio * 0.10) + (avg_confidence * 0.10)
 
-    def _parse_questions(self, response: str) -> list[VerificationQuestion]:
+    def _parse_questions(self, response: str, max_questions: int | None = None) -> list[VerificationQuestion]:
         """Parse verification questions from LLM response.
 
         Tries JSON first, then falls back to extracting plain-text questions
@@ -713,8 +713,8 @@ class ChainOfVerification:
                     )
 
         # Limit to configured max
-        max_questions = self.config.max_cove_questions_batch
-        return questions[:max_questions]
+        limit = max_questions if max_questions is not None else self.config.max_cove_questions_batch
+        return questions[:limit]
 
     def _extract_json_array(self, response: str) -> list | None:
         """Extract a JSON array from LLM response with multiple fallbacks."""

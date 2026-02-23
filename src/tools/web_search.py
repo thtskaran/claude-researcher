@@ -97,12 +97,13 @@ class WebSearchTool:
 
             except Exception as e:
                 if attempt < 2:
+                    logger.warning("Web search attempt %d failed: %s", attempt + 1, e)
                     await asyncio.sleep((2**attempt) + random.uniform(0, 0.5))
                 else:
-                    logger.error("Web search failed: %s", e, exc_info=True)
-                    return [], f"Search error: {e}"
+                    logger.error("Web search failed after 3 attempts: %s", e, exc_info=True)
+                    return [], f"Search failed after 3 attempts: {e}"
 
-        return [], ""
+        return [], "Search failed: exhausted all retries"
 
     async def search_and_summarize(self, query_text: str) -> str:
         """Search and return summary text."""

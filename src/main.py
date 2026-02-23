@@ -34,8 +34,9 @@ _harness: ResearchHarness | None = None
 def _handle_interrupt(signum, frame):
     """Handle interrupt signal gracefully."""
     console.print("\n[yellow]Interrupt received - stopping research...[/yellow]")
-    if _harness:
-        _harness.stop()
+    harness = _harness  # Local copy avoids race with assignment
+    if harness is not None:
+        harness.stop()
 
 
 @app.command()

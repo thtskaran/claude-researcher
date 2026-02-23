@@ -11,7 +11,8 @@ class VerificationStatus(str, Enum):
     VERIFIED = "verified"  # >72% confidence, auto-accepted
     FLAGGED = "flagged"  # 45-72% confidence, needs review
     REJECTED = "rejected"  # <45% confidence, should trigger additional search
-    SKIPPED = "skipped"  # Verification skipped (disabled or error)
+    SKIPPED = "skipped"  # Verification intentionally skipped (disabled)
+    ERROR = "error"  # Verification attempted but failed with an exception
     PENDING = "pending"  # Not yet verified
 
 
