@@ -71,7 +71,7 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
       <div className="card py-4">
         <div className="flex flex-wrap gap-3 items-center">
           <div className="relative flex-1 min-w-[200px] max-w-sm">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted text-lg">search</span>
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-lg">search</span>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -92,7 +92,7 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
             ))}
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-ink-secondary ml-auto">
+          <div className="flex items-center gap-2 text-xs text-text-secondary ml-auto">
             <span>Confidence</span>
             <input
               type="range"
@@ -101,7 +101,7 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
               step="5"
               value={minConfidence}
               onChange={(e) => setMinConfidence(parseInt(e.target.value))}
-              className="w-20 accent-sage"
+              className="w-20 accent-amber"
             />
             <span className="font-mono w-8">{minConfidence}%</span>
           </div>
@@ -117,26 +117,26 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
         </div>
       </div>
 
-      {error && <div className="text-coral text-sm">{error}</div>}
+      {error && <div className="text-rose text-sm">{error}</div>}
 
       {/* Split Pane */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 h-[calc(100vh-14rem)]">
         {/* Left: Findings List */}
         <div className="lg:col-span-2 card p-0 flex flex-col overflow-hidden">
-          <div className="px-4 py-3 border-b border-edge flex items-center justify-between bg-card">
-            <span className="text-xs font-mono text-ink-muted uppercase tracking-wider">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-surface">
+            <span className="text-xs font-mono text-text-muted uppercase tracking-wider">
               Latest Findings
             </span>
-            <span className="text-xs text-ink-muted">
+            <span className="text-xs text-text-muted">
               {loadingFindings ? "Loading…" : `${findings.length} items`}
             </span>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {loadingFindings ? (
-              <div className="text-sm text-ink-secondary p-4">Loading findings…</div>
+              <div className="text-sm text-text-secondary p-4">Loading findings…</div>
             ) : findings.length === 0 ? (
-              <div className="text-sm text-ink-secondary p-4 text-center">
-                <span className="material-symbols-outlined text-3xl text-ink-muted block mb-2">science</span>
+              <div className="text-sm text-text-secondary p-4 text-center">
+                <span className="material-symbols-outlined text-3xl text-text-muted block mb-2">science</span>
                 No findings yet. Run a research session to populate this view.
               </div>
             ) : (
@@ -146,9 +146,9 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
                   <button
                     key={finding.id}
                     onClick={() => setSelectedId(finding.id)}
-                    className={`w-full text-left flex flex-col gap-2 p-3 rounded-xl transition-all border cursor-pointer ${isActive
-                      ? "bg-card-hover border-sage/40 ring-1 ring-sage/20"
-                      : "bg-card-inset/60 border-edge hover:border-sage/30"
+                    className={`w-full text-left flex flex-col gap-2 p-3 rounded-2xl transition-all border cursor-pointer ${isActive
+                      ? "bg-surface-hover border-amber/40 ring-1 ring-amber/20"
+                      : "bg-surface-inset/60 border-border hover:border-amber/30"
                       }`}
                     style={isActive ? { boxShadow: "var(--shadow-md)" } : undefined}
                   >
@@ -160,8 +160,8 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
                         <ConfidenceRing value={finding.confidence} />
                       )}
                     </div>
-                    <p className="text-sm text-ink line-clamp-2 leading-snug">{finding.content}</p>
-                    <span className="text-xs text-ink-muted font-mono">{formatDate(finding.created_at)}</span>
+                    <p className="text-sm text-text line-clamp-2 leading-snug">{finding.content}</p>
+                    <span className="text-xs text-text-muted font-mono">{formatDate(finding.created_at)}</span>
                   </button>
                 );
               })
@@ -173,7 +173,7 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
         <div className="lg:col-span-3 card p-0 flex flex-col overflow-hidden">
           {selectedFinding ? (
             <>
-              <div className="px-5 py-3 border-b border-edge bg-card">
+              <div className="px-5 py-3 border-b border-border bg-surface">
                 <div className="flex items-center gap-2 mb-1.5">
                   <span className={`badge ${getFindingBadge(selectedFinding.finding_type)}`}>
                     {selectedFinding.finding_type}
@@ -183,32 +183,32 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
                       {Math.round(selectedFinding.confidence * 100)}% confidence
                     </span>
                   )}
-                  <span className="text-xs text-ink-muted font-mono ml-auto">{formatDate(selectedFinding.created_at)}</span>
+                  <span className="text-xs text-text-muted font-mono ml-auto">{formatDate(selectedFinding.created_at)}</span>
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-5 space-y-4">
                 <div>
-                  <h4 className="text-[10px] font-bold text-ink-muted uppercase tracking-widest mb-1.5">Content</h4>
-                  <p className="text-sm text-ink leading-relaxed">{selectedFinding.content}</p>
+                  <h4 className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1.5">Content</h4>
+                  <p className="text-sm text-text leading-relaxed">{selectedFinding.content}</p>
                 </div>
                 {selectedFinding.source_url && (
                   <div>
-                    <h4 className="text-[10px] font-bold text-ink-muted uppercase tracking-widest mb-1.5">Source</h4>
+                    <h4 className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1.5">Source</h4>
                     <a
                       href={selectedFinding.source_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-sm text-sage hover:underline break-all flex items-start gap-2 bg-card-inset/50 p-2 rounded-lg border border-edge/50"
+                      className="text-sm text-amber hover:underline break-all flex items-start gap-2 bg-surface-inset/50 p-2 rounded-lg border border-border/50"
                     >
-                      <span className="material-symbols-outlined text-sm mt-0.5 text-ink-muted">open_in_new</span>
+                      <span className="material-symbols-outlined text-sm mt-0.5 text-text-muted">open_in_new</span>
                       <span className="line-clamp-2">{selectedFinding.source_url}</span>
                     </a>
                   </div>
                 )}
                 {selectedFinding.search_query && (
                   <div>
-                    <h4 className="text-[10px] font-bold text-ink-muted uppercase tracking-widest mb-1.5">Search Query</h4>
-                    <p className="text-xs text-ink-secondary font-mono bg-card-inset p-2 rounded-lg border border-edge/50">
+                    <h4 className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1.5">Search Query</h4>
+                    <p className="text-xs text-text-secondary font-mono bg-surface-inset p-2 rounded-lg border border-border/50">
                       {selectedFinding.search_query}
                     </p>
                   </div>
@@ -216,9 +216,9 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-ink-muted">
+            <div className="flex-1 flex items-center justify-center text-text-muted">
               <div className="text-center">
-                <span className="material-symbols-outlined text-4xl text-ink-muted mb-2 block">description</span>
+                <span className="material-symbols-outlined text-4xl text-text-muted mb-2 block">description</span>
                 <p className="text-sm">Select a finding to view details</p>
               </div>
             </div>
@@ -231,7 +231,7 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
 
 function ConfidenceRing({ value }: { value: number }) {
   const pct = Math.round(value * 100);
-  const color = pct >= 70 ? "text-olive" : pct >= 40 ? "text-gold" : "text-coral";
+  const color = pct >= 70 ? "text-emerald" : pct >= 40 ? "text-gold" : "text-rose";
   return (
     <span className={`text-xs font-mono font-medium ${color}`}>
       {pct}%

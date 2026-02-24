@@ -136,9 +136,9 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
   const depthLabel = maxIterations <= 3 ? "Quick scan" : maxIterations <= 7 ? "Standard depth" : maxIterations <= 14 ? "Deep research" : "Exhaustive";
 
   return (
-    <div className="bg-card rounded-2xl border border-edge overflow-hidden relative" style={{ boxShadow: "var(--shadow-lg)" }}>
+    <div className="bg-surface rounded-2xl border border-border overflow-hidden relative" style={{ boxShadow: "var(--shadow-lg)" }}>
       {/* Top accent */}
-      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-sage/40 via-sage to-sage/40" />
+      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber/40 via-amber to-amber/40" />
 
       <form onSubmit={handleSubmit} className="p-8 md:p-10 space-y-8">
         {/* Header */}
@@ -146,7 +146,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
           <h2 className="text-2xl md:text-3xl font-display tracking-tight">
             {showClarification ? "Clarify Your Research" : "New Research Session"}
           </h2>
-          <p className="text-sm text-ink-secondary">
+          <p className="text-sm text-text-secondary">
             {showClarification
               ? "Answer these questions to refine your research goal"
               : "Configure your parameters to start a new analysis task"}
@@ -157,7 +157,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-6 right-6 text-ink-muted hover:text-ink transition-colors"
+          className="absolute top-6 right-6 text-text-muted hover:text-text transition-colors"
         >
           <span className="material-symbols-outlined">close</span>
         </button>
@@ -166,7 +166,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
           <>
             {/* Goal Input */}
             <div className="space-y-3">
-              <label className="block text-xs font-medium text-ink-secondary uppercase tracking-wider">
+              <label className="text-[11px] font-mono font-semibold text-text-muted uppercase tracking-widest">
                 Research Goal
               </label>
               <div className="relative">
@@ -177,7 +177,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
                   placeholder="e.g., Analyze the market trends for renewable energy in Southeast Asia, focusing on solar panel adoption rates over the last 5 years..."
                 />
                 <div className="absolute bottom-3 right-3 pointer-events-none">
-                  <span className="material-symbols-outlined text-ink-muted text-lg">edit_note</span>
+                  <span className="material-symbols-outlined text-text-muted text-lg">edit_note</span>
                 </div>
               </div>
             </div>
@@ -185,10 +185,10 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
             {/* Iterations Slider */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium uppercase tracking-wider text-ink-secondary">
+                <label className="text-[11px] font-mono font-semibold text-text-muted uppercase tracking-widest">
                   Research Depth (Iterations)
                 </label>
-                <span className="text-sage font-mono text-sm bg-sage-soft px-2 py-0.5 rounded">
+                <span className="text-amber font-mono text-sm bg-amber-soft px-2 py-0.5 rounded">
                   {maxIterations} {maxIterations === 1 ? "iteration" : "iterations"}
                 </span>
               </div>
@@ -199,19 +199,19 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
                 step="1"
                 value={maxIterations}
                 onChange={(e) => setMaxIterations(parseInt(e.target.value))}
-                className="w-full h-1.5 bg-edge rounded-full appearance-none cursor-pointer accent-sage"
+                className="w-full h-1.5 bg-border rounded-full appearance-none cursor-pointer accent-amber"
               />
-              <div className="flex justify-between text-xs text-ink-muted font-mono">
+              <div className="flex justify-between text-xs text-text-muted font-mono">
                 <span>1 (quick)</span>
                 <span>20 (deep)</span>
               </div>
             </div>
 
             {/* Clarification Toggle */}
-            <div className="flex items-center justify-between py-2 border border-edge rounded-lg px-4 bg-card-hover/30">
+            <div className="flex items-center justify-between py-2 border border-border rounded-xl px-4 bg-surface-hover/30">
               <div className="flex flex-col">
-                <span className="text-sm font-medium text-ink">Enable Clarification Questions</span>
-                <span className="text-xs text-ink-secondary">AI will ask questions to refine your research goal</span>
+                <span className="text-sm font-medium text-text">Enable Clarification Questions</span>
+                <span className="text-xs text-text-secondary">AI will ask questions to refine your research goal</span>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -220,15 +220,15 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
                   checked={enableClarification}
                   onChange={(e) => setEnableClarification(e.target.checked)}
                 />
-                <div className="w-11 h-6 bg-edge peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sage/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sage" />
+                <div className="w-11 h-6 bg-border peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber" />
               </label>
             </div>
 
             {/* Mid-Research Questions Toggle */}
-            <div className="flex items-center justify-between py-2 border border-edge rounded-lg px-4 bg-card-hover/30">
+            <div className="flex items-center justify-between py-2 border border-border rounded-xl px-4 bg-surface-hover/30">
               <div className="flex flex-col">
-                <span className="text-sm font-medium text-ink">Enable Mid-Research Questions</span>
-                <span className="text-xs text-ink-secondary">AI can ask questions during research to guide the process</span>
+                <span className="text-sm font-medium text-text">Enable Mid-Research Questions</span>
+                <span className="text-xs text-text-secondary">AI can ask questions during research to guide the process</span>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -237,7 +237,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
                   checked={enableMidQuestions}
                   onChange={(e) => setEnableMidQuestions(e.target.checked)}
                 />
-                <div className="w-11 h-6 bg-edge peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-sage/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sage" />
+                <div className="w-11 h-6 bg-border peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber" />
               </label>
             </div>
           </>
@@ -247,7 +247,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
             <div className="space-y-6">
               {questions.map((q, idx) => (
                 <div key={idx} className="space-y-3">
-                  <label className="block text-sm font-medium text-ink">
+                  <label className="block text-sm font-medium text-text">
                     {idx + 1}. {q.question}
                   </label>
                   <input
@@ -268,7 +268,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
                 setQuestions([]);
                 setAnswers({});
               }}
-              className="text-sm text-ink-secondary hover:text-ink transition-colors"
+              className="text-sm text-text-secondary hover:text-text transition-colors"
             >
               &larr; Back to edit goal
             </button>
@@ -277,22 +277,22 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
 
         {/* Error */}
         {error && (
-          <div className="text-sm text-coral bg-coral-soft border border-coral/20 rounded-lg px-4 py-3">
+          <div className="text-sm text-rose bg-rose-soft border border-rose/20 rounded-xl px-4 py-3">
             {error}
           </div>
         )}
 
         {/* Action Footer */}
         <div className="pt-2 flex flex-col items-center gap-6">
-          <div className="font-mono text-sm text-ink-secondary flex items-center gap-2">
+          <div className="font-mono text-sm text-text-secondary flex items-center gap-2">
             <span className="material-symbols-outlined text-base">speed</span>
-            Depth: <span className="text-ink font-bold">{depthLabel}</span>
+            Depth: <span className="text-text font-bold">{depthLabel}</span>
           </div>
           <button
             type="submit"
             disabled={loading || !goal.trim() || (showClarification && Object.keys(answers).length === 0)}
-            className="w-full py-4 px-6 bg-sage hover:bg-sage-hover text-white font-semibold rounded-xl transition-all duration-300 transform active:scale-[0.98] flex items-center justify-center gap-2 group/btn disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ boxShadow: "0 2px 12px rgb(var(--sage) / 0.3)" }}
+            className="w-full py-4 px-6 bg-amber hover:bg-amber-hover text-white font-semibold rounded-xl transition-all duration-300 transform active:scale-[0.98] flex items-center justify-center gap-2 group/btn disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ boxShadow: "0 2px 12px rgb(var(--amber) / 0.3)" }}
           >
             {loading ? (
               <>
@@ -301,7 +301,7 @@ export default function NewSessionForm({ onClose, onSuccess }: NewSessionFormPro
               </>
             ) : (
               <>
-                <span className="material-symbols-outlined group-hover/btn:animate-soft-pulse">
+                <span className="material-symbols-outlined group-hover/btn:animate-breathe">
                   {showClarification ? "rocket_launch" : (enableClarification ? "psychology" : "rocket_launch")}
                 </span>
                 {showClarification ? "Start Research" : (enableClarification ? "Get Clarification Questions" : "Start Research")}

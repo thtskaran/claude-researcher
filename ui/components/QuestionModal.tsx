@@ -78,29 +78,29 @@ export default function QuestionModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-card border border-sage/30 rounded-2xl max-w-2xl w-full mx-4 overflow-hidden animate-scale-in" style={{ boxShadow: "var(--shadow-lg)" }}>
+      <div className="bg-surface border border-amber/30 rounded-2xl max-w-2xl w-full mx-4 overflow-hidden animate-scale-up" style={{ boxShadow: "var(--shadow-lg)" }}>
         {/* Header */}
-        <div className="bg-sage-softer border-b border-sage/20 px-6 py-4">
+        <div className="bg-amber-softer border-b border-amber/20 px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-sage-soft flex items-center justify-center">
-                <span className="material-symbols-outlined text-sage">help</span>
+              <div className="w-10 h-10 rounded-full bg-amber-soft flex items-center justify-center">
+                <span className="material-symbols-outlined text-amber">help</span>
               </div>
               <div>
                 <h2 className="text-lg font-display">Mid-Research Question</h2>
-                <p className="text-xs text-ink-secondary">The research agent needs your input</p>
+                <p className="text-xs text-text-secondary">The research agent needs your input</p>
               </div>
             </div>
             <div className="text-right">
-              <div className="text-xs text-ink-secondary mb-1">Time Remaining</div>
-              <div className={`text-lg font-mono font-bold ${isLowTime ? "text-gold" : "text-sage"}`}>{timeRemaining}s</div>
+              <div className="text-xs text-text-secondary mb-1">Time Remaining</div>
+              <div className={`text-lg font-mono font-bold ${isLowTime ? "text-gold" : "text-amber"}`}>{timeRemaining}s</div>
             </div>
           </div>
 
           {/* Progress Bar */}
-          <div className="mt-3 h-1 bg-edge rounded-full overflow-hidden">
+          <div className="mt-3 h-1 bg-border rounded-full overflow-hidden">
             <div
-              className={`h-full transition-all duration-1000 ease-linear ${isLowTime ? "bg-gold" : "bg-sage"}`}
+              className={`h-full transition-all duration-1000 ease-linear ${isLowTime ? "bg-gold" : "bg-amber"}`}
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -109,37 +109,37 @@ export default function QuestionModal({
         {/* Content */}
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {context && (
-            <div className="bg-card-inset/50 border border-edge rounded-lg p-4">
+            <div className="bg-surface-inset/50 border border-border rounded-xl p-4">
               <div className="flex items-start gap-2">
-                <span className="material-symbols-outlined text-sm text-ink-secondary mt-0.5">info</span>
-                <div className="text-sm text-ink-secondary">{context}</div>
+                <span className="material-symbols-outlined text-sm text-text-secondary mt-0.5">info</span>
+                <div className="text-sm text-text-secondary">{context}</div>
               </div>
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-ink-secondary mb-3">Question:</label>
-            <p className="text-base text-ink leading-relaxed">{question}</p>
+            <label className="block text-sm font-medium text-text-secondary mb-3">Question:</label>
+            <p className="text-base text-text leading-relaxed">{question}</p>
           </div>
 
           {options && options.length > 0 && (
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-ink-secondary mb-2">Suggested Options:</label>
+              <label className="block text-sm font-medium text-text-secondary mb-2">Suggested Options:</label>
               <div className="grid grid-cols-1 gap-2">
                 {options.map((option, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => handleOptionClick(option)}
-                    className={`text-left px-4 py-3 rounded-lg border transition-all ${
+                    className={`text-left px-4 py-3 rounded-xl border transition-all ${
                       response === option
-                        ? "bg-sage-soft border-sage text-ink"
-                        : "bg-card-inset border-edge text-ink-secondary hover:border-sage/50"
+                        ? "bg-amber-soft border-amber text-text"
+                        : "bg-surface-inset border-border text-text-secondary hover:border-amber/50"
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${
-                        response === option ? "border-sage bg-sage" : "border-ink-muted"
+                        response === option ? "border-amber bg-amber" : "border-text-muted"
                       }`} />
                       <span className="text-sm">{option}</span>
                     </div>
@@ -150,7 +150,7 @@ export default function QuestionModal({
           )}
 
           <div>
-            <label className="block text-sm font-medium text-ink-secondary mb-2">
+            <label className="block text-sm font-medium text-text-secondary mb-2">
               {options && options.length > 0 ? "Or provide your own answer:" : "Your Answer:"}
             </label>
             <textarea
@@ -163,15 +163,15 @@ export default function QuestionModal({
           </div>
 
           <div className="flex items-center justify-between pt-2">
-            <div className="text-xs text-ink-muted">
+            <div className="text-xs text-text-muted">
               <span className="material-symbols-outlined text-sm align-middle mr-1">schedule</span>
               Research will continue autonomously if no answer is provided
             </div>
             <button
               type="submit"
               disabled={!response.trim() || submitting}
-              className="px-6 py-2.5 bg-sage hover:bg-sage-hover text-white font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              style={{ boxShadow: "0 2px 8px rgb(var(--sage) / 0.25)" }}
+              className="px-6 py-2.5 bg-amber hover:bg-amber-hover text-white font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              style={{ boxShadow: "0 2px 8px rgb(var(--amber) / 0.25)" }}
             >
               {submitting ? (
                 <>

@@ -58,8 +58,8 @@ const pipelineStages = [
 
 function getStageFromResult(result: VerificationResult): number {
     const status = result.verification_status?.toLowerCase();
-    if (status === "verified" || status === "flagged" || status === "rejected") return 4; // all stages done
-    if (status === "skipped") return 4; // skipped is a terminal state, not pending
+    if (status === "verified" || status === "flagged" || status === "rejected") return 4;
+    if (status === "skipped") return 4;
     if (status === "processing" || status === "in_progress") return 2;
     return 0;
 }
@@ -121,21 +121,21 @@ export default function VerificationPipelinePage() {
     return (
         <div className="min-h-screen flex flex-col">
             {/* Header */}
-            <header className="border-b border-edge bg-card/50 backdrop-blur-sm sticky top-0 z-20">
+            <header className="border-b border-border bg-surface/40 backdrop-blur-xl sticky top-0 z-20">
                 <div className="max-w-7xl mx-auto px-6 py-4">
-                    <div className="flex items-center gap-2 text-xs text-ink-muted mb-2">
-                        <Link href="/" className="hover:text-sage transition-colors">Sessions</Link>
+                    <div className="flex items-center gap-2 text-[11px] text-text-muted font-mono mb-2">
+                        <Link href="/" className="hover:text-amber transition-colors">Sessions</Link>
                         <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-                        <Link href={`/session/${sessionId}`} className="hover:text-sage transition-colors">Session</Link>
+                        <Link href={`/session/${sessionId}`} className="hover:text-amber transition-colors">Session</Link>
                         <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-                        <span className="text-ink-secondary">Verification</span>
+                        <span className="text-text-secondary">Verification</span>
                     </div>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <Link href={`/session/${sessionId}`} className="text-ink-secondary hover:text-sage transition-colors">
+                            <Link href={`/session/${sessionId}`} className="text-text-secondary hover:text-amber transition-colors">
                                 <span className="material-symbols-outlined">arrow_back</span>
                             </Link>
-                            <h1 className="text-xl font-display">CoVe Verification Pipeline</h1>
+                            <h1 className="text-xl font-display font-semibold">CoVe Verification Pipeline</h1>
                         </div>
                         <button onClick={fetchData} className="btn btn-ghost text-xs gap-1">
                             <span className="material-symbols-outlined text-sm">refresh</span>
@@ -145,26 +145,28 @@ export default function VerificationPipelinePage() {
                 </div>
             </header>
 
+            <div className="glow-line" />
+
             {loading ? (
                 <div className="flex-1 flex items-center justify-center">
-                    <div className="flex items-center gap-3 text-ink-secondary">
-                        <span className="material-symbols-outlined animate-spin">progress_activity</span>
+                    <div className="flex items-center gap-3 text-text-secondary">
+                        <span className="material-symbols-outlined animate-spin text-amber">progress_activity</span>
                         Loading verification data...
                     </div>
                 </div>
             ) : results.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center">
                     <div className="text-center">
-                        <span className="material-symbols-outlined text-4xl text-ink-muted mb-3 block">verified</span>
-                        <p className="text-sm text-ink-secondary">No verification results yet.</p>
-                        <p className="text-xs text-ink-muted mt-1">Findings will be verified as they are discovered.</p>
+                        <span className="material-symbols-outlined text-4xl text-text-muted mb-3 block">verified</span>
+                        <p className="text-sm text-text-secondary">No verification results yet.</p>
+                        <p className="text-xs text-text-muted mt-1">Findings will be verified as they are discovered.</p>
                     </div>
                 </div>
             ) : (
                 <div className="flex-1 flex max-w-7xl mx-auto w-full overflow-hidden">
                     {/* Left Sidebar: Queue */}
-                    <aside className="w-72 shrink-0 border-r border-edge p-4 overflow-y-auto max-h-[calc(100vh-180px)]">
-                        <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-4">
+                    <aside className="w-72 shrink-0 border-r border-border p-4 overflow-y-auto max-h-[calc(100vh-180px)]">
+                        <h3 className="text-[11px] font-mono font-semibold text-text-muted uppercase tracking-widest mb-4">
                             Results ({results.length})
                         </h3>
                         <div className="space-y-2">
@@ -177,8 +179,8 @@ export default function VerificationPipelinePage() {
                                         key={item.id}
                                         onClick={() => setSelectedIdx(idx)}
                                         className={`w-full text-left p-3 rounded-xl transition-all border cursor-pointer ${isActive
-                                            ? "bg-card-hover border-sage/40 ring-1 ring-sage/20"
-                                            : "bg-card-inset/60 border-edge hover:border-sage/30"
+                                            ? "bg-surface-hover border-amber/30 ring-1 ring-amber/15"
+                                            : "bg-surface-inset/60 border-border hover:border-amber/20"
                                             }`}
                                     >
                                         <div className="flex items-center gap-2 mb-1.5">
@@ -187,12 +189,12 @@ export default function VerificationPipelinePage() {
                                                 {status}
                                             </span>
                                             {conf !== null && conf !== undefined && (
-                                                <span className="text-[10px] font-mono text-ink-muted ml-auto">
+                                                <span className="text-[10px] font-mono text-text-muted ml-auto">
                                                     {Math.round(conf * 100)}%
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="text-xs text-ink-secondary line-clamp-2 leading-relaxed">
+                                        <p className="text-xs text-text-secondary line-clamp-2 leading-relaxed">
                                             {item.finding_content || `Finding #${item.finding_id}`}
                                         </p>
                                     </button>
@@ -205,25 +207,25 @@ export default function VerificationPipelinePage() {
                     <main className="flex-1 p-8 space-y-8 overflow-y-auto max-h-[calc(100vh-180px)]">
                         {/* Stats Dashboard */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <MiniStat icon="verified" label="Verified" value={displayStats.verified} color="text-olive" />
+                            <MiniStat icon="verified" label="Verified" value={displayStats.verified} color="text-emerald" />
                             <MiniStat icon="flag" label="Flagged" value={displayStats.flagged} color="text-gold" />
-                            <MiniStat icon="dangerous" label="Rejected" value={displayStats.rejected} color="text-coral" />
-                            <MiniStat icon="hourglass_empty" label="Pending" value={displayStats.pending} color="text-ink-muted" />
+                            <MiniStat icon="dangerous" label="Rejected" value={displayStats.rejected} color="text-rose" />
+                            <MiniStat icon="hourglass_empty" label="Pending" value={displayStats.pending} color="text-text-muted" />
                         </div>
 
                         {/* Avg confidence & time */}
                         {(displayStats.avg_confidence !== null || displayStats.avg_time_ms !== null) && (
-                            <div className="flex items-center gap-6 text-xs text-ink-muted">
+                            <div className="flex items-center gap-6 text-xs text-text-muted">
                                 {displayStats.avg_confidence !== null && (
                                     <span className="flex items-center gap-1">
                                         <span className="material-symbols-outlined text-sm">speed</span>
-                                        Avg confidence: <span className="font-mono text-ink-secondary">{Math.round(displayStats.avg_confidence * 100)}%</span>
+                                        Avg confidence: <span className="font-mono text-text-secondary">{Math.round(displayStats.avg_confidence * 100)}%</span>
                                     </span>
                                 )}
                                 {displayStats.avg_time_ms !== null && (
                                     <span className="flex items-center gap-1">
                                         <span className="material-symbols-outlined text-sm">timer</span>
-                                        Avg time: <span className="font-mono text-ink-secondary">{Math.round(displayStats.avg_time_ms)}ms</span>
+                                        Avg time: <span className="font-mono text-text-secondary">{Math.round(displayStats.avg_time_ms)}ms</span>
                                     </span>
                                 )}
                             </div>
@@ -242,7 +244,7 @@ export default function VerificationPipelinePage() {
                                             <span className="badge badge-system ml-2">{selectedFinding.verification_method}</span>
                                         )}
                                     </div>
-                                    <p className="text-sm text-ink leading-relaxed">
+                                    <p className="text-sm text-text leading-relaxed">
                                         {selectedFinding.finding_content || `Finding #${selectedFinding.finding_id}`}
                                     </p>
                                     {selectedFinding.source_url && (
@@ -250,7 +252,7 @@ export default function VerificationPipelinePage() {
                                             href={selectedFinding.source_url}
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="text-xs text-sage hover:underline mt-2 block truncate"
+                                            className="text-xs text-amber hover:underline mt-2 block truncate"
                                         >
                                             {selectedFinding.source_url}
                                         </a>
@@ -259,7 +261,7 @@ export default function VerificationPipelinePage() {
 
                                 {/* Pipeline Flow */}
                                 <div>
-                                    <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-6">
+                                    <h3 className="text-[11px] font-mono font-semibold text-text-muted uppercase tracking-widest mb-6">
                                         Verification Pipeline
                                     </h3>
                                     <div className="flex items-start gap-0">
@@ -268,34 +270,34 @@ export default function VerificationPipelinePage() {
                                             const isActive = i === activeStage && activeStage < 4;
                                             return (
                                                 <div key={stage.id} className="flex items-start flex-1">
-                                                    <div className={`flex-1 relative rounded-xl p-5 border transition-all ${isActive
-                                                        ? "bg-sage/10 border-sage/40 ring-1 ring-sage/20"
+                                                    <div className={`flex-1 relative rounded-2xl p-5 border transition-all ${isActive
+                                                        ? "bg-amber/10 border-amber/30 ring-1 ring-amber/15"
                                                         : isCompleted
-                                                            ? "bg-olive/5 border-olive/30"
-                                                            : "bg-card-inset/60 border-edge"
+                                                            ? "bg-emerald/5 border-emerald/30"
+                                                            : "bg-surface-inset/60 border-border"
                                                         }`}>
                                                         {isActive && (
-                                                            <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-sage to-transparent animate-flow-pulse" />
+                                                            <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-amber to-transparent animate-flow" />
                                                         )}
                                                         <div className="flex items-center gap-2 mb-3">
-                                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isCompleted ? "bg-olive/10" : isActive ? "bg-sage/20" : "bg-edge"}`}>
-                                                                <span className={`material-symbols-outlined text-base ${isCompleted ? "text-olive" : isActive ? "text-sage" : "text-ink-muted"}`}>
+                                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isCompleted ? "bg-emerald/10" : isActive ? "bg-amber/20" : "bg-border"}`}>
+                                                                <span className={`material-symbols-outlined text-base ${isCompleted ? "text-emerald" : isActive ? "text-amber" : "text-text-muted"}`}>
                                                                     {isCompleted ? "check_circle" : stage.icon}
                                                                 </span>
                                                             </div>
                                                             <div>
-                                                                <p className={`text-xs font-semibold ${isCompleted ? "text-olive" : isActive ? "text-sage" : "text-ink-muted"}`}>
+                                                                <p className={`text-xs font-semibold ${isCompleted ? "text-emerald" : isActive ? "text-amber" : "text-text-muted"}`}>
                                                                     {stage.label}
                                                                 </p>
                                                                 {isActive && (
-                                                                    <span className="text-[10px] text-sage animate-soft-pulse">Processing...</span>
+                                                                    <span className="text-[10px] text-amber animate-breathe">Processing...</span>
                                                                 )}
                                                             </div>
                                                         </div>
-                                                        <p className="text-xs text-ink-muted leading-relaxed">{stage.description}</p>
+                                                        <p className="text-xs text-text-muted leading-relaxed">{stage.description}</p>
 
                                                         {isCompleted && stage.id === "finding" && (
-                                                            <div className="mt-3 text-xs text-olive flex items-center gap-1">
+                                                            <div className="mt-3 text-xs text-emerald flex items-center gap-1">
                                                                 <span className="material-symbols-outlined text-sm">check</span>
                                                                 Finding captured
                                                             </div>
@@ -304,8 +306,8 @@ export default function VerificationPipelinePage() {
 
                                                     {i < pipelineStages.length - 1 && (
                                                         <div className="flex items-center pt-8 mx-2">
-                                                            <div className={`w-8 h-0.5 rounded ${isCompleted ? "bg-olive" : "bg-edge"}`} />
-                                                            <span className={`material-symbols-outlined text-sm ${isCompleted ? "text-olive" : "text-ink-muted"}`}>
+                                                            <div className={`w-8 h-0.5 rounded ${isCompleted ? "bg-emerald" : "bg-border"}`} />
+                                                            <span className={`material-symbols-outlined text-sm ${isCompleted ? "text-emerald" : "text-text-muted"}`}>
                                                                 chevron_right
                                                             </span>
                                                         </div>
@@ -331,12 +333,12 @@ export default function VerificationPipelinePage() {
                                         <div className="card flex items-center gap-8">
                                             <div className="relative w-24 h-24">
                                                 <svg className="w-24 h-24" viewBox="0 0 100 100">
-                                                    <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="6" className="text-edge" />
+                                                    <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="6" className="text-border" />
                                                     <circle
                                                         cx="50" cy="50" r="42" fill="none" strokeWidth="6" strokeLinecap="round"
                                                         strokeDasharray={`${Math.round(conf * 264)} 264`}
                                                         transform="rotate(-90 50 50)"
-                                                        className={conf >= 0.7 ? "text-olive" : conf >= 0.4 ? "text-gold" : "text-coral"}
+                                                        className={conf >= 0.7 ? "text-emerald" : conf >= 0.4 ? "text-gold" : "text-rose"}
                                                         stroke="currentColor"
                                                     />
                                                 </svg>
@@ -348,7 +350,7 @@ export default function VerificationPipelinePage() {
                                                 <h4 className="font-semibold mb-1">
                                                     {selectedFinding.verified_confidence !== null ? "Verified" : "Original"} Confidence
                                                 </h4>
-                                                <p className="text-sm text-ink-secondary">
+                                                <p className="text-sm text-text-secondary">
                                                     {conf >= 0.7
                                                         ? "High confidence — finding is well-supported by evidence."
                                                         : conf >= 0.4
@@ -357,7 +359,7 @@ export default function VerificationPipelinePage() {
                                                     }
                                                 </p>
                                                 {selectedFinding.original_confidence !== null && selectedFinding.verified_confidence !== null && (
-                                                    <p className="text-xs text-ink-muted mt-1">
+                                                    <p className="text-xs text-text-muted mt-1">
                                                         Original: {Math.round(selectedFinding.original_confidence * 100)}% → Verified: {Math.round(selectedFinding.verified_confidence * 100)}%
                                                     </p>
                                                 )}
@@ -370,30 +372,30 @@ export default function VerificationPipelinePage() {
                                 {selectedFinding.questions_asked && selectedFinding.questions_asked.length > 0 && (
                                     <div className="card">
                                         <div className="flex items-center gap-2 mb-4">
-                                            <span className="material-symbols-outlined text-sage">quiz</span>
+                                            <span className="material-symbols-outlined text-amber">quiz</span>
                                             <h3 className="text-sm font-semibold">Verification Questions</h3>
                                             <span className="badge badge-system ml-auto">{selectedFinding.questions_asked.length} questions</span>
                                         </div>
                                         <div className="space-y-4">
                                             {selectedFinding.questions_asked.map((q, idx) => (
-                                                <div key={idx} className="border-l-4 border-sage/30 pl-4 py-2">
+                                                <div key={idx} className="border-l-4 border-amber/30 pl-4 py-2">
                                                     <div className="flex items-start gap-2 mb-2">
-                                                        <span className="text-xs font-mono text-ink-muted mt-0.5">Q{idx + 1}</span>
+                                                        <span className="text-xs font-mono text-text-muted mt-0.5">Q{idx + 1}</span>
                                                         <div className="flex-1">
-                                                            <p className="text-sm font-medium text-ink mb-1">{q.question}</p>
+                                                            <p className="text-sm font-medium text-text mb-1">{q.question}</p>
                                                             <span className="badge badge-system text-[10px]">{q.aspect}</span>
                                                         </div>
                                                     </div>
 
                                                     {q.independent_answer && (
                                                         <div className="mt-2 pl-8">
-                                                            <p className="text-xs text-ink-secondary mb-2">
-                                                                <strong className="text-ink-muted">Answer:</strong> {q.independent_answer}
+                                                            <p className="text-xs text-text-secondary mb-2">
+                                                                <strong className="text-text-muted">Answer:</strong> {q.independent_answer}
                                                             </p>
 
                                                             <div className="flex items-center gap-3 text-xs">
                                                                 {q.supports_original !== null && (
-                                                                    <span className={`flex items-center gap-1 ${q.supports_original ? "text-olive" : "text-coral"}`}>
+                                                                    <span className={`flex items-center gap-1 ${q.supports_original ? "text-emerald" : "text-rose"}`}>
                                                                         <span className="material-symbols-outlined text-sm">
                                                                             {q.supports_original ? "check_circle" : "cancel"}
                                                                         </span>
@@ -402,7 +404,7 @@ export default function VerificationPipelinePage() {
                                                                 )}
 
                                                                 {q.confidence !== null && (
-                                                                    <span className="flex items-center gap-1 text-ink-muted">
+                                                                    <span className="flex items-center gap-1 text-text-muted">
                                                                         <span className="material-symbols-outlined text-sm">speed</span>
                                                                         <span className="font-mono">{Math.round(q.confidence * 100)}%</span>
                                                                     </span>
@@ -424,12 +426,12 @@ export default function VerificationPipelinePage() {
                                             <h3 className="text-sm font-semibold">CRITIC Corrections</h3>
                                             <span className="badge badge-system ml-auto">{selectedFinding.corrections_made.length} corrections</span>
                                         </div>
-                                        <p className="text-xs text-ink-muted mb-3">
+                                        <p className="text-xs text-text-muted mb-3">
                                             Self-critiqued and revised through {selectedFinding.critic_iterations} iteration{selectedFinding.critic_iterations !== 1 ? "s" : ""}
                                         </p>
                                         <ul className="space-y-2">
                                             {selectedFinding.corrections_made.map((correction, idx) => (
-                                                <li key={idx} className="flex items-start gap-2 text-xs text-ink-secondary">
+                                                <li key={idx} className="flex items-start gap-2 text-xs text-text-secondary">
                                                     <span className="material-symbols-outlined text-sm text-gold mt-0.5 shrink-0">arrow_right</span>
                                                     <span className="flex-1">{correction}</span>
                                                 </li>
@@ -440,12 +442,12 @@ export default function VerificationPipelinePage() {
 
                                 {/* Error */}
                                 {selectedFinding.error && (
-                                    <div className="card border-coral/30 bg-coral/5">
-                                        <div className="flex items-center gap-2 text-coral text-xs font-semibold mb-1">
+                                    <div className="card border-rose/30 bg-rose/5">
+                                        <div className="flex items-center gap-2 text-rose text-xs font-semibold mb-1">
                                             <span className="material-symbols-outlined text-sm">error</span>
                                             Verification Error
                                         </div>
-                                        <p className="text-xs text-ink-secondary">{selectedFinding.error}</p>
+                                        <p className="text-xs text-text-secondary">{selectedFinding.error}</p>
                                     </div>
                                 )}
                             </>
@@ -460,21 +462,21 @@ export default function VerificationPipelinePage() {
 /* ── sub-components ─────────────────────────────────────── */
 function StatusDot({ status }: { status: string }) {
     const colors: Record<string, string> = {
-        verified: "bg-olive",
-        processing: "bg-sage animate-soft-pulse",
-        pending: "bg-ink-muted",
-        contradicted: "bg-coral",
+        verified: "bg-emerald",
+        processing: "bg-amber animate-breathe",
+        pending: "bg-text-muted",
+        contradicted: "bg-rose",
         flagged: "bg-gold",
         skipped: "bg-amber-400",
     };
-    return <span className={`w-2 h-2 rounded-full ${colors[status] || "bg-ink-muted"}`} />;
+    return <span className={`w-2 h-2 rounded-full ${colors[status] || "bg-text-muted"}`} />;
 }
 
 function MiniStat({ icon, label, value, color }: { icon: string; label: string; value: number; color: string }) {
     return (
         <div className="card py-4">
             <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-ink-muted">{label}</span>
+                <span className="text-[11px] font-mono text-text-muted uppercase tracking-widest">{label}</span>
                 <span className={`material-symbols-outlined text-lg ${color}`}>{icon}</span>
             </div>
             <span className="font-mono text-2xl font-bold">{value}</span>
@@ -491,7 +493,7 @@ function MetricCard({ label, value, format }: { label: string; value: number | n
 
     return (
         <div className="card py-3 text-center">
-            <p className="text-xs text-ink-muted mb-1">{label}</p>
+            <p className="text-[11px] font-mono text-text-muted uppercase tracking-widest mb-1">{label}</p>
             <p className="font-mono text-lg font-bold">{display}</p>
         </div>
     );
@@ -499,11 +501,11 @@ function MetricCard({ label, value, format }: { label: string; value: number | n
 
 function getStatusColor(status: string): string {
     switch (status) {
-        case "verified": return "text-olive";
-        case "processing": return "text-sage";
-        case "contradicted": return "text-coral";
+        case "verified": return "text-emerald";
+        case "processing": return "text-amber";
+        case "contradicted": return "text-rose";
         case "flagged": return "text-gold";
         case "skipped": return "text-amber-400";
-        default: return "text-ink-muted";
+        default: return "text-text-muted";
     }
 }

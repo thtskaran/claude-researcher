@@ -21,44 +21,44 @@ interface AgentDecision {
 const roleConfig: Record<string, { icon: string; color: string; bgColor: string; label: string; description: string }> = {
     director: {
         icon: "military_tech",
-        color: "text-iris",
-        bgColor: "bg-iris/10",
+        color: "text-violet",
+        bgColor: "bg-violet/10",
         label: "Director",
         description: "Strategic planning and goal decomposition"
     },
     manager: {
         icon: "psychology",
-        color: "text-sage",
-        bgColor: "bg-sage/10",
+        color: "text-amber",
+        bgColor: "bg-amber/10",
         label: "Manager",
         description: "Tactical coordination and synthesis"
     },
     intern: {
         icon: "person_search",
-        color: "text-olive",
-        bgColor: "bg-olive/10",
+        color: "text-emerald",
+        bgColor: "bg-emerald/10",
         label: "Research Intern",
         description: "Web search and finding extraction"
     },
     researcher: {
         icon: "person_search",
-        color: "text-olive",
-        bgColor: "bg-olive/10",
+        color: "text-emerald",
+        bgColor: "bg-emerald/10",
         label: "Research Intern",
         description: "Web search and finding extraction"
     },
     research_intern: {
         icon: "person_search",
-        color: "text-olive",
-        bgColor: "bg-olive/10",
+        color: "text-emerald",
+        bgColor: "bg-emerald/10",
         label: "Research Intern",
         description: "Web search and finding extraction"
     },
 };
 const defaultRoleCfg = {
     icon: "smart_toy",
-    color: "text-ink-secondary",
-    bgColor: "bg-ink-secondary/10",
+    color: "text-text-secondary",
+    bgColor: "bg-text-secondary/10",
     label: "Agent",
     description: "System agent"
 };
@@ -113,23 +113,23 @@ export default function AgentTransparencyPage() {
     return (
         <div className="min-h-screen flex flex-col">
             {/* Header */}
-            <header className="border-b border-edge bg-card/50 backdrop-blur-sm sticky top-0 z-20">
+            <header className="border-b border-border bg-surface/40 backdrop-blur-xl sticky top-0 z-20">
                 <div className="max-w-7xl mx-auto px-6 py-4">
-                    <div className="flex items-center gap-2 text-xs text-ink-muted mb-2">
-                        <Link href="/" className="hover:text-sage transition-colors">Sessions</Link>
+                    <div className="flex items-center gap-2 text-[11px] text-text-muted font-mono mb-2">
+                        <Link href="/" className="hover:text-amber transition-colors">Sessions</Link>
                         <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-                        <Link href={`/session/${sessionId}`} className="hover:text-sage transition-colors">Session</Link>
+                        <Link href={`/session/${sessionId}`} className="hover:text-amber transition-colors">Session</Link>
                         <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-                        <span className="text-ink-secondary">Agent Activity</span>
+                        <span className="text-text-secondary">Agent Activity</span>
                     </div>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <Link href={`/session/${sessionId}`} className="text-ink-secondary hover:text-sage transition-colors">
+                            <Link href={`/session/${sessionId}`} className="text-text-secondary hover:text-amber transition-colors">
                                 <span className="material-symbols-outlined">arrow_back</span>
                             </Link>
                             <div>
-                                <h1 className="text-xl font-display">Agent Transparency</h1>
-                                <p className="text-xs text-ink-muted">See what each agent did and why</p>
+                                <h1 className="text-xl font-display font-semibold">Agent Transparency</h1>
+                                <p className="text-[11px] text-text-muted font-mono uppercase tracking-widest">See what each agent did and why</p>
                             </div>
                         </div>
                         <button onClick={fetchData} className="btn btn-ghost text-xs gap-1">
@@ -140,58 +140,72 @@ export default function AgentTransparencyPage() {
                 </div>
             </header>
 
+            <div className="glow-line" />
+
             {loading ? (
                 <div className="flex-1 flex items-center justify-center">
-                    <div className="flex items-center gap-3 text-ink-secondary">
-                        <span className="material-symbols-outlined animate-spin">progress_activity</span>
+                    <div className="flex items-center gap-3 text-text-secondary">
+                        <span className="material-symbols-outlined animate-spin text-amber">progress_activity</span>
                         Loading agent activity...
                     </div>
                 </div>
             ) : decisions.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center">
                     <div className="text-center">
-                        <span className="material-symbols-outlined text-5xl text-ink-muted mb-3 block">groups</span>
-                        <p className="text-ink-secondary">No agent activity yet</p>
-                        <p className="text-xs text-ink-muted mt-1">Actions will appear as research progresses</p>
+                        <span className="material-symbols-outlined text-5xl text-text-muted mb-3 block">groups</span>
+                        <p className="text-text-secondary">No agent activity yet</p>
+                        <p className="text-xs text-text-muted mt-1">Actions will appear as research progresses</p>
                     </div>
                 </div>
             ) : (
                 <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
                     {/* Overview Stats */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                        <div className="card bg-gradient-to-br from-sage/5 to-transparent border-sage/20">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs text-ink-secondary uppercase tracking-wider">Total Actions</span>
-                                <span className="material-symbols-outlined text-sage">analytics</span>
+                        <div className="card group">
+                            <div className="absolute inset-0 bg-gradient-to-br from-amber/5 to-transparent pointer-events-none" />
+                            <div className="relative">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[11px] font-mono text-text-muted uppercase tracking-widest">Total Actions</span>
+                                    <span className="material-symbols-outlined text-amber">analytics</span>
+                                </div>
+                                <p className="text-3xl font-bold font-mono text-text">{totalActions}</p>
+                                <p className="text-xs text-text-muted mt-1">Actions taken by all agents</p>
                             </div>
-                            <p className="text-3xl font-bold font-mono text-ink">{totalActions}</p>
-                            <p className="text-xs text-ink-muted mt-1">Actions taken by all agents</p>
                         </div>
 
-                        <div className="card bg-gradient-to-br from-olive/5 to-transparent border-olive/20">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs text-ink-secondary uppercase tracking-wider">Active Agents</span>
-                                <span className="material-symbols-outlined text-olive">groups</span>
+                        <div className="card group">
+                            <div className="absolute inset-0 bg-gradient-to-br from-emerald/5 to-transparent pointer-events-none" />
+                            <div className="relative">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[11px] font-mono text-text-muted uppercase tracking-widest">Active Agents</span>
+                                    <span className="material-symbols-outlined text-emerald">groups</span>
+                                </div>
+                                <p className="text-3xl font-bold font-mono text-text">{orderedAgents.length}</p>
+                                <p className="text-xs text-text-muted mt-1">Agents participating in research</p>
                             </div>
-                            <p className="text-3xl font-bold font-mono text-ink">{orderedAgents.length}</p>
-                            <p className="text-xs text-ink-muted mt-1">Agents participating in research</p>
                         </div>
 
-                        <div className="card bg-gradient-to-br from-gold/5 to-transparent border-gold/20">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs text-ink-secondary uppercase tracking-wider">Action Types</span>
-                                <span className="material-symbols-outlined text-gold">category</span>
+                        <div className="card group">
+                            <div className="absolute inset-0 bg-gradient-to-br from-gold/5 to-transparent pointer-events-none" />
+                            <div className="relative">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[11px] font-mono text-text-muted uppercase tracking-widest">Action Types</span>
+                                    <span className="material-symbols-outlined text-gold">category</span>
+                                </div>
+                                <p className="text-3xl font-bold font-mono text-text">{uniqueActionTypes}</p>
+                                <p className="text-xs text-text-muted mt-1">Different types of actions performed</p>
                             </div>
-                            <p className="text-3xl font-bold font-mono text-ink">{uniqueActionTypes}</p>
-                            <p className="text-xs text-ink-muted mt-1">Different types of actions performed</p>
                         </div>
                     </div>
 
                     {/* Agent Cards */}
                     <div className="mb-8">
-                        <h2 className="text-sm font-display font-normal text-ink-secondary uppercase tracking-wider mb-4">
-                            Research Team
-                        </h2>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-1.5 h-1.5 rounded-full bg-text-muted" />
+                            <h2 className="text-[11px] font-mono font-semibold text-text-muted uppercase tracking-widest">
+                                Research Team
+                            </h2>
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {orderedAgents.map((agentRole) => {
                                 const cfg = roleConfig[agentRole.toLowerCase()] || defaultRoleCfg;
@@ -202,7 +216,7 @@ export default function AgentTransparencyPage() {
                                     <button
                                         key={agentRole}
                                         onClick={() => setSelectedAgent(isSelected ? null : agentRole)}
-                                        className={`card text-left transition-all hover:shadow-lg ${
+                                        className={`card text-left transition-all hover:shadow-lg cursor-pointer ${
                                             isSelected ? `ring-2 ${cfg.color.replace("text-", "ring-")} ${cfg.bgColor}` : ""
                                         }`}
                                     >
@@ -213,21 +227,21 @@ export default function AgentTransparencyPage() {
                                                 </span>
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <h3 className="font-semibold text-ink">{cfg.label}</h3>
-                                                <p className="text-xs text-ink-muted leading-relaxed">{cfg.description}</p>
+                                                <h3 className="font-semibold text-text">{cfg.label}</h3>
+                                                <p className="text-xs text-text-muted leading-relaxed">{cfg.description}</p>
                                             </div>
                                         </div>
 
                                         <div className="flex items-center justify-between text-xs">
                                             <div className="flex items-center gap-4">
                                                 <div>
-                                                    <span className="text-ink-muted">Actions:</span>
-                                                    <span className="ml-1 font-mono font-bold text-ink">{agentDecisions.length}</span>
+                                                    <span className="text-text-muted">Actions:</span>
+                                                    <span className="ml-1 font-mono font-bold text-text">{agentDecisions.length}</span>
                                                 </div>
                                                 {agentDecisions[0] && (
                                                     <div>
-                                                        <span className="text-ink-muted">Last:</span>
-                                                        <span className="ml-1 font-mono text-ink-secondary">
+                                                        <span className="text-text-muted">Last:</span>
+                                                        <span className="ml-1 font-mono text-text-secondary">
                                                             {new Date(agentDecisions[0].created_at).toLocaleTimeString("en-US", {
                                                                 hour: "2-digit",
                                                                 minute: "2-digit"
@@ -237,7 +251,7 @@ export default function AgentTransparencyPage() {
                                                 )}
                                             </div>
                                             {isSelected && (
-                                                <span className={`badge ${cfg.color.replace("text-", "badge-")}`}>Selected</span>
+                                                <span className="badge badge-action">Selected</span>
                                             )}
                                         </div>
                                     </button>
@@ -245,9 +259,9 @@ export default function AgentTransparencyPage() {
                             })}
                         </div>
                         {selectedAgent && (
-                            <p className="text-xs text-ink-muted mt-3 text-center">
-                                Showing only actions from <span className="text-ink font-semibold">{selectedAgent}</span>
-                                <button onClick={() => setSelectedAgent(null)} className="ml-2 text-sage hover:underline">
+                            <p className="text-xs text-text-muted mt-3 text-center">
+                                Showing only actions from <span className="text-text font-semibold">{selectedAgent}</span>
+                                <button onClick={() => setSelectedAgent(null)} className="ml-2 text-amber hover:underline">
                                     Clear filter
                                 </button>
                             </p>
@@ -256,13 +270,16 @@ export default function AgentTransparencyPage() {
 
                     {/* Activity Timeline */}
                     <div>
-                        <h2 className="text-sm font-display font-normal text-ink-secondary uppercase tracking-wider mb-4">
-                            Activity Timeline ({filteredDecisions.length} actions)
-                        </h2>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-1.5 h-1.5 rounded-full bg-text-muted" />
+                            <h2 className="text-[11px] font-mono font-semibold text-text-muted uppercase tracking-widest">
+                                Activity Timeline ({filteredDecisions.length} actions)
+                            </h2>
+                        </div>
                         <div className="card p-0 overflow-hidden">
                             <div className="max-h-[600px] overflow-y-auto">
-                                <div className="divide-y divide-edge">
-                                    {filteredDecisions.map((decision, idx) => (
+                                <div className="divide-y divide-border">
+                                    {filteredDecisions.map((decision) => (
                                         <ActionCard key={decision.id} decision={decision} />
                                     ))}
                                 </div>
@@ -285,7 +302,7 @@ function ActionCard({ decision }: { decision: AgentDecision }) {
     const hasDetails = decision.reasoning || (decision.inputs && Object.keys(decision.inputs).length > 0) || (decision.metrics && Object.keys(decision.metrics).length > 0);
 
     return (
-        <div className="p-4 hover:bg-card/50 transition-colors">
+        <div className="p-4 hover:bg-surface/50 transition-colors">
             {/* Header */}
             <div className="flex items-start gap-3">
                 <div className={`w-10 h-10 rounded-lg ${cfg.bgColor} flex items-center justify-center shrink-0`}>
@@ -296,8 +313,8 @@ function ActionCard({ decision }: { decision: AgentDecision }) {
                     {/* Agent & Time */}
                     <div className="flex items-center gap-2 mb-1.5">
                         <span className={`text-sm font-semibold ${cfg.color}`}>{cfg.label}</span>
-                        <span className="text-ink-muted">&middot;</span>
-                        <span className="text-xs text-ink-muted font-mono">
+                        <span className="text-text-muted">&middot;</span>
+                        <span className="text-xs text-text-muted font-mono">
                             {new Date(decision.created_at).toLocaleString("en-US", {
                                 month: "short",
                                 day: "numeric",
@@ -308,8 +325,8 @@ function ActionCard({ decision }: { decision: AgentDecision }) {
                         </span>
                         {decision.iteration !== null && (
                             <>
-                                <span className="text-ink-muted">&middot;</span>
-                                <span className="text-xs text-ink-muted">
+                                <span className="text-text-muted">&middot;</span>
+                                <span className="text-xs text-text-muted">
                                     <span className="material-symbols-outlined text-xs align-middle mr-0.5">replay</span>
                                     Iteration {decision.iteration}
                                 </span>
@@ -318,15 +335,15 @@ function ActionCard({ decision }: { decision: AgentDecision }) {
                     </div>
 
                     {/* Action Description */}
-                    <p className="text-sm text-ink leading-relaxed mb-2">{action}</p>
+                    <p className="text-sm text-text leading-relaxed mb-2">{action}</p>
 
                     {/* Quick metrics */}
                     {decision.metrics && Object.keys(decision.metrics).length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
                             {Object.entries(decision.metrics).slice(0, 3).map(([key, value]) => (
-                                <span key={key} className="inline-flex items-center gap-1 px-2 py-0.5 bg-card-inset rounded text-xs">
-                                    <span className="text-ink-muted">{key}:</span>
-                                    <span className="text-ink-secondary font-mono">{String(value)}</span>
+                                <span key={key} className="inline-flex items-center gap-1 px-2 py-0.5 bg-surface-inset rounded-lg text-xs">
+                                    <span className="text-text-muted">{key}:</span>
+                                    <span className="text-text-secondary font-mono">{String(value)}</span>
                                 </span>
                             ))}
                         </div>
@@ -336,7 +353,7 @@ function ActionCard({ decision }: { decision: AgentDecision }) {
                     {hasDetails && (
                         <button
                             onClick={() => setExpanded(!expanded)}
-                            className="text-xs text-ink-muted hover:text-sage transition-colors flex items-center gap-1 mt-2"
+                            className="text-xs text-text-muted hover:text-amber transition-colors flex items-center gap-1 mt-2"
                         >
                             <span className="material-symbols-outlined text-sm">
                                 {expanded ? "expand_less" : "expand_more"}
@@ -347,15 +364,15 @@ function ActionCard({ decision }: { decision: AgentDecision }) {
 
                     {/* Expanded Details */}
                     {expanded && hasDetails && (
-                        <div className="mt-3 space-y-3 pl-4 border-l-2 border-edge">
+                        <div className="mt-3 space-y-3 pl-4 border-l-2 border-border">
                             {/* Reasoning */}
                             {decision.reasoning && (
                                 <div>
-                                    <p className="text-xs text-ink-muted uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                                    <p className="text-[11px] font-mono text-text-muted uppercase tracking-widest mb-1.5 flex items-center gap-1">
                                         <span className="material-symbols-outlined text-sm">psychology</span>
                                         Why this action was taken
                                     </p>
-                                    <p className="text-sm text-ink-secondary leading-relaxed italic bg-card/30 rounded p-3">
+                                    <p className="text-sm text-text-secondary leading-relaxed italic bg-surface/30 rounded-xl p-3">
                                         &ldquo;{decision.reasoning}&rdquo;
                                     </p>
                                 </div>
@@ -364,12 +381,12 @@ function ActionCard({ decision }: { decision: AgentDecision }) {
                             {/* Inputs */}
                             {decision.inputs && Object.keys(decision.inputs).length > 0 && (
                                 <div>
-                                    <p className="text-xs text-ink-muted uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                                    <p className="text-[11px] font-mono text-text-muted uppercase tracking-widest mb-1.5 flex items-center gap-1">
                                         <span className="material-symbols-outlined text-sm">input</span>
                                         Input data used
                                     </p>
-                                    <div className="bg-card-inset border border-edge rounded p-3 overflow-x-auto">
-                                        <pre className="font-mono text-xs text-ink-secondary">
+                                    <div className="bg-surface-inset border border-border rounded-xl p-3 overflow-x-auto">
+                                        <pre className="font-mono text-xs text-text-secondary">
                                             {JSON.stringify(decision.inputs, null, 2)}
                                         </pre>
                                     </div>
@@ -379,15 +396,15 @@ function ActionCard({ decision }: { decision: AgentDecision }) {
                             {/* All Metrics */}
                             {decision.metrics && Object.keys(decision.metrics).length > 3 && (
                                 <div>
-                                    <p className="text-xs text-ink-muted uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                                    <p className="text-[11px] font-mono text-text-muted uppercase tracking-widest mb-1.5 flex items-center gap-1">
                                         <span className="material-symbols-outlined text-sm">monitoring</span>
                                         Performance metrics
                                     </p>
                                     <div className="grid grid-cols-2 gap-2">
                                         {Object.entries(decision.metrics).map(([key, value]) => (
-                                            <div key={key} className="bg-card/50 rounded px-3 py-2">
-                                                <p className="text-xs text-ink-muted">{key}</p>
-                                                <p className="text-sm text-ink font-mono">{String(value)}</p>
+                                            <div key={key} className="bg-surface/50 rounded-xl px-3 py-2">
+                                                <p className="text-xs text-text-muted">{key}</p>
+                                                <p className="text-sm text-text font-mono">{String(value)}</p>
                                             </div>
                                         ))}
                                     </div>
@@ -405,7 +422,6 @@ function ActionCard({ decision }: { decision: AgentDecision }) {
 function getActionDescription(decision: AgentDecision): string {
     const { decision_type, decision_outcome } = decision;
 
-    // Map to human-readable descriptions
     const actionMap: Record<string, (outcome: string) => string> = {
         decompose_goal: (o) => `Decomposed research goal → ${o}`,
         assign_topic: (o) => `Assigned new research topic: "${o}"`,
@@ -429,7 +445,6 @@ function getActionDescription(decision: AgentDecision): string {
     const descFn = actionMap[decision_type.toLowerCase()];
     if (descFn) return descFn(decision_outcome);
 
-    // Fallback: humanize the decision_type
     const humanType = decision_type
         .split('_')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))

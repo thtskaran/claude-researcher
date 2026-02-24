@@ -498,7 +498,7 @@ ${htmlBody}
       {tocItems.length > 0 && (
         <aside className="lg:w-64 shrink-0">
           <div className="card sticky top-40">
-            <h3 className="text-xs font-display font-normal text-ink-muted uppercase tracking-wider mb-4">
+            <h3 className="text-xs font-display font-normal text-text-muted uppercase tracking-wider mb-4">
               Table of Contents
             </h3>
             <nav className="space-y-1 max-h-96 overflow-y-auto scrollbar-hide">
@@ -506,14 +506,14 @@ ${htmlBody}
                 <button
                   key={i}
                   onClick={() => scrollToSection(item.id)}
-                  className={`block w-full text-left text-sm truncate py-1 transition-colors hover:text-sage ${
+                  className={`block w-full text-left text-sm truncate py-1 transition-colors hover:text-amber ${
                     activeTocId === item.id
-                      ? "text-sage font-medium"
+                      ? "text-amber font-medium"
                       : item.level === 1
-                        ? "text-ink font-medium"
+                        ? "text-text font-medium"
                         : item.level === 2
-                          ? "text-ink-secondary pl-4"
-                          : "text-ink-muted pl-8 text-xs"
+                          ? "text-text-secondary pl-4"
+                          : "text-text-muted pl-8 text-xs"
                   }`}
                 >
                   {item.text}
@@ -527,10 +527,10 @@ ${htmlBody}
       {/* Main Report Content */}
       <div className="flex-1 card">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-edge">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-border">
           <div>
             <h3 className="text-lg font-display">Research Report</h3>
-            <p className="text-xs text-ink-muted mt-1">
+            <p className="text-xs text-text-muted mt-1">
               {path ? (
                 <>Saved at: <span className="font-mono">{path}</span></>
               ) : (
@@ -540,14 +540,14 @@ ${htmlBody}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {/* Format Toggles */}
-            <div className="flex bg-card-inset rounded-lg p-0.5 border border-edge">
+            <div className="flex bg-surface-inset rounded-lg p-0.5 border border-border">
               {(["md", "pdf", "json"] as const).map((f) => (
                 <button
                   key={f}
                   onClick={() => setFormat(f)}
                   className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${format === f
-                      ? "bg-card-hover text-sage"
-                      : "text-ink-muted hover:text-ink"
+                      ? "bg-surface-hover text-amber"
+                      : "text-text-muted hover:text-text"
                     }`}
                 >
                   {f.toUpperCase()}
@@ -569,71 +569,71 @@ ${htmlBody}
 
         {/* Content */}
         {loading ? (
-          <div className="flex items-center gap-3 text-ink-secondary">
+          <div className="flex items-center gap-3 text-text-secondary">
             <span className="material-symbols-outlined animate-spin">progress_activity</span>
             <span className="text-sm">Loading report…</span>
           </div>
         ) : error ? (
           <div className="text-center py-12">
-            <span className="material-symbols-outlined text-4xl text-ink-muted mb-3 block">article</span>
-            <p className="text-sm text-coral mb-1">{error}</p>
-            <p className="text-xs text-ink-muted">Run a session to completion to generate a report.</p>
+            <span className="material-symbols-outlined text-4xl text-text-muted mb-3 block">article</span>
+            <p className="text-sm text-rose mb-1">{error}</p>
+            <p className="text-xs text-text-muted">Run a session to completion to generate a report.</p>
           </div>
         ) : report.trim().length === 0 ? (
           <div className="text-center py-12">
-            <span className="material-symbols-outlined text-4xl text-ink-muted mb-3 block">draft</span>
-            <p className="text-sm text-ink-secondary">Report is empty.</p>
-            <p className="text-xs text-ink-muted mt-1">Try rerunning research or exporting findings.</p>
+            <span className="material-symbols-outlined text-4xl text-text-muted mb-3 block">draft</span>
+            <p className="text-sm text-text-secondary">Report is empty.</p>
+            <p className="text-xs text-text-muted mt-1">Try rerunning research or exporting findings.</p>
           </div>
         ) : (
           <div ref={reportContainerRef} className="report-markdown max-h-[42rem] overflow-y-auto pr-2 scroll-smooth">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                h1: makeHeading("h1", "text-2xl font-display mt-8 mb-4 text-ink scroll-mt-4"),
-                h2: makeHeading("h2", "text-xl font-display font-normal mt-6 mb-3 text-ink scroll-mt-4"),
-                h3: makeHeading("h3", "text-lg font-semibold mt-5 mb-2 text-ink scroll-mt-4"),
-                p: ({ children }) => <p className="text-sm text-ink leading-relaxed mb-4">{children}</p>,
-                ul: ({ children }) => <ul className="list-disc list-outside ml-6 text-sm text-ink mb-4 space-y-2">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal list-outside ml-6 text-sm text-ink mb-4 space-y-2">{children}</ol>,
-                li: ({ children }) => <li className="text-sm text-ink leading-relaxed">{children}</li>,
-                strong: ({ children }) => <strong className="font-semibold text-ink">{children}</strong>,
-                em: ({ children }) => <em className="italic text-ink-secondary">{children}</em>,
+                h1: makeHeading("h1", "text-2xl font-display mt-8 mb-4 text-text scroll-mt-4"),
+                h2: makeHeading("h2", "text-xl font-display font-normal mt-6 mb-3 text-text scroll-mt-4"),
+                h3: makeHeading("h3", "text-lg font-semibold mt-5 mb-2 text-text scroll-mt-4"),
+                p: ({ children }) => <p className="text-sm text-text leading-relaxed mb-4">{children}</p>,
+                ul: ({ children }) => <ul className="list-disc list-outside ml-6 text-sm text-text mb-4 space-y-2">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal list-outside ml-6 text-sm text-text mb-4 space-y-2">{children}</ol>,
+                li: ({ children }) => <li className="text-sm text-text leading-relaxed">{children}</li>,
+                strong: ({ children }) => <strong className="font-semibold text-text">{children}</strong>,
+                em: ({ children }) => <em className="italic text-text-secondary">{children}</em>,
                 blockquote: ({ children }) => (
-                  <blockquote className="border-l-4 border-sage/50 pl-6 italic text-ink-secondary my-6 bg-sage/5 py-3 pr-4 rounded-r-lg">
+                  <blockquote className="border-l-4 border-amber/50 pl-6 italic text-text-secondary my-6 bg-amber/5 py-3 pr-4 rounded-r-lg">
                     {children}
                   </blockquote>
                 ),
-                hr: () => <hr className="border-edge my-6" />,
+                hr: () => <hr className="border-border my-6" />,
                 // Tables (requires remark-gfm)
                 table: ({ children }) => (
-                  <div className="overflow-x-auto mb-6 rounded-lg border border-edge">
+                  <div className="overflow-x-auto mb-6 rounded-lg border border-border">
                     <table className="w-full text-sm">{children}</table>
                   </div>
                 ),
-                thead: ({ children }) => <thead className="bg-card-inset border-b border-edge">{children}</thead>,
-                tbody: ({ children }) => <tbody className="divide-y divide-edge/50">{children}</tbody>,
-                tr: ({ children }) => <tr className="hover:bg-card-hover/50 transition-colors">{children}</tr>,
+                thead: ({ children }) => <thead className="bg-surface-inset border-b border-border">{children}</thead>,
+                tbody: ({ children }) => <tbody className="divide-y divide-border/50">{children}</tbody>,
+                tr: ({ children }) => <tr className="hover:bg-surface-hover/50 transition-colors">{children}</tr>,
                 th: ({ children }) => (
-                  <th className="text-left text-xs font-semibold text-ink-secondary uppercase tracking-wider px-4 py-2.5">
+                  <th className="text-left text-xs font-semibold text-text-secondary uppercase tracking-wider px-4 py-2.5">
                     {children}
                   </th>
                 ),
-                td: ({ children }) => <td className="px-4 py-2.5 text-sm text-ink">{children}</td>,
+                td: ({ children }) => <td className="px-4 py-2.5 text-sm text-text">{children}</td>,
                 code: ({ children, className }) => {
                   // Detect code blocks (inside <pre>) vs inline code
                   const isBlock = className?.startsWith("language-");
                   if (isBlock) {
-                    return <code className={`text-xs text-ink ${className}`}>{children}</code>;
+                    return <code className={`text-xs text-text ${className}`}>{children}</code>;
                   }
                   return (
-                    <code className="text-xs bg-card-inset border border-edge rounded px-1.5 py-0.5 text-sage">
+                    <code className="text-xs bg-surface-inset border border-border rounded px-1.5 py-0.5 text-amber">
                       {children}
                     </code>
                   );
                 },
                 pre: ({ children }) => (
-                  <pre className="text-xs bg-card-inset border border-edge rounded-lg p-4 overflow-x-auto mb-4">
+                  <pre className="text-xs bg-surface-inset border border-border rounded-lg p-4 overflow-x-auto mb-4">
                     {children}
                   </pre>
                 ),
@@ -644,7 +644,7 @@ ${htmlBody}
                       href={href}
                       target={isAnchor ? undefined : "_blank"}
                       rel={isAnchor ? undefined : "noreferrer"}
-                      className="text-sage hover:underline cursor-pointer"
+                      className="text-amber hover:underline cursor-pointer"
                       onClick={(e) => handleLinkClick(e, href)}
                     >
                       {children}

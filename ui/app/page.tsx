@@ -45,60 +45,82 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="border-b border-edge bg-card/50 backdrop-blur-sm sticky top-0 z-20">
+      <header className="border-b border-border bg-surface/40 backdrop-blur-xl sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-sage-soft text-sage">
-              <span className="material-symbols-outlined text-xl">science</span>
+          <div className="flex items-center gap-4">
+            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-amber-soft border border-amber/20">
+              <span className="material-symbols-outlined text-amber text-xl">deployed_code</span>
+              <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-amber animate-breathe" />
             </div>
             <div>
-              <h1 className="text-lg font-display tracking-tight">Claude Researcher</h1>
-              <p className="text-xs text-ink-muted">Deep research with glass-box transparency</p>
+              <h1 className="text-lg font-display font-semibold tracking-tight text-text">Claude Researcher</h1>
+              <p className="text-[11px] text-text-muted font-mono uppercase tracking-widest">Deep Research Observatory</p>
             </div>
           </div>
           <button
             onClick={() => setShowNewSession(true)}
             className="btn btn-primary"
           >
-            <span className="material-symbols-outlined text-lg">add</span>
+            <span className="material-symbols-outlined text-lg">add_circle</span>
             New Research
           </button>
         </div>
       </header>
 
+      {/* Accent line */}
+      <div className="glow-line" />
+
       {/* Main Content */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-10">
         {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 stagger-children">
-          <div className="card card-hover animate-fade-up-in bg-gradient-to-br from-sage/5 to-transparent">
-            <div className="flex justify-between items-start mb-2">
-              <p className="text-sm font-medium text-ink-secondary">Total Sessions</p>
-              <span className="material-symbols-outlined text-ink-secondary">folder_open</span>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10 stagger-children">
+          <div className="card card-hover animate-rise group">
+            <div className="absolute inset-0 bg-gradient-to-br from-amber/5 to-transparent pointer-events-none" />
+            <div className="relative">
+              <div className="flex justify-between items-start mb-4">
+                <p className="text-[11px] font-mono font-medium text-text-muted uppercase tracking-widest">Total Sessions</p>
+                <div className="w-8 h-8 rounded-lg bg-amber-soft flex items-center justify-center group-hover:bg-amber/15 transition-colors">
+                  <span className="material-symbols-outlined text-amber text-base">folder_open</span>
+                </div>
+              </div>
+              <p className="metric">{sessions.length}</p>
             </div>
-            <p className="font-mono text-3xl font-bold tracking-tighter">{sessions.length}</p>
           </div>
-          <div className="card card-hover animate-fade-up-in bg-gradient-to-br from-olive/5 to-transparent">
-            <div className="flex justify-between items-start mb-2">
-              <p className="text-sm font-medium text-ink-secondary">Active</p>
-              <span className="material-symbols-outlined text-olive">play_circle</span>
+          <div className="card card-hover animate-rise group">
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald/5 to-transparent pointer-events-none" />
+            <div className="relative">
+              <div className="flex justify-between items-start mb-4">
+                <p className="text-[11px] font-mono font-medium text-text-muted uppercase tracking-widest">Active Now</p>
+                <div className="w-8 h-8 rounded-lg bg-emerald-soft flex items-center justify-center group-hover:bg-emerald/15 transition-colors">
+                  <span className="material-symbols-outlined text-emerald text-base">play_circle</span>
+                </div>
+              </div>
+              <p className="font-mono text-3xl font-bold tracking-tighter text-emerald">{activeSessions.length}</p>
             </div>
-            <p className="font-mono text-3xl font-bold tracking-tighter text-olive">{activeSessions.length}</p>
           </div>
-          <div className="card card-hover animate-fade-up-in bg-gradient-to-br from-iris/5 to-transparent">
-            <div className="flex justify-between items-start mb-2">
-              <p className="text-sm font-medium text-ink-secondary">Completed</p>
-              <span className="material-symbols-outlined text-ink-secondary">check_circle</span>
+          <div className="card card-hover animate-rise group">
+            <div className="absolute inset-0 bg-gradient-to-br from-violet/5 to-transparent pointer-events-none" />
+            <div className="relative">
+              <div className="flex justify-between items-start mb-4">
+                <p className="text-[11px] font-mono font-medium text-text-muted uppercase tracking-widest">Completed</p>
+                <div className="w-8 h-8 rounded-lg bg-violet-soft flex items-center justify-center group-hover:bg-violet/15 transition-colors">
+                  <span className="material-symbols-outlined text-violet text-base">check_circle</span>
+                </div>
+              </div>
+              <p className="metric">{completedSessions.length}</p>
             </div>
-            <p className="font-mono text-3xl font-bold tracking-tighter">{completedSessions.length}</p>
           </div>
         </div>
 
         {/* Active Sessions */}
         {activeSessions.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-4 px-1">
-              Active Sessions
-            </h2>
+          <div className="mb-10">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald animate-breathe" />
+              <h2 className="text-[11px] font-mono font-semibold text-text-muted uppercase tracking-widest">
+                Active Sessions
+              </h2>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {activeSessions.map((session) => (
                 <SessionCard key={session.session_id} session={session} onClick={() => router.push(`/session/${session.session_id}`)} />
@@ -109,31 +131,34 @@ export default function Home() {
 
         {/* Session History */}
         <div>
-          <h2 className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-4 px-1">
-            {activeSessions.length > 0 ? "History" : "All Sessions"}
-          </h2>
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-1.5 h-1.5 rounded-full bg-text-muted" />
+            <h2 className="text-[11px] font-mono font-semibold text-text-muted uppercase tracking-widest">
+              {activeSessions.length > 0 ? "History" : "All Sessions"}
+            </h2>
+          </div>
 
           {loading ? (
             <div className="card">
-              <div className="flex items-center gap-3 text-ink-secondary">
-                <span className="material-symbols-outlined animate-spin">progress_activity</span>
+              <div className="flex items-center gap-3 text-text-secondary">
+                <span className="material-symbols-outlined animate-spin text-amber">progress_activity</span>
                 <span className="text-sm">Loading sessions...</span>
               </div>
             </div>
           ) : completedSessions.length === 0 && activeSessions.length === 0 ? (
-            <div className="card flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-sage-soft flex items-center justify-center mb-4">
-                <span className="material-symbols-outlined text-sage text-3xl">science</span>
+            <div className="card flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-20 h-20 rounded-2xl bg-amber-soft border border-amber/20 flex items-center justify-center mb-6">
+                <span className="material-symbols-outlined text-amber text-4xl">deployed_code</span>
               </div>
-              <h3 className="text-lg font-display mb-2">No research sessions yet</h3>
-              <p className="text-sm text-ink-secondary max-w-md mb-6">
-                Start your first research session to explore topics with hierarchical deep research and transparent AI reasoning.
+              <h3 className="text-xl font-display font-semibold mb-2">No research sessions yet</h3>
+              <p className="text-sm text-text-secondary max-w-md mb-8">
+                Launch your first research session to explore topics with hierarchical deep research and transparent AI reasoning.
               </p>
               <button
                 onClick={() => setShowNewSession(true)}
-                className="btn btn-primary"
+                className="btn btn-primary text-base px-8 py-3"
               >
-                <span className="material-symbols-outlined text-lg">rocket_launch</span>
+                <span className="material-symbols-outlined text-xl">rocket_launch</span>
                 Start Research
               </button>
             </div>
@@ -149,7 +174,7 @@ export default function Home() {
 
       {/* New Session Modal */}
       {showNewSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-md p-4">
           <div className="w-full max-w-[640px]">
             <NewSessionForm
               onClose={() => setShowNewSession(false)}
@@ -173,13 +198,12 @@ function SessionCard({ session, onClick }: { session: Session; onClick: () => vo
     ? getElapsedTime(session.created_at)
     : getDuration(session.created_at, session.completed_at);
 
-  const dotColor = isCrashed ? "bg-coral" : isPaused ? "bg-gold" : "bg-olive";
-  const textColor = isCrashed ? "text-coral" : isPaused ? "text-gold" : isActive ? "text-olive" : "text-ink-muted";
-  const topBarColor = isCrashed
-    ? "from-coral/40 via-coral to-coral/40"
+  const accentGradient = isCrashed
+    ? "from-rose/40 via-rose to-rose/40"
     : isPaused
       ? "from-gold/40 via-gold to-gold/40"
-      : "from-sage/40 via-sage to-sage/40";
+      : "from-amber/40 via-amber to-amber/40";
+  const statusTextColor = isCrashed ? "text-rose" : isPaused ? "text-gold" : isActive ? "text-emerald" : "text-text-muted";
 
   return (
     <button
@@ -187,42 +211,42 @@ function SessionCard({ session, onClick }: { session: Session; onClick: () => vo
       className="card card-hover text-left w-full group relative overflow-hidden"
     >
       {(isActive || isPaused || isCrashed) && (
-        <div className={`absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r ${topBarColor}`} />
+        <div className={`absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r ${accentGradient}`} />
       )}
 
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
           {isActive ? (
             <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-soft-pulse absolute inline-flex h-full w-full rounded-full bg-olive opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-olive" />
+              <span className="animate-breathe absolute inline-flex h-full w-full rounded-full bg-emerald opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald" />
             </span>
           ) : isPaused || isCrashed ? (
-            <span className={`status-dot ${dotColor}`} />
+            <span className={`status-dot ${isCrashed ? "bg-rose" : "bg-gold"}`} />
           ) : (
             <span className="status-dot status-dot-idle" />
           )}
-          <span className={`text-xs font-mono font-medium ${textColor}`}>
+          <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${statusTextColor}`}>
             {session.status}
           </span>
         </div>
-        <span className="material-symbols-outlined text-ink-muted group-hover:text-sage transition-colors text-lg">
+        <span className="material-symbols-outlined text-text-muted group-hover:text-amber transition-colors text-lg">
           arrow_forward
         </span>
       </div>
 
-      <h3 className="text-sm font-medium text-ink group-hover:text-sage transition-colors line-clamp-2 mb-3 leading-snug">
+      <h3 className="text-sm font-medium text-text group-hover:text-amber transition-colors line-clamp-2 mb-4 leading-snug">
         {session.goal}
       </h3>
 
-      <div className="flex items-center justify-between text-xs text-ink-muted font-mono">
-        <span className="flex items-center gap-1">
-          <span className="material-symbols-outlined text-[14px]">{isActive ? "schedule" : isPaused ? "pause" : isCrashed ? "warning" : "timer"}</span>
+      <div className="flex items-center justify-between text-[11px] text-text-muted font-mono">
+        <span className="flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-[13px]">{isActive ? "schedule" : isPaused ? "pause" : isCrashed ? "warning" : "timer"}</span>
           {timeDisplay}
         </span>
-        <span className="flex items-center gap-1">
-          <span className="material-symbols-outlined text-[14px]">repeat</span>
-          {session.iteration_count ?? 0}/{session.max_iterations} iter
+        <span className="flex items-center gap-1.5">
+          <span className="material-symbols-outlined text-[13px]">repeat</span>
+          {session.iteration_count ?? 0}/{session.max_iterations}
         </span>
       </div>
     </button>

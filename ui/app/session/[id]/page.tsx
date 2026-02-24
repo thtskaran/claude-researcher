@@ -65,7 +65,6 @@ export default function SessionDetail() {
 
   useEffect(() => {
     if (!session) return;
-    // Keep polling for running, paused (might be transitioning), and crashed sessions
     const terminalStatuses = ["completed", "error", "interrupted"];
     if (terminalStatuses.includes(session.status)) return;
     const interval = setInterval(() => {
@@ -130,7 +129,6 @@ export default function SessionDetail() {
   const [actionPending, setActionPending] = useState(false);
   const [isPausing, setIsPausing] = useState(false);
 
-  // Clear isPausing when status actually changes to paused
   useEffect(() => {
     if (session?.status === "paused" || session?.status === "crashed") {
       setIsPausing(false);
@@ -183,8 +181,8 @@ export default function SessionDetail() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <span className="material-symbols-outlined text-4xl text-sage animate-spin mb-4 block">progress_activity</span>
-          <p className="text-ink-secondary">Loading session...</p>
+          <span className="material-symbols-outlined text-4xl text-amber animate-spin mb-4 block">progress_activity</span>
+          <p className="text-text-secondary">Loading session...</p>
         </div>
       </div>
     );
@@ -194,9 +192,9 @@ export default function SessionDetail() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <span className="material-symbols-outlined text-5xl text-coral mb-4 block">error</span>
+          <span className="material-symbols-outlined text-5xl text-rose mb-4 block">error</span>
           <h2 className="text-2xl font-display mb-2">{error || "Session not found"}</h2>
-          <Link href="/" className="text-sage hover:underline text-sm">&larr; Back to Dashboard</Link>
+          <Link href="/" className="text-amber hover:underline text-sm">&larr; Back to Dashboard</Link>
         </div>
       </div>
     );
@@ -217,27 +215,27 @@ export default function SessionDetail() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="border-b border-edge bg-card/50 backdrop-blur-sm sticky top-0 z-20">
+      <header className="border-b border-border bg-surface/40 backdrop-blur-xl sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-2 text-xs text-ink-muted mb-3">
-            <Link href="/" className="hover:text-sage transition-colors">Sessions</Link>
+          <div className="flex items-center gap-2 text-[11px] text-text-muted font-mono mb-3">
+            <Link href="/" className="hover:text-amber transition-colors">Sessions</Link>
             <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-            <span className={isRunning ? "text-olive" : "text-ink-secondary"}>
+            <span className={isRunning ? "text-emerald" : "text-text-secondary"}>
               {isRunning ? "Running" : session.status}
             </span>
           </div>
 
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-4 min-w-0">
-              <Link href="/" className="text-ink-secondary hover:text-sage transition-colors mt-1 shrink-0">
+              <Link href="/" className="text-text-secondary hover:text-amber transition-colors mt-1 shrink-0">
                 <span className="material-symbols-outlined">arrow_back</span>
               </Link>
               <div className="min-w-0">
-                <h1 className="text-xl font-display line-clamp-2 leading-tight">{session.goal}</h1>
-                <div className="flex items-center gap-4 mt-2 text-xs text-ink-muted">
-                  <span className="font-mono">#{session.session_id.slice(0, 8)}</span>
+                <h1 className="text-xl font-display font-semibold line-clamp-2 leading-tight">{session.goal}</h1>
+                <div className="flex items-center gap-4 mt-2 text-[11px] text-text-muted font-mono">
+                  <span>#{session.session_id.slice(0, 8)}</span>
                   <span className="flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[14px]">schedule</span>
+                    <span className="material-symbols-outlined text-[13px]">schedule</span>
                     {formatDate(session.created_at)}
                   </span>
                 </div>
@@ -248,7 +246,7 @@ export default function SessionDetail() {
               <span className={`badge ${getStatusBadgeClass(session.status)}`}>
                 {isRunning && (
                   <span className="relative flex h-1.5 w-1.5 mr-1">
-                    <span className="animate-soft-pulse absolute inline-flex h-full w-full rounded-full bg-current opacity-75" />
+                    <span className="animate-breathe absolute inline-flex h-full w-full rounded-full bg-current opacity-75" />
                     <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-current" />
                   </span>
                 )}
@@ -260,17 +258,13 @@ export default function SessionDetail() {
                   disabled={actionPending}
                   className="btn btn-secondary text-xs py-1 px-3"
                 >
-                  <span className="material-symbols-outlined text-sm">
-                    pause
-                  </span>
+                  <span className="material-symbols-outlined text-sm">pause</span>
                   Pause
                 </button>
               )}
               {isPausing && !isPaused && (
                 <button disabled className="btn btn-secondary text-xs py-1 px-3 opacity-70">
-                  <span className="material-symbols-outlined text-sm animate-spin">
-                    progress_activity
-                  </span>
+                  <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
                   Pausing...
                 </button>
               )}
@@ -280,9 +274,7 @@ export default function SessionDetail() {
                   disabled={actionPending}
                   className="btn btn-primary text-xs py-1 px-3"
                 >
-                  <span className="material-symbols-outlined text-sm">
-                    play_arrow
-                  </span>
+                  <span className="material-symbols-outlined text-sm">play_arrow</span>
                   Resume
                 </button>
               )}
@@ -291,15 +283,18 @@ export default function SessionDetail() {
         </div>
       </header>
 
+      {/* Accent line */}
+      <div className="glow-line" />
+
       {/* Crash Banner */}
       {isCrashed && (
-        <div className="border-b border-coral/30 bg-coral-soft">
+        <div className="border-b border-rose/30 bg-rose-soft">
           <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className="material-symbols-outlined text-coral">warning</span>
+              <span className="material-symbols-outlined text-rose">warning</span>
               <div>
-                <p className="text-sm font-medium text-coral">This research session crashed unexpectedly</p>
-                <p className="text-xs text-ink-secondary">Progress was saved. You can resume from the last checkpoint.</p>
+                <p className="text-sm font-medium text-rose">This research session crashed unexpectedly</p>
+                <p className="text-xs text-text-secondary">Progress was saved. You can resume from the last checkpoint.</p>
               </div>
             </div>
             <button onClick={handleResume} disabled={actionPending} className="btn btn-primary text-xs py-1 px-3">
@@ -318,7 +313,7 @@ export default function SessionDetail() {
               <span className="material-symbols-outlined text-gold">pause_circle</span>
               <div>
                 <p className="text-sm font-medium text-gold">Research is paused</p>
-                <p className="text-xs text-ink-secondary">All progress has been saved. Resume when ready.</p>
+                <p className="text-xs text-text-secondary">All progress has been saved. Resume when ready.</p>
               </div>
             </div>
             <button onClick={handleResume} disabled={actionPending} className="btn btn-primary text-xs py-1 px-3">
@@ -330,19 +325,19 @@ export default function SessionDetail() {
       )}
 
       {/* Stats Cards */}
-      <div className="border-b border-edge bg-card/20">
+      <div className="border-b border-border bg-surface/20">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard icon="travel_explore" label="Sources Found" value={stats ? String(stats.sources) : "--"} color="text-sage" />
-            <StatCard icon="description" label="Findings" value={stats ? String(stats.findings) : "--"} color="text-olive" />
-            <StatCard icon="repeat" label="Iterations" value={iterationProgress} color={isRunning ? "text-sage" : "text-ink-secondary"} animate={isRunning} />
-            <StatCard icon="timer" label="Elapsed" value={elapsed} color="text-ink-secondary" animate={isRunning} />
+            <StatCard icon="travel_explore" label="Sources Found" value={stats ? String(stats.sources) : "--"} color="text-amber" />
+            <StatCard icon="description" label="Findings" value={stats ? String(stats.findings) : "--"} color="text-emerald" />
+            <StatCard icon="repeat" label="Iterations" value={iterationProgress} color={isRunning ? "text-amber" : "text-text-secondary"} animate={isRunning} />
+            <StatCard icon="timer" label="Elapsed" value={elapsed} color="text-text-secondary" animate={isRunning} />
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-edge bg-card/10 sticky top-[89px] z-10 backdrop-blur-sm">
+      <div className="border-b border-border bg-surface/10 sticky top-[89px] z-10 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-6">
           <div className="tab-bar overflow-x-auto scrollbar-hide">
             {tabs.map((tab) => (
@@ -368,24 +363,24 @@ export default function SessionDetail() {
             </div>
             <div className="space-y-6">
               <div className="card">
-                <h3 className="text-sm font-semibold text-ink-secondary uppercase tracking-wider mb-4">Agent Status</h3>
+                <h3 className="text-[11px] font-mono font-semibold text-text-muted uppercase tracking-widest mb-4">Agent Status</h3>
                 <div className="space-y-3">
-                  <AgentStatusCard name="Director" role="Level 0" status="active" icon="military_tech" variant="iris" />
-                  <AgentStatusCard name="Manager" role="Level 1" status="thinking" icon="psychology" variant="sage" />
-                  <AgentStatusCard name="Intern Pool" role="Level 2" status="active" icon="group" count={3} variant="olive" />
+                  <AgentStatusCard name="Director" role="Level 0" status="active" icon="military_tech" variant="violet" />
+                  <AgentStatusCard name="Manager" role="Level 1" status="thinking" icon="psychology" variant="amber" />
+                  <AgentStatusCard name="Intern Pool" role="Level 2" status="active" icon="group" count={3} variant="emerald" />
                 </div>
               </div>
 
-              <div className="card bg-card-inset border-edge">
+              <div className="card bg-surface-inset border-border">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-ink-secondary uppercase tracking-wider">System Logs</h3>
+                  <h3 className="text-[11px] font-mono font-semibold text-text-muted uppercase tracking-widest">System Logs</h3>
                   <span className="status-dot status-dot-active" />
                 </div>
-                <div className="space-y-1.5 font-mono text-xs text-ink-secondary max-h-48 overflow-y-auto scrollbar-hide">
-                  <p><span className="text-sage">[{new Date().toLocaleTimeString()}]</span> Monitoring research session...</p>
-                  <p><span className="text-sage">[{new Date().toLocaleTimeString()}]</span> WebSocket connection established</p>
-                  <p className="text-ink bg-ink/5 p-1 -mx-1 rounded">
-                    <span className="text-sage animate-soft-pulse">&rsaquo;</span> Awaiting agent events...
+                <div className="space-y-1.5 font-mono text-xs text-text-secondary max-h-48 overflow-y-auto scrollbar-hide">
+                  <p><span className="text-amber">[{new Date().toLocaleTimeString()}]</span> Monitoring research session...</p>
+                  <p><span className="text-amber">[{new Date().toLocaleTimeString()}]</span> WebSocket connection established</p>
+                  <p className="text-text bg-text/5 p-1 -mx-1 rounded">
+                    <span className="text-amber animate-breathe">&rsaquo;</span> Awaiting agent events...
                   </p>
                 </div>
               </div>
@@ -412,7 +407,7 @@ export default function SessionDetail() {
           <div className="w-full h-[calc(100vh-320px)] min-h-[600px]">
             <iframe
               src={`/session/${sessionId}/agents`}
-              className="w-full h-full border-0 rounded-xl bg-card"
+              className="w-full h-full border-0 rounded-2xl bg-surface"
               title="Agent Transparency"
             />
           </div>
@@ -422,7 +417,7 @@ export default function SessionDetail() {
           <div className="w-full h-[calc(100vh-320px)] min-h-[600px]">
             <iframe
               src={`/session/${sessionId}/verify`}
-              className="w-full h-full border-0 rounded-xl bg-card"
+              className="w-full h-full border-0 rounded-2xl bg-surface"
               title="CoVe Verification Pipeline"
             />
           </div>
@@ -447,45 +442,45 @@ export default function SessionDetail() {
 
 function StatCard({ icon, label, value, color, animate }: { icon: string; label: string; value: string; color: string; animate?: boolean }) {
   return (
-    <div className="bg-card border border-edge rounded-xl p-4 hover:border-sage/30 transition-colors group">
+    <div className="bg-surface border border-border rounded-2xl p-4 hover:border-amber/20 transition-colors group">
       <div className="flex justify-between items-start mb-2">
-        <p className="text-xs font-medium text-ink-muted">{label}</p>
-        <span className={`material-symbols-outlined text-lg transition-colors group-hover:text-sage ${color}`}>{icon}</span>
+        <p className="text-[11px] font-mono text-text-muted uppercase tracking-widest">{label}</p>
+        <span className={`material-symbols-outlined text-lg transition-colors group-hover:text-amber ${color}`}>{icon}</span>
       </div>
-      <p className={`font-mono text-2xl font-bold tracking-tighter ${animate ? "animate-soft-pulse" : ""}`}>{value}</p>
+      <p className={`font-mono text-2xl font-bold tracking-tighter ${animate ? "animate-breathe" : ""}`}>{value}</p>
     </div>
   );
 }
 
-function AgentStatusCard({ name, role, status, icon, count, variant }: { name: string; role: string; status: string; icon: string; count?: number; variant?: "iris" | "sage" | "olive" }) {
+function AgentStatusCard({ name, role, status, icon, count, variant }: { name: string; role: string; status: string; icon: string; count?: number; variant?: "violet" | "amber" | "emerald" }) {
   const statusConfig: Record<string, { dot: string; label: string }> = {
     active: { dot: "status-dot-active", label: "Active" },
-    thinking: { dot: "bg-iris animate-soft-pulse", label: "Thinking" },
+    thinking: { dot: "bg-violet animate-breathe", label: "Thinking" },
     idle: { dot: "status-dot-idle", label: "Idle" },
   };
   const cfg = statusConfig[status] || statusConfig.idle;
 
   const variantConfig = {
-    iris: { bg: "bg-iris-soft", text: "text-iris" },
-    sage: { bg: "bg-sage-soft", text: "text-sage" },
-    olive: { bg: "bg-olive-soft", text: "text-olive" },
+    violet: { bg: "bg-violet-soft", text: "text-violet" },
+    amber: { bg: "bg-amber-soft", text: "text-amber" },
+    emerald: { bg: "bg-emerald-soft", text: "text-emerald" },
   };
-  const vc = variantConfig[variant || "sage"];
+  const vc = variantConfig[variant || "amber"];
 
   return (
-    <div className="flex items-center justify-between p-3 bg-card-inset rounded-lg border border-edge hover:border-sage/20 transition-colors">
+    <div className="flex items-center justify-between p-3 bg-surface-inset rounded-xl border border-border hover:border-amber/20 transition-colors">
       <div className="flex items-center gap-3">
         <div className={`w-8 h-8 rounded-lg ${vc.bg} flex items-center justify-center`}>
           <span className={`material-symbols-outlined ${vc.text} text-base`}>{icon}</span>
         </div>
         <div>
           <span className="text-sm font-medium block">{name}</span>
-          <span className="text-xs text-ink-muted">{role}{count ? ` (${count})` : ""}</span>
+          <span className="text-xs text-text-muted">{role}{count ? ` (${count})` : ""}</span>
         </div>
       </div>
       <div className="flex items-center gap-2">
         <span className={`status-dot ${cfg.dot}`} />
-        <span className="text-xs text-ink-secondary">{cfg.label}</span>
+        <span className="text-xs text-text-secondary">{cfg.label}</span>
       </div>
     </div>
   );
@@ -494,11 +489,11 @@ function AgentStatusCard({ name, role, status, icon, count, variant }: { name: s
 function SubPagePlaceholder({ icon, title, description, linkHref, linkText }: { icon: string; title: string; description: string; linkHref: string; linkText: string }) {
   return (
     <div className="card flex flex-col items-center justify-center py-16 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-sage-soft flex items-center justify-center mb-4">
-        <span className="material-symbols-outlined text-sage text-3xl">{icon}</span>
+      <div className="w-16 h-16 rounded-2xl bg-amber-soft border border-amber/20 flex items-center justify-center mb-4">
+        <span className="material-symbols-outlined text-amber text-3xl">{icon}</span>
       </div>
-      <h2 className="text-xl font-display mb-2">{title}</h2>
-      <p className="text-sm text-ink-secondary max-w-md mb-6">{description}</p>
+      <h2 className="text-xl font-display font-semibold mb-2">{title}</h2>
+      <p className="text-sm text-text-secondary max-w-md mb-6">{description}</p>
       <Link href={linkHref} className="btn btn-primary">
         <span className="material-symbols-outlined text-lg">open_in_new</span>
         {linkText}
@@ -568,4 +563,3 @@ function formatSeconds(totalSecs: number): string {
   if (mins > 0) return `${mins}m ${secs % 60}s`;
   return `${secs}s`;
 }
-

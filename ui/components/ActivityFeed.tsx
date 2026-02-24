@@ -272,7 +272,7 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h3 className="text-lg font-semibold">Live Activity Feed</h3>
-            <div className="flex items-center gap-2 text-xs text-ink-secondary">
+            <div className="flex items-center gap-2 text-xs text-text-secondary">
               <span>{filteredEvents.length} events</span>
               <span>&middot;</span>
               <span>{Object.keys(stats).length} types</span>
@@ -281,10 +281,10 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
           <div className="flex items-center gap-2">
             <div
               className={`w-2 h-2 rounded-full ${
-                connected ? "bg-olive" : "bg-ink-muted"
-              } ${connected ? "animate-soft-pulse" : ""}`}
+                connected ? "bg-emerald" : "bg-text-muted"
+              } ${connected ? "animate-breathe" : ""}`}
             />
-            <span className="text-sm text-ink-secondary">
+            <span className="text-sm text-text-secondary">
               {connected ? "Connected" : "Disconnected"}
             </span>
           </div>
@@ -329,7 +329,7 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
               onClick={() => toggleType(type)}
             >
               {type}
-              {stats[type] ? <span className="ml-1 text-xs text-ink-muted">({stats[type]})</span> : null}
+              {stats[type] ? <span className="ml-1 text-xs text-text-muted">({stats[type]})</span> : null}
             </button>
           ))}
         </div>
@@ -352,7 +352,7 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
       {unseenCount > 0 ? (
         <button
           type="button"
-          className="mb-3 w-full text-xs bg-sage-soft border border-sage/30 text-sage rounded-lg py-2 hover:bg-sage/15 transition-colors"
+          className="mb-3 w-full text-xs bg-amber-soft border border-amber/30 text-amber rounded-2xl py-2 hover:bg-amber/15 transition-colors"
           onClick={() => {
             if (feedRef.current) {
               feedRef.current.scrollTop = 0;
@@ -364,12 +364,12 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
         </button>
       ) : null}
       {historyStatus === "loading" ? (
-        <div className="mb-3 text-xs text-ink-muted flex items-center gap-2">
-          <span className="animate-soft-pulse">Loading history&hellip;</span>
+        <div className="mb-3 text-xs text-text-muted flex items-center gap-2">
+          <span className="animate-breathe">Loading history&hellip;</span>
         </div>
       ) : null}
       {historyStatus === "loaded" && historyLoadedAt ? (
-        <div className="mb-3 text-xs text-ink-muted flex items-center gap-2">
+        <div className="mb-3 text-xs text-text-muted flex items-center gap-2">
           <span className="badge badge-system">History loaded</span>
           <span>{formatTimestamp(historyLoadedAt)}</span>
           {historySource === "cache" ? (
@@ -378,7 +378,7 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
         </div>
       ) : null}
       {historyStatus === "error" ? (
-        <div className="mb-3 text-xs text-coral">
+        <div className="mb-3 text-xs text-rose">
           Failed to load history. Live updates will continue.
         </div>
       ) : null}
@@ -388,7 +388,7 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
         className="space-y-2 max-h-[36rem] overflow-y-auto"
       >
         {displayItems.length === 0 ? (
-          <div className="text-center py-8 text-ink-secondary">
+          <div className="text-center py-8 text-text-secondary">
             <svg
               className="w-12 h-12 mx-auto mb-3 opacity-50"
               fill="none"
@@ -419,7 +419,7 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
               return (
                 <div
                   key={block.id}
-                  className={`bg-card-inset border border-edge rounded-lg p-3 ${
+                  className={`bg-surface-inset border border-border rounded-2xl p-3 ${
                     compactView ? "text-xs" : "text-sm"
                   }`}
                 >
@@ -429,10 +429,10 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
                       <span className={`badge ${phaseBadgeClass[phase]}`}>
                         {phase}
                       </span>
-                      <span className="text-xs text-ink-muted">
+                      <span className="text-xs text-text-muted">
                         {block.agent}
                       </span>
-                      <span className="text-xs text-ink-muted">
+                      <span className="text-xs text-text-muted">
                         {block.lines.length} lines
                       </span>
                     </div>
@@ -445,7 +445,7 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
                     </button>
                   </div>
 
-                  <div className="text-xs text-ink-muted mb-2">
+                  <div className="text-xs text-text-muted mb-2">
                     {formatTimestamp(block.start)}
                   </div>
 
@@ -456,12 +456,12 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
                       ))}
                     </div>
                   ) : (
-                    <div className="space-y-1 text-xs text-ink-secondary">
+                    <div className="space-y-1 text-xs text-text-secondary">
                       {previewLines.map((line, idx) => (
                         <LogLineRow key={`${block.id}-preview-${idx}`} line={line} />
                       ))}
                       {block.lines.length > previewLines.length ? (
-                        <div className="text-ink-muted">
+                        <div className="text-text-muted">
                           +{block.lines.length - previewLines.length} more lines
                         </div>
                       ) : null}
@@ -478,9 +478,9 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
             return (
               <div
                 key={`${event.timestamp}-${event.event_type}-${event.agent}`}
-                className={`bg-card-inset border border-edge rounded-lg ${
+                className={`bg-surface-inset border border-border rounded-2xl ${
                   compactView ? "p-2" : "p-3"
-                } hover:border-sage/30 transition-colors`}
+                } hover:border-amber/30 transition-colors`}
               >
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -490,19 +490,19 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
                     <span className={`badge ${phaseBadgeClass[phase]}`}>
                       {phase}
                     </span>
-                    <span className="text-xs text-ink-muted">
+                    <span className="text-xs text-text-muted">
                       {event.agent}
                     </span>
                     {item.repeat > 1 ? (
                       <span className="badge badge-system">x{item.repeat}</span>
                     ) : null}
                   </div>
-                  <span className="text-xs text-ink-muted">
+                  <span className="text-xs text-text-muted">
                     {formatTimestamp(event.timestamp)}
                   </span>
                 </div>
 
-                <div className="text-sm text-ink-secondary">
+                <div className="text-sm text-text-secondary">
                   {renderEventData(event, {
                     expanded: isExpanded,
                     onToggle: () => toggleEvent(eventId),
@@ -556,13 +556,13 @@ function renderEventData(
     return (
       <div className="space-y-2">
         {data.content ? <p>{data.content}</p> : null}
-        <div className="flex flex-wrap gap-2 text-xs text-ink-muted">
+        <div className="flex flex-wrap gap-2 text-xs text-text-muted">
           {data.source ? (
             <a
               href={data.source}
               target="_blank"
               rel="noreferrer"
-              className="text-sage hover:underline"
+              className="text-amber hover:underline"
             >
               {truncateUrl(String(data.source))}
             </a>
@@ -586,7 +586,7 @@ function renderEventData(
       <div className="space-y-1">
         <p className="font-medium">{data.action}</p>
         {data.iteration ? (
-          <p className="text-xs text-ink-muted">Iteration {data.iteration}</p>
+          <p className="text-xs text-text-muted">Iteration {data.iteration}</p>
         ) : null}
       </div>
     );
@@ -597,14 +597,14 @@ function renderEventData(
       <div className="space-y-1">
         <p>{data.message}</p>
         {typeof data.progress === "number" ? (
-          <p className="text-xs text-ink-muted">Progress {data.progress}%</p>
+          <p className="text-xs text-text-muted">Progress {data.progress}%</p>
         ) : null}
       </div>
     );
   }
 
   if (event.event_type === "error" && data.error) {
-    return <p className="text-coral">{data.error}</p>;
+    return <p className="text-rose">{data.error}</p>;
   }
 
   if (data.message) {
@@ -634,15 +634,15 @@ type Phase =
   | "system";
 
 const phaseBadgeClass: Record<Phase, string> = {
-  reasoning: "bg-iris/20 text-iris",
-  action: "bg-sage/20 text-sage",
-  search: "bg-sage/15 text-sage",
-  finding: "bg-olive/20 text-olive",
+  reasoning: "bg-violet/20 text-violet",
+  action: "bg-amber/20 text-amber",
+  search: "bg-amber/15 text-amber",
+  finding: "bg-emerald/20 text-emerald",
   observe: "bg-gold/20 text-gold",
-  knowledge: "bg-sage/15 text-sage",
-  synthesis: "bg-iris/20 text-iris",
-  error: "bg-coral/20 text-coral",
-  system: "bg-edge/50 text-ink-secondary",
+  knowledge: "bg-amber/15 text-amber",
+  synthesis: "bg-violet/20 text-violet",
+  error: "bg-rose/20 text-rose",
+  system: "bg-border/50 text-text-secondary",
 };
 
 type DisplayItem =
@@ -798,19 +798,19 @@ function getPhaseForLogBlock(block: LogBlock): Phase {
 
 function LogLineRow({ line }: { line: LogLine }) {
   if (line.tone === "divider") {
-    return <div className="h-px bg-edge my-2" />;
+    return <div className="h-px bg-border my-2" />;
   }
 
   const base =
     line.tone === "label"
-      ? "text-sage"
+      ? "text-amber"
       : line.tone === "url"
-      ? "text-sage"
+      ? "text-amber"
       : line.tone === "meta"
-      ? "text-ink-secondary"
+      ? "text-text-secondary"
       : line.tone === "list"
-      ? "text-ink-secondary"
-      : "text-ink/80";
+      ? "text-text-secondary"
+      : "text-text/80";
 
   return (
     <div className={`flex items-start gap-2 ${base}`}>

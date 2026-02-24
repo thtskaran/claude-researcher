@@ -36,45 +36,45 @@ interface KGContradiction {
 
 /* ── Entity style map ──────────────────────────────────── */
 const entityTypeConfig: Record<string, { bg: string; border: string; dimBg: string; label: string }> = {
-    CLAIM:        { bg: "#d49e6e", border: "#b87c4c", dimBg: "rgba(212,158,110,0.15)", label: "Claim" },
-    CONCEPT:      { bg: "#a594be", border: "#8b7aa5", dimBg: "rgba(165,148,190,0.15)", label: "Concept" },
-    SOURCE:       { bg: "#8b8578", border: "#6e695e", dimBg: "rgba(139,133,120,0.15)", label: "Source" },
-    EVIDENCE:     { bg: "#82af78", border: "#5e8c54", dimBg: "rgba(130,175,120,0.15)", label: "Evidence" },
-    TECHNOLOGY:   { bg: "#7ab0c4", border: "#5a95ab", dimBg: "rgba(122,176,196,0.15)", label: "Technology" },
-    METHOD:       { bg: "#a594be", border: "#8b7aa5", dimBg: "rgba(165,148,190,0.15)", label: "Method" },
-    METRIC:       { bg: "#d77369", border: "#c05a50", dimBg: "rgba(215,115,105,0.15)", label: "Metric" },
-    PERSON:       { bg: "#c9917a", border: "#b87c4c", dimBg: "rgba(201,145,122,0.15)", label: "Person" },
-    ORGANIZATION: { bg: "#a8bba3", border: "#8aa383", dimBg: "rgba(168,187,163,0.15)", label: "Organization" },
-    QUOTE:        { bg: "#d7b464", border: "#c09a3e", dimBg: "rgba(215,180,100,0.15)", label: "Quote" },
+    CLAIM:        { bg: "#f59e0b", border: "#d97706", dimBg: "rgba(245,158,11,0.15)", label: "Claim" },
+    CONCEPT:      { bg: "#a78bfa", border: "#8b5cf6", dimBg: "rgba(167,139,250,0.15)", label: "Concept" },
+    SOURCE:       { bg: "#64748b", border: "#475569", dimBg: "rgba(100,116,139,0.15)", label: "Source" },
+    EVIDENCE:     { bg: "#34d399", border: "#10b981", dimBg: "rgba(52,211,153,0.15)", label: "Evidence" },
+    TECHNOLOGY:   { bg: "#22d3ee", border: "#06b6d4", dimBg: "rgba(34,211,238,0.15)", label: "Technology" },
+    METHOD:       { bg: "#a78bfa", border: "#8b5cf6", dimBg: "rgba(167,139,250,0.15)", label: "Method" },
+    METRIC:       { bg: "#fb7185", border: "#f43f5e", dimBg: "rgba(251,113,133,0.15)", label: "Metric" },
+    PERSON:       { bg: "#fbbf24", border: "#f59e0b", dimBg: "rgba(251,191,36,0.15)", label: "Person" },
+    ORGANIZATION: { bg: "#34d399", border: "#10b981", dimBg: "rgba(52,211,153,0.15)", label: "Organization" },
+    QUOTE:        { bg: "#facc15", border: "#eab308", dimBg: "rgba(250,204,21,0.15)", label: "Quote" },
 };
-const defaultEntityCfg = { bg: "#8b8578", border: "#6e695e", dimBg: "rgba(139,133,120,0.15)", label: "Other" };
+const defaultEntityCfg = { bg: "#64748b", border: "#475569", dimBg: "rgba(100,116,139,0.15)", label: "Other" };
 
 const predicateColors: Record<string, string> = {
-    supports: "#82af78",
-    contradicts: "#d77369",
-    related: "#7ab0c4",
-    related_to: "#7ab0c4",
-    is_a: "#a594be",
-    part_of: "#a594be",
-    causes: "#d7b464",
-    cites: "#8b8578",
-    implements: "#a594be",
-    outperforms: "#82af78",
-    similar_to: "#7ab0c4",
-    alternative_to: "#c9917a",
-    authored_by: "#8b8578",
-    mentioned_in: "#8b8578",
+    supports: "#34d399",
+    contradicts: "#fb7185",
+    related: "#22d3ee",
+    related_to: "#22d3ee",
+    is_a: "#a78bfa",
+    part_of: "#a78bfa",
+    causes: "#facc15",
+    cites: "#64748b",
+    implements: "#a78bfa",
+    outperforms: "#34d399",
+    similar_to: "#22d3ee",
+    alternative_to: "#fbbf24",
+    authored_by: "#64748b",
+    mentioned_in: "#64748b",
 };
-const defaultEdgeColor = "#3c3a34";
+const defaultEdgeColor = "#1e2440";
 
-/* ── Graph theme (dark-only) ───────────────────────────── */
+/* ── Graph theme (observatory dark) ──────────────────────── */
 const THEME = {
-    fontColor: "#f0ece4",
-    fontBg: "rgba(28, 26, 22, 0.85)",
-    edgeFontColor: "#b4aa9e",
-    pageBg: "#1c1a16",
-    dimmedFont: "rgba(240,236,228,0.25)",
-    dimmedEdge: "rgba(55,52,44,0.3)",
+    fontColor: "#e2e8f0",
+    fontBg: "rgba(8, 10, 18, 0.85)",
+    edgeFontColor: "#94a3b8",
+    pageBg: "#080a12",
+    dimmedFont: "rgba(226,232,240,0.25)",
+    dimmedEdge: "rgba(30,36,58,0.3)",
 };
 
 /* ── Degree centrality helper ──────────────────────────── */
@@ -391,8 +391,8 @@ export default function KnowledgeGraphPage() {
                         color: {
                             background: cfg.bg,
                             border: cfg.border,
-                            highlight: { background: cfg.bg, border: "#f0ece4" },
-                            hover: { background: cfg.bg, border: "#f0ece4" },
+                            highlight: { background: cfg.bg, border: "#e2e8f0" },
+                            hover: { background: cfg.bg, border: "#e2e8f0" },
                         },
                         shape: "dot",
                         size,
@@ -400,7 +400,7 @@ export default function KnowledgeGraphPage() {
                         font: {
                             color: THEME.fontColor,
                             size: Math.max(10, Math.min(16, 10 + degree * 0.5)),
-                            face: "Figtree, system-ui, sans-serif",
+                            face: "Outfit, system-ui, sans-serif",
                             background: THEME.fontBg,
                             strokeWidth: 0,
                         },
@@ -471,11 +471,11 @@ export default function KnowledgeGraphPage() {
                     edges: {
                         font: {
                             size: 9,
-                            color: "#8b8578",
+                            color: "#64748b",
                             strokeWidth: 2,
-                            strokeColor: "#1a1915",
+                            strokeColor: "#080a12",
                             align: "middle",
-                            background: "#1a1915",
+                            background: "#080a12",
                         },
                         chosen: true,
                         selectionWidth: 1,
@@ -627,20 +627,20 @@ export default function KnowledgeGraphPage() {
 
     /* ── Render ─────────────────────────────────────────── */
     return (
-        <div className="min-h-screen flex flex-col bg-page">
+        <div className="min-h-screen flex flex-col bg-void">
             {/* Header */}
-            <header className="border-b border-edge bg-card/50 backdrop-blur-sm sticky top-0 z-20">
+            <header className="border-b border-border bg-surface/50 backdrop-blur-xl sticky top-0 z-20">
                 <div className="max-w-full mx-auto px-6 py-3">
-                    <div className="flex items-center gap-2 text-xs text-ink-muted mb-1">
-                        <Link href="/" className="hover:text-sage transition-colors">Sessions</Link>
+                    <div className="flex items-center gap-2 text-xs text-text-muted mb-1">
+                        <Link href="/" className="hover:text-amber transition-colors">Sessions</Link>
                         <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-                        <Link href={`/session/${sessionId}`} className="hover:text-sage transition-colors">Session</Link>
+                        <Link href={`/session/${sessionId}`} className="hover:text-amber transition-colors">Session</Link>
                         <span className="material-symbols-outlined text-[12px]">chevron_right</span>
-                        <span className="text-ink-secondary">Knowledge Graph</span>
+                        <span className="text-text-secondary">Knowledge Graph</span>
                     </div>
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <Link href={`/session/${sessionId}`} className="text-ink-secondary hover:text-sage transition-colors">
+                            <Link href={`/session/${sessionId}`} className="text-text-secondary hover:text-amber transition-colors">
                                 <span className="material-symbols-outlined">arrow_back</span>
                             </Link>
                             <h1 className="text-lg font-display">Knowledge Graph</h1>
@@ -674,18 +674,18 @@ export default function KnowledgeGraphPage() {
                                             }}
                                         />
                                         {searchResults.length > 0 && (
-                                            <div className="mt-1 bg-card border border-edge rounded-lg max-h-64 overflow-y-auto" style={{ boxShadow: "var(--shadow-lg)" }}>
+                                            <div className="mt-1 bg-surface border border-border rounded-lg max-h-64 overflow-y-auto" style={{ boxShadow: "var(--shadow-lg)" }}>
                                                 {searchResults.map(n => {
                                                     const cfg = entityTypeConfig[n.entity_type] || defaultEntityCfg;
                                                     return (
                                                         <button
                                                             key={n.id}
                                                             onClick={() => centerOnNode(n.id)}
-                                                            className="w-full text-left px-3 py-2 hover:bg-card-hover transition-colors flex items-center gap-2 text-sm"
+                                                            className="w-full text-left px-3 py-2 hover:bg-surface-hover transition-colors flex items-center gap-2 text-sm"
                                                         >
                                                             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cfg.bg }} />
-                                                            <span className="text-ink truncate">{n.name}</span>
-                                                            <span className="text-xs text-ink-muted ml-auto">{n.entity_type}</span>
+                                                            <span className="text-text truncate">{n.name}</span>
+                                                            <span className="text-xs text-text-muted ml-auto">{n.entity_type}</span>
                                                         </button>
                                                     );
                                                 })}
@@ -706,28 +706,31 @@ export default function KnowledgeGraphPage() {
                 </div>
             </header>
 
+            {/* Glow line */}
+            <div className="glow-line" />
+
             {/* Main Area */}
             {loading ? (
                 <div className="flex-1 flex items-center justify-center">
-                    <div className="flex items-center gap-3 text-ink-secondary">
-                        <span className="material-symbols-outlined animate-spin">progress_activity</span>
+                    <div className="flex items-center gap-3 text-text-secondary">
+                        <span className="material-symbols-outlined animate-spin text-amber">progress_activity</span>
                         Loading knowledge graph...
                     </div>
                 </div>
             ) : error ? (
                 <div className="flex-1 flex items-center justify-center">
                     <div className="text-center">
-                        <span className="material-symbols-outlined text-4xl text-ink-muted mb-3 block">error</span>
-                        <p className="text-sm text-ink-secondary">{error}</p>
+                        <span className="material-symbols-outlined text-4xl text-text-muted mb-3 block">error</span>
+                        <p className="text-sm text-text-secondary">{error}</p>
                         <button onClick={fetchGraph} className="btn btn-ghost text-xs mt-4">Retry</button>
                     </div>
                 </div>
             ) : entities.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center">
                     <div className="text-center">
-                        <span className="material-symbols-outlined text-4xl text-ink-muted mb-3 block">hub</span>
-                        <p className="text-sm text-ink-secondary">No knowledge graph data yet.</p>
-                        <p className="text-xs text-ink-muted mt-1">Entities will appear as the research processes findings.</p>
+                        <span className="material-symbols-outlined text-4xl text-text-muted mb-3 block">hub</span>
+                        <p className="text-sm text-text-secondary">No knowledge graph data yet.</p>
+                        <p className="text-xs text-text-muted mt-1">Entities will appear as the research processes findings.</p>
                     </div>
                 </div>
             ) : (
@@ -737,9 +740,9 @@ export default function KnowledgeGraphPage() {
 
                     {/* Stabilization overlay */}
                     {stabilizing && (
-                        <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ background: "rgba(28,26,22,0.7)" }}>
-                            <div className="flex items-center gap-3 text-ink-secondary text-sm">
-                                <span className="material-symbols-outlined animate-spin text-sage">progress_activity</span>
+                        <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ background: "rgba(8,10,18,0.7)" }}>
+                            <div className="flex items-center gap-3 text-text-secondary text-sm">
+                                <span className="material-symbols-outlined animate-spin text-amber">progress_activity</span>
                                 Computing layout...
                             </div>
                         </div>
@@ -750,7 +753,7 @@ export default function KnowledgeGraphPage() {
                         const cfg = entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg;
                         const d = selectedDetail;
                         return (
-                        <div className="absolute right-4 top-4 w-[22rem] bg-card/95 backdrop-blur-xl border border-edge rounded-xl z-20 max-h-[calc(100%-6rem)] overflow-y-auto animate-fade-up-in" style={{ boxShadow: "var(--shadow-lg)" }}>
+                        <div className="absolute right-4 top-4 w-[22rem] bg-surface/95 backdrop-blur-xl border border-border rounded-xl z-20 max-h-[calc(100%-6rem)] overflow-y-auto animate-rise" style={{ boxShadow: "var(--shadow-lg)" }}>
                             {/* Header */}
                             <div className="p-5 pb-0">
                                 <div className="flex items-start justify-between mb-2">
@@ -762,42 +765,42 @@ export default function KnowledgeGraphPage() {
                                                 <span className="badge text-[10px]" style={{ backgroundColor: cfg.dimBg, color: cfg.bg, borderColor: cfg.bg + "40" }}>
                                                     {selectedNode.entity_type}
                                                 </span>
-                                                <span className="text-[10px] text-ink-muted font-mono">{selectedNode.id.slice(0, 8)}</span>
+                                                <span className="text-[10px] text-text-muted font-mono">{selectedNode.id.slice(0, 8)}</span>
                                             </div>
                                         </div>
                                     </div>
-                                    <button onClick={() => { setSelectedId(null); if (networkRef.current) networkRef.current.unselectAll(); }} className="text-ink-muted hover:text-ink transition-colors shrink-0">
+                                    <button onClick={() => { setSelectedId(null); if (networkRef.current) networkRef.current.unselectAll(); }} className="text-text-muted hover:text-text transition-colors shrink-0">
                                         <span className="material-symbols-outlined text-lg">close</span>
                                     </button>
                                 </div>
 
                                 {/* Description */}
                                 {d.description && (
-                                    <p className="text-xs text-ink-secondary mt-2 leading-relaxed">{d.description}</p>
+                                    <p className="text-xs text-text-secondary mt-2 leading-relaxed">{d.description}</p>
                                 )}
 
                                 {/* Aliases */}
                                 {d.aliases.length > 0 && (
                                     <div className="mt-2 flex flex-wrap gap-1">
                                         {d.aliases.map((a, i) => (
-                                            <span key={i} className="text-[10px] text-ink-muted bg-card-inset px-1.5 py-0.5 rounded">aka: {a}</span>
+                                            <span key={i} className="text-[10px] text-text-muted bg-surface-inset px-1.5 py-0.5 rounded">aka: {a}</span>
                                         ))}
                                     </div>
                                 )}
                             </div>
 
                             {/* Stats row */}
-                            <div className="grid grid-cols-4 gap-px bg-edge/30 mx-5 mt-4 rounded-lg overflow-hidden">
+                            <div className="grid grid-cols-4 gap-px bg-border/30 mx-5 mt-4 rounded-lg overflow-hidden">
                                 {[
                                     { label: "Degree", value: d.totalDegree, sub: `top ${100 - d.percentile}%` },
                                     { label: "In", value: d.inEdges.length },
                                     { label: "Out", value: d.outEdges.length },
                                     { label: "Confidence", value: d.confidence != null ? `${Math.round(d.confidence * 100)}%` : "\u2014" },
                                 ].map((s, i) => (
-                                    <div key={i} className="bg-card-inset px-2 py-2 text-center">
-                                        <div className="text-sm font-semibold text-ink">{s.value}</div>
-                                        <div className="text-[9px] text-ink-muted uppercase tracking-wide">{s.label}</div>
-                                        {s.sub && <div className="text-[9px] text-ink-muted">{s.sub}</div>}
+                                    <div key={i} className="bg-surface-inset px-2 py-2 text-center">
+                                        <div className="text-sm font-semibold text-text">{s.value}</div>
+                                        <div className="text-[9px] text-text-muted uppercase tracking-wide">{s.label}</div>
+                                        {s.sub && <div className="text-[9px] text-text-muted">{s.sub}</div>}
                                     </div>
                                 ))}
                             </div>
@@ -805,12 +808,12 @@ export default function KnowledgeGraphPage() {
                             {/* Confidence bar */}
                             {d.confidence != null && (
                                 <div className="mx-5 mt-3">
-                                    <div className="h-1.5 bg-card-inset rounded-full overflow-hidden">
+                                    <div className="h-1.5 bg-surface-inset rounded-full overflow-hidden">
                                         <div
                                             className="h-full rounded-full transition-all duration-500"
                                             style={{
                                                 width: `${d.confidence * 100}%`,
-                                                backgroundColor: d.confidence >= 0.7 ? cfg.bg : d.confidence >= 0.4 ? "#d7b464" : "#d77369",
+                                                backgroundColor: d.confidence >= 0.7 ? "#34d399" : d.confidence >= 0.4 ? "#facc15" : "#fb7185",
                                             }}
                                         />
                                     </div>
@@ -820,7 +823,7 @@ export default function KnowledgeGraphPage() {
                             {/* Neighbor type distribution */}
                             {Object.keys(d.neighborTypes).length > 0 && (
                                 <div className="px-5 mt-4">
-                                    <label className="text-[10px] text-ink-muted uppercase tracking-widest font-bold block mb-2">Neighbor Types</label>
+                                    <label className="text-[10px] text-text-muted uppercase tracking-widest font-bold block mb-2">Neighbor Types</label>
                                     <div className="flex flex-wrap gap-1.5">
                                         {Object.entries(d.neighborTypes).sort(([,a],[,b]) => b - a).map(([type, count]) => {
                                             const tc = entityTypeConfig[type] || defaultEntityCfg;
@@ -838,16 +841,16 @@ export default function KnowledgeGraphPage() {
                             {/* Contradictions */}
                             {d.entityContradictions.length > 0 && (
                                 <div className="px-5 mt-4">
-                                    <label className="text-[10px] text-coral uppercase tracking-widest font-bold block mb-2">
+                                    <label className="text-[10px] text-rose uppercase tracking-widest font-bold block mb-2">
                                         <span className="material-symbols-outlined text-xs align-middle mr-1">warning</span>
                                         Contradictions ({d.entityContradictions.length})
                                     </label>
                                     <div className="space-y-1.5">
                                         {d.entityContradictions.map(c => (
-                                            <div key={c.id} className="text-xs bg-coral-soft border border-coral/20 rounded-md p-2">
-                                                <div className="font-medium text-coral">{c.contradiction_type.replace(/_/g, " ")}</div>
-                                                <div className="text-ink-secondary mt-0.5">{c.description}</div>
-                                                <div className="text-[10px] text-ink-muted mt-1">Severity: {c.severity}</div>
+                                            <div key={c.id} className="text-xs bg-rose-soft border border-rose/20 rounded-md p-2">
+                                                <div className="font-medium text-rose">{c.contradiction_type.replace(/_/g, " ")}</div>
+                                                <div className="text-text-secondary mt-0.5">{c.description}</div>
+                                                <div className="text-[10px] text-text-muted mt-1">Severity: {c.severity}</div>
                                             </div>
                                         ))}
                                     </div>
@@ -857,7 +860,7 @@ export default function KnowledgeGraphPage() {
                             {/* Outgoing Relations (grouped by predicate) */}
                             {Object.keys(d.outByPred).length > 0 && (
                                 <div className="px-5 mt-4">
-                                    <label className="text-[10px] text-ink-muted uppercase tracking-widest font-bold block mb-2">
+                                    <label className="text-[10px] text-text-muted uppercase tracking-widest font-bold block mb-2">
                                         <span className="material-symbols-outlined text-xs align-middle mr-0.5">arrow_forward</span>
                                         Outgoing ({d.outEdges.length})
                                     </label>
@@ -868,8 +871,8 @@ export default function KnowledgeGraphPage() {
                                                 <div key={group.predicate}>
                                                     <div className="flex items-center gap-1.5 mb-1">
                                                         <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-                                                        <span className="text-[10px] font-mono text-ink-muted uppercase">{group.predicate.replace(/_/g, " ")}</span>
-                                                        <span className="text-[10px] text-ink-muted">({group.targets.length})</span>
+                                                        <span className="text-[10px] font-mono text-text-muted uppercase">{group.predicate.replace(/_/g, " ")}</span>
+                                                        <span className="text-[10px] text-text-muted">({group.targets.length})</span>
                                                     </div>
                                                     <div className="space-y-0.5 ml-3">
                                                         {group.targets.map(t => {
@@ -878,11 +881,11 @@ export default function KnowledgeGraphPage() {
                                                                 <button
                                                                     key={t.id}
                                                                     onClick={() => centerOnNode(t.id)}
-                                                                    className="flex items-center gap-1.5 text-xs w-full text-left hover:bg-card-hover px-1.5 py-1 rounded transition-colors"
+                                                                    className="flex items-center gap-1.5 text-xs w-full text-left hover:bg-surface-hover px-1.5 py-1 rounded transition-colors"
                                                                 >
                                                                     <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: tc.bg }} />
-                                                                    <span className="text-ink-secondary truncate">{t.name}</span>
-                                                                    <span className="text-[10px] text-ink-muted ml-auto shrink-0">{t.type.toLowerCase()}</span>
+                                                                    <span className="text-text-secondary truncate">{t.name}</span>
+                                                                    <span className="text-[10px] text-text-muted ml-auto shrink-0">{t.type.toLowerCase()}</span>
                                                                 </button>
                                                             );
                                                         })}
@@ -897,7 +900,7 @@ export default function KnowledgeGraphPage() {
                             {/* Incoming Relations (grouped by predicate) */}
                             {Object.keys(d.inByPred).length > 0 && (
                                 <div className="px-5 mt-4">
-                                    <label className="text-[10px] text-ink-muted uppercase tracking-widest font-bold block mb-2">
+                                    <label className="text-[10px] text-text-muted uppercase tracking-widest font-bold block mb-2">
                                         <span className="material-symbols-outlined text-xs align-middle mr-0.5">arrow_back</span>
                                         Incoming ({d.inEdges.length})
                                     </label>
@@ -908,8 +911,8 @@ export default function KnowledgeGraphPage() {
                                                 <div key={group.predicate}>
                                                     <div className="flex items-center gap-1.5 mb-1">
                                                         <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-                                                        <span className="text-[10px] font-mono text-ink-muted uppercase">{group.predicate.replace(/_/g, " ")}</span>
-                                                        <span className="text-[10px] text-ink-muted">({group.sources.length})</span>
+                                                        <span className="text-[10px] font-mono text-text-muted uppercase">{group.predicate.replace(/_/g, " ")}</span>
+                                                        <span className="text-[10px] text-text-muted">({group.sources.length})</span>
                                                     </div>
                                                     <div className="space-y-0.5 ml-3">
                                                         {group.sources.map(s => {
@@ -918,11 +921,11 @@ export default function KnowledgeGraphPage() {
                                                                 <button
                                                                     key={s.id}
                                                                     onClick={() => centerOnNode(s.id)}
-                                                                    className="flex items-center gap-1.5 text-xs w-full text-left hover:bg-card-hover px-1.5 py-1 rounded transition-colors"
+                                                                    className="flex items-center gap-1.5 text-xs w-full text-left hover:bg-surface-hover px-1.5 py-1 rounded transition-colors"
                                                                 >
                                                                     <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: sc.bg }} />
-                                                                    <span className="text-ink-secondary truncate">{s.name}</span>
-                                                                    <span className="text-[10px] text-ink-muted ml-auto shrink-0">{s.type.toLowerCase()}</span>
+                                                                    <span className="text-text-secondary truncate">{s.name}</span>
+                                                                    <span className="text-[10px] text-text-muted ml-auto shrink-0">{s.type.toLowerCase()}</span>
                                                                 </button>
                                                             );
                                                         })}
@@ -937,10 +940,10 @@ export default function KnowledgeGraphPage() {
                             {/* Source references */}
                             {d.sources.length > 0 && (
                                 <div className="px-5 mt-4">
-                                    <label className="text-[10px] text-ink-muted uppercase tracking-widest font-bold block mb-2">Source References</label>
+                                    <label className="text-[10px] text-text-muted uppercase tracking-widest font-bold block mb-2">Source References</label>
                                     <div className="flex flex-wrap gap-1">
                                         {d.sources.map((src, i) => (
-                                            <span key={i} className="text-[10px] font-mono bg-sage-soft text-sage px-1.5 py-0.5 rounded">
+                                            <span key={i} className="text-[10px] font-mono bg-amber-soft text-amber px-1.5 py-0.5 rounded">
                                                 finding #{src}
                                             </span>
                                         ))}
@@ -951,18 +954,18 @@ export default function KnowledgeGraphPage() {
                             {/* Edge confidence */}
                             {d.avgEdgeConfidence != null && (
                                 <div className="px-5 mt-4">
-                                    <label className="text-[10px] text-ink-muted uppercase tracking-widest font-bold block mb-1">Avg. Relation Confidence</label>
+                                    <label className="text-[10px] text-text-muted uppercase tracking-widest font-bold block mb-1">Avg. Relation Confidence</label>
                                     <div className="flex items-center gap-2">
-                                        <div className="flex-1 h-1.5 bg-card-inset rounded-full overflow-hidden">
+                                        <div className="flex-1 h-1.5 bg-surface-inset rounded-full overflow-hidden">
                                             <div
                                                 className="h-full rounded-full"
                                                 style={{
                                                     width: `${d.avgEdgeConfidence * 100}%`,
-                                                    backgroundColor: d.avgEdgeConfidence >= 0.7 ? "#82af78" : d.avgEdgeConfidence >= 0.4 ? "#d7b464" : "#d77369",
+                                                    backgroundColor: d.avgEdgeConfidence >= 0.7 ? "#34d399" : d.avgEdgeConfidence >= 0.4 ? "#facc15" : "#fb7185",
                                                 }}
                                             />
                                         </div>
-                                        <span className="text-[10px] font-mono text-ink-secondary">{Math.round(d.avgEdgeConfidence * 100)}%</span>
+                                        <span className="text-[10px] font-mono text-text-secondary">{Math.round(d.avgEdgeConfidence * 100)}%</span>
                                     </div>
                                 </div>
                             )}
@@ -970,7 +973,7 @@ export default function KnowledgeGraphPage() {
                             {/* Raw properties (collapsible for advanced users) */}
                             {selectedNode.properties && Object.keys(selectedNode.properties).filter(k => !["aliases", "sources", "confidence"].includes(k)).length > 0 && (
                                 <details className="px-5 mt-4">
-                                    <summary className="text-[10px] text-ink-muted uppercase tracking-widest font-bold cursor-pointer hover:text-ink-secondary transition-colors">
+                                    <summary className="text-[10px] text-text-muted uppercase tracking-widest font-bold cursor-pointer hover:text-text-secondary transition-colors">
                                         Raw Properties
                                     </summary>
                                     <div className="space-y-1 mt-2">
@@ -978,8 +981,8 @@ export default function KnowledgeGraphPage() {
                                             .filter(([k]) => !["aliases", "sources", "confidence"].includes(k))
                                             .map(([k, v]) => (
                                             <div key={k} className="text-xs flex justify-between gap-2">
-                                                <span className="text-ink-muted font-mono shrink-0">{k}</span>
-                                                <span className="text-ink-secondary truncate">{String(v)}</span>
+                                                <span className="text-text-muted font-mono shrink-0">{k}</span>
+                                                <span className="text-text-secondary truncate">{String(v)}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -987,20 +990,20 @@ export default function KnowledgeGraphPage() {
                             )}
 
                             {/* Metadata footer */}
-                            <div className="px-5 py-3 mt-4 border-t border-edge/50 text-[10px] text-ink-muted flex items-center justify-between">
+                            <div className="px-5 py-3 mt-4 border-t border-border/50 text-[10px] text-text-muted flex items-center justify-between">
                                 <span>Created {new Date(selectedNode.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-                                {connectedEdges.length === 0 && <span className="text-coral/60">Isolated node</span>}
+                                {connectedEdges.length === 0 && <span className="text-rose/60">Isolated node</span>}
                             </div>
                         </div>
                         );
                     })()}
 
                     {/* Bottom Controls Bar */}
-                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-card/90 backdrop-blur-xl border border-edge rounded-xl px-5 py-2.5 z-20 flex items-center gap-4 max-w-[92vw] overflow-x-auto" style={{ boxShadow: "var(--shadow-lg)" }}>
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-surface/90 backdrop-blur-xl border border-border rounded-xl px-5 py-2.5 z-20 flex items-center gap-4 max-w-[92vw] overflow-x-auto" style={{ boxShadow: "var(--shadow-lg)" }}>
                         {/* Legend */}
-                        <div className="flex items-center gap-3 text-[11px] shrink-0 border-r border-edge pr-4">
+                        <div className="flex items-center gap-3 text-[11px] shrink-0 border-r border-border pr-4">
                             {Object.entries(entityTypeConfig).slice(0, 6).map(([key, cfg]) => (
-                                <span key={key} className="flex items-center gap-1.5 text-ink-secondary">
+                                <span key={key} className="flex items-center gap-1.5 text-text-secondary">
                                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cfg.bg }} />
                                     <span>{cfg.label}</span>
                                 </span>
@@ -1008,7 +1011,7 @@ export default function KnowledgeGraphPage() {
                         </div>
 
                         {/* Node Type Filter */}
-                        <div className="flex items-center gap-1.5 shrink-0 border-r border-edge pr-4">
+                        <div className="flex items-center gap-1.5 shrink-0 border-r border-border pr-4">
                             <button
                                 onClick={() => setNodeTypeFilter("all")}
                                 className={`chip text-[11px] ${nodeTypeFilter === "all" ? "chip-active" : ""}`}
@@ -1028,7 +1031,7 @@ export default function KnowledgeGraphPage() {
                         </div>
 
                         {/* Confidence Slider */}
-                        <div className="flex items-center gap-2 text-[11px] text-ink-secondary shrink-0">
+                        <div className="flex items-center gap-2 text-[11px] text-text-secondary shrink-0">
                             <span>Confidence</span>
                             <input
                                 type="range"
@@ -1037,13 +1040,13 @@ export default function KnowledgeGraphPage() {
                                 step="5"
                                 value={confidenceFilter}
                                 onChange={(e) => setConfidenceFilter(parseInt(e.target.value))}
-                                className="w-16 accent-sage"
+                                className="w-16 accent-amber"
                             />
                             <span className="font-mono w-8">{confidenceFilter}%</span>
                         </div>
 
                         {/* Zoom Level Indicator */}
-                        <div className="text-[10px] text-ink-secondary font-mono shrink-0 border-l border-edge pl-4">
+                        <div className="text-[10px] text-text-secondary font-mono shrink-0 border-l border-border pl-4">
                             {zoomLevel}%
                         </div>
                     </div>
