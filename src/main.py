@@ -384,6 +384,7 @@ def ui(
                     console.print("[green]✓ UI server started[/green]")
                     break
                 except Exception:
+                    logger.debug("UI server not ready yet, retrying...")
                     time.sleep(1)
             else:
                 console.print("[red]✗ Failed to start UI server[/red]")

@@ -12,7 +12,7 @@ from enum import Enum
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
 
 from ..logging_config import get_logger
-from ..models.findings import Finding, ResearchSession
+from ..models.findings import Finding, ResearchSession, is_meta_question
 
 logger = get_logger(__name__)
 
@@ -80,17 +80,7 @@ class _SectionConfig:
 
 def _filter_meta_questions(findings: list) -> list:
     """Filter out meta-questions and placeholder content."""
-    meta_phrases = [
-        "please provide",
-        "what information",
-        "could you clarify",
-        "what are you looking for",
-        "template or placeholder",
-    ]
-    return [
-        f for f in findings
-        if not any(phrase in f.content.lower() for phrase in meta_phrases)
-    ]
+    return [f for f in findings if not is_meta_question(f.content)]
 
 
 def _filter_numeric(findings: list) -> list:

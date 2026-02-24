@@ -5,6 +5,29 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+# Phrases that indicate an LLM produced a meta-question or placeholder
+# instead of a real research finding/follow-up.  Shared by writer, manager,
+# and intern to filter these out consistently.
+META_QUESTION_PHRASES: tuple[str, ...] = (
+    "please provide",
+    "what information",
+    "could you clarify",
+    "what are you looking for",
+    "what topic",
+    "what subject",
+    "what would you like",
+    "can you specify",
+    "please specify",
+    "more details",
+    "template or placeholder",
+)
+
+
+def is_meta_question(text: str) -> bool:
+    """Return True if *text* looks like a meta-question/placeholder."""
+    lower = text.lower()
+    return any(phrase in lower for phrase in META_QUESTION_PHRASES)
+
 
 class FindingType(str, Enum):
     """Types of research findings."""

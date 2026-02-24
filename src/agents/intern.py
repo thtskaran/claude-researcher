@@ -21,6 +21,7 @@ from ..models.findings import (
     FindingType,
     InternReport,
     ManagerDirective,
+    is_meta_question,
 )
 from ..retrieval.deduplication import get_deduplicator
 from ..retrieval.query_expansion import (
@@ -760,23 +761,7 @@ Output ONLY the search query (15-25 words max), nothing else."""
                     self.deduplicator.add(finding_id, content)
 
             for followup in data.get("followups", []):
-                followup_lower = followup.lower()
-                is_meta_question = any(
-                    phrase in followup_lower
-                    for phrase in [
-                        "please provide",
-                        "what information",
-                        "could you clarify",
-                        "what are you looking for",
-                        "what topic",
-                        "what subject",
-                        "what would you like",
-                        "can you specify",
-                        "please specify",
-                        "more details",
-                    ]
-                )
-                if not is_meta_question and followup not in self.suggested_followups:
+                if not is_meta_question(followup) and followup not in self.suggested_followups:
                     self.suggested_followups.append(followup)
 
         except (json.JSONDecodeError, KeyError, ValueError):

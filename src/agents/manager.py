@@ -25,6 +25,7 @@ from ..models.findings import (
     ManagerReport,
     ResearchSession,
     ResearchTopic,
+    is_meta_question,
 )
 from ..retrieval import get_findings_retriever
 from ..storage.database import ResearchDatabase
@@ -1019,33 +1020,7 @@ Think step by step about the best next action."""
                         await self.db.save_verification_result(
                             session_id=self.session_id,
                             finding_id=f.id,
-                            result_dict={
-                                "original_confidence": result.original_confidence,
-                                "verified_confidence": result.verified_confidence,
-                                "verification_status": result.verification_status.value,
-                                "verification_method": result.verification_method.value,
-                                "consistency_score": result.consistency_score,
-                                "kg_support_score": result.kg_support_score,
-                                "kg_entity_matches": result.kg_entity_matches,
-                                "kg_supporting_relations": result.kg_supporting_relations,
-                                "critic_iterations": result.critic_iterations,
-                                "corrections_made": result.corrections_made,
-                                "questions_asked": [
-                                    {
-                                        "question": q.question,
-                                        "aspect": q.aspect,
-                                        "independent_answer": q.independent_answer,
-                                        "supports_original": q.supports_original,
-                                        "confidence": q.confidence,
-                                        "error": q.error,
-                                    }
-                                    for q in result.questions_asked
-                                ],
-                                "external_verification_used": result.external_verification_used,
-                                "contradictions": result.contradictions,
-                                "verification_time_ms": result.verification_time_ms,
-                                "error": result.error,
-                            },
+                            result_dict=result.to_dict(),
                         )
                     break
 
@@ -1128,23 +1103,7 @@ Be constructive but rigorous. Flag any rejected findings that should be re-resea
         new_depth = (parent_topic.depth + 1) if parent_topic else self.current_depth + 1
 
         for followup in report.suggested_followups[:3]:  # Limit follow-ups
-            # Filter out meta-questions/clarifying questions
-            followup_lower = followup.lower()
-            is_meta_question = any(
-                phrase in followup_lower
-                for phrase in [
-                    "please provide",
-                    "what information",
-                    "could you clarify",
-                    "what are you looking for",
-                    "what topic",
-                    "what subject",
-                    "what would you like",
-                    "can you specify",
-                    "please specify",
-                ]
-            )
-            if is_meta_question:
+            if is_meta_question(followup):
                 continue
 
             # Check if we already have this topic

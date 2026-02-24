@@ -222,7 +222,7 @@ class VerificationPipeline:
                 },
             )
         except Exception:
-            pass
+            logger.debug("Failed to emit verification start event", exc_info=True)
 
         # Process in parallel batches
         results = []
@@ -250,7 +250,7 @@ class VerificationPipeline:
                     },
                 )
             except Exception:
-                pass
+                logger.debug("Failed to emit verification batch event", exc_info=True)
             batch_results = await self._verify_batch_parallel(batch, session_id)
             results.extend(batch_results)
 
@@ -283,7 +283,7 @@ class VerificationPipeline:
                 },
             )
         except Exception:
-            pass
+            logger.debug("Failed to emit verification complete event", exc_info=True)
 
         batch_result = BatchVerificationResult(
             session_id=session_id,
