@@ -146,11 +146,12 @@ class ExternalMemoryStore:
                     json.dumps(metadata),
                 ))
 
-                # Store in FTS table
+                # Store in FTS table — use explicit rowid lookup instead of
+                # last_insert_rowid() which is fragile if any INSERT is added above
                 await conn.execute("""
                     INSERT INTO memories_fts (rowid, content, tags)
-                    VALUES (last_insert_rowid(), ?, ?)
-                """, (content, ' '.join(tags)))
+                    VALUES ((SELECT rowid FROM memories WHERE id = ?), ?, ?)
+                """, (memory_id, content, ' '.join(tags)))
 
                 await conn.commit()
             except Exception:

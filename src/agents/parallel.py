@@ -116,12 +116,22 @@ class ParallelInternPool:
                 self.verification_pipeline,
                 agent_id=f"intern_{i}"  # Unique ID for each intern
             )
-            # Propagate pause flag to new interns
-            if self._pause_requested:
-                intern._pause_requested = True
             self._active_interns.append(intern)
             task = self._execute_with_error_handling(intern, directive, session_id, i)
             tasks.append(task)
+
+        # Check pause flag once more after all interns are created but before
+        # scheduling. This closes the window where pause() is called between
+        # the initial check and task execution.
+        if self._pause_requested:
+            for intern in self._active_interns:
+                intern._pause_requested = True
+            self._active_interns = []
+            return ParallelResearchResult(
+                reports=[], total_findings=[], total_searches=0,
+                execution_time_seconds=(datetime.now() - start_time).total_seconds(),
+                errors=["Paused before execution"],
+            )
 
         # Execute all tasks in parallel with 15-minute timeout per batch.
         # Use asyncio.wait instead of wait_for(gather(...)) so we preserve

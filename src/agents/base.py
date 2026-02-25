@@ -547,12 +547,13 @@ class BaseAgent(ABC):
         self._track_llm_cost(self.config.model, prompt, response_text)
 
         # Track web searches and fetches
+        cost_tracker = get_cost_tracker()
         for tr in tool_results:
             tool_name = tr.get("tool", "").lower()
             if "websearch" in tool_name or "web_search" in tool_name:
-                tracker.track_web_search()
+                cost_tracker.track_web_search()
             elif "webfetch" in tool_name or "web_fetch" in tool_name:
-                tracker.track_web_fetch()
+                cost_tracker.track_web_fetch()
 
         return response_text, tool_results
 
