@@ -733,6 +733,25 @@ export default function KnowledgeGraphPage() {
                         <p className="text-xs text-text-muted mt-1">Entities will appear as the research processes findings.</p>
                     </div>
                 </div>
+            ) : filteredEntities.length === 0 && entities.length > 0 ? (
+                <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center">
+                        <span className="material-symbols-outlined text-4xl text-text-muted mb-3 block">filter_alt_off</span>
+                        <p className="text-sm text-text-secondary mb-1">All nodes hidden by current filters.</p>
+                        <p className="text-xs text-text-muted mb-4">
+                            {nodeTypeFilter !== "all" && `Type: ${nodeTypeFilter}`}
+                            {nodeTypeFilter !== "all" && confidenceFilter > 0 && " · "}
+                            {confidenceFilter > 0 && `Min confidence: ${confidenceFilter}%`}
+                        </p>
+                        <button
+                            onClick={() => { setNodeTypeFilter("all"); setConfidenceFilter(0); }}
+                            className="btn btn-primary text-xs"
+                        >
+                            <span className="material-symbols-outlined text-sm">restart_alt</span>
+                            Reset Filters
+                        </button>
+                    </div>
+                </div>
             ) : (
                 <div className="flex-1 relative overflow-hidden">
                     {/* Vis-Network Container */}
@@ -753,7 +772,7 @@ export default function KnowledgeGraphPage() {
                         const cfg = entityTypeConfig[selectedNode.entity_type] || defaultEntityCfg;
                         const d = selectedDetail;
                         return (
-                        <div className="absolute right-4 top-4 w-[22rem] bg-surface/95 backdrop-blur-xl border border-border rounded-xl z-20 max-h-[calc(100%-6rem)] overflow-y-auto animate-rise" style={{ boxShadow: "var(--shadow-lg)" }}>
+                        <div className="absolute right-2 top-2 sm:right-4 sm:top-4 w-[calc(100vw-1rem)] sm:w-[22rem] bg-surface/95 backdrop-blur-xl border border-border rounded-xl z-20 max-h-[calc(100%-4rem)] sm:max-h-[calc(100%-6rem)] overflow-y-auto animate-rise" style={{ boxShadow: "var(--shadow-lg)" }}>
                             {/* Header */}
                             <div className="p-5 pb-0">
                                 <div className="flex items-start justify-between mb-2">
@@ -1044,6 +1063,17 @@ export default function KnowledgeGraphPage() {
                             />
                             <span className="font-mono w-8">{confidenceFilter}%</span>
                         </div>
+
+                        {/* Reset Filters */}
+                        {(nodeTypeFilter !== "all" || confidenceFilter > 0) && (
+                            <button
+                                onClick={() => { setNodeTypeFilter("all"); setConfidenceFilter(0); }}
+                                className="chip text-[11px] text-rose shrink-0"
+                            >
+                                <span className="material-symbols-outlined text-sm">restart_alt</span>
+                                Reset
+                            </button>
+                        )}
 
                         {/* Zoom Level Indicator */}
                         <div className="text-[10px] text-text-secondary font-mono shrink-0 border-l border-border pl-4">

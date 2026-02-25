@@ -82,6 +82,7 @@ export default function VerificationPipelinePage() {
     const [stats, setStats] = useState<VerificationStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [selectedIdx, setSelectedIdx] = useState(0);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -163,9 +164,25 @@ export default function VerificationPipelinePage() {
                     </div>
                 </div>
             ) : (
-                <div className="flex-1 flex max-w-7xl mx-auto w-full overflow-hidden">
+                <div className="flex-1 flex flex-col md:flex-row max-w-7xl mx-auto w-full overflow-hidden">
+                    {/* Mobile sidebar toggle */}
+                    <div className="md:hidden border-b border-border p-3 flex items-center justify-between bg-surface/30">
+                        <button
+                            onClick={() => setSidebarOpen(!sidebarOpen)}
+                            className="btn btn-ghost text-xs gap-1"
+                        >
+                            <span className="material-symbols-outlined text-sm">{sidebarOpen ? "close" : "list"}</span>
+                            {sidebarOpen ? "Hide" : "Show"} Results ({results.length})
+                        </button>
+                        {selectedFinding && (
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${getStatusColor(mapStatus(selectedFinding.verification_status))}`}>
+                                {mapStatus(selectedFinding.verification_status)}
+                            </span>
+                        )}
+                    </div>
+
                     {/* Left Sidebar: Queue */}
-                    <aside className="w-72 shrink-0 border-r border-border p-4 overflow-y-auto max-h-[calc(100vh-180px)]">
+                    <aside className={`${sidebarOpen ? "block" : "hidden"} md:block w-full md:w-72 shrink-0 border-r border-border p-4 overflow-y-auto max-h-[50vh] md:max-h-[calc(100vh-180px)]`}>
                         <h3 className="text-[11px] font-mono font-semibold text-text-muted uppercase tracking-widest mb-4">
                             Results ({results.length})
                         </h3>
@@ -177,7 +194,7 @@ export default function VerificationPipelinePage() {
                                 return (
                                     <button
                                         key={item.id}
-                                        onClick={() => setSelectedIdx(idx)}
+                                        onClick={() => { setSelectedIdx(idx); setSidebarOpen(false); }}
                                         className={`w-full text-left p-3 rounded-xl transition-all border cursor-pointer ${isActive
                                             ? "bg-surface-hover border-amber/30 ring-1 ring-amber/15"
                                             : "bg-surface-inset/60 border-border hover:border-amber/20"
@@ -204,7 +221,7 @@ export default function VerificationPipelinePage() {
                     </aside>
 
                     {/* Main Content */}
-                    <main className="flex-1 p-8 space-y-8 overflow-y-auto max-h-[calc(100vh-180px)]">
+                    <main className="flex-1 p-4 md:p-8 space-y-8 overflow-y-auto max-h-[calc(100vh-180px)]">
                         {/* Stats Dashboard */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <MiniStat icon="verified" label="Verified" value={displayStats.verified} color="text-emerald" />

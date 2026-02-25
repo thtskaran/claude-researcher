@@ -17,18 +17,39 @@ export interface AgentEvent {
 
 export type EventCallback = (event: AgentEvent) => void;
 
+export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "disconnected";
+export type StatusCallback = (status: ConnectionStatus, detail?: string) => void;
+
 export class ResearchWebSocket {
   private ws: WebSocket | null = null;
   private sessionId: string;
   private callbacks: Set<EventCallback> = new Set();
+  private statusCallbacks: Set<StatusCallback> = new Set();
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private pingInterval: NodeJS.Timeout | null = null;
   private intentionalDisconnect = false;
+  private _status: ConnectionStatus = "disconnected";
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
+  }
+
+  get status(): ConnectionStatus {
+    return this._status;
+  }
+
+  private setStatus(status: ConnectionStatus, detail?: string): void {
+    this._status = status;
+    this.statusCallbacks.forEach((cb) => {
+      try { cb(status, detail); } catch { /* ignore */ }
+    });
+  }
+
+  onStatusChange(callback: StatusCallback): () => void {
+    this.statusCallbacks.add(callback);
+    return () => { this.statusCallbacks.delete(callback); };
   }
 
   connect(): void {
@@ -37,12 +58,15 @@ export class ResearchWebSocket {
     const wsProtocol = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss" : "ws";
     const url = `${wsProtocol}://${apiHost}/ws/${this.sessionId}`;
     this.intentionalDisconnect = false;
+    this.setStatus(this.reconnectAttempts > 0 ? "reconnecting" : "connecting",
+      this.reconnectAttempts > 0 ? `Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}` : undefined);
 
     try {
       this.ws = new WebSocket(url);
 
       this.ws.onopen = () => {
         this.reconnectAttempts = 0;
+        this.setStatus("connected");
 
         // Start ping/pong to keep connection alive
         this.startPing();
@@ -85,6 +109,7 @@ export class ResearchWebSocket {
         this.stopPing();
 
         if (this.intentionalDisconnect) {
+          this.setStatus("disconnected");
           return;
         }
 
@@ -92,8 +117,10 @@ export class ResearchWebSocket {
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
           const delay = this.reconnectDelay * this.reconnectAttempts;
+          this.setStatus("reconnecting", `Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${Math.round(delay / 1000)}s`);
           setTimeout(() => this.connect(), delay);
         } else {
+          this.setStatus("disconnected", "Max reconnection attempts reached");
           console.error("[WebSocket] Max reconnection attempts reached");
         }
       };

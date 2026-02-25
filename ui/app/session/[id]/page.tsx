@@ -128,26 +128,37 @@ export default function SessionDetail() {
 
   const [actionPending, setActionPending] = useState(false);
   const [isPausing, setIsPausing] = useState(false);
+  const [pauseStale, setPauseStale] = useState(false);
+  const pauseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (session?.status === "paused" || session?.status === "crashed") {
       setIsPausing(false);
+      setPauseStale(false);
+      if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
     }
   }, [session?.status]);
 
   const handlePause = async () => {
     setActionPending(true);
     setIsPausing(true);
+    setPauseStale(false);
+    // Show "taking longer" after 10s
+    pauseTimerRef.current = setTimeout(() => setPauseStale(true), 10000);
     try {
       const res = await fetch(`/api/research/${sessionId}/pause`, {
         method: "POST",
       });
       if (!res.ok) {
         setIsPausing(false);
+        setPauseStale(false);
+        if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
       }
     } catch (err) {
       console.error("Failed to pause:", err);
       setIsPausing(false);
+      setPauseStale(false);
+      if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
     } finally {
       setActionPending(false);
     }
@@ -263,10 +274,20 @@ export default function SessionDetail() {
                 </button>
               )}
               {isPausing && !isPaused && (
-                <button disabled className="btn btn-secondary text-xs py-1 px-3 opacity-70">
-                  <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
-                  Pausing...
-                </button>
+                <div className="flex items-center gap-2">
+                  <button disabled className="btn btn-secondary text-xs py-1 px-3 opacity-70">
+                    <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                    Pausing...
+                  </button>
+                  {pauseStale && (
+                    <button
+                      onClick={() => { setIsPausing(false); setPauseStale(false); if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current); }}
+                      className="btn btn-ghost text-xs py-1 px-2 text-text-muted"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               )}
               {isResumable && (
                 <button
@@ -339,17 +360,25 @@ export default function SessionDetail() {
       {/* Tabs */}
       <div className="border-b border-border bg-surface/10 sticky top-[89px] z-10 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="tab-bar overflow-x-auto scrollbar-hide">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`tab-item whitespace-nowrap ${activeTab === tab.id ? "tab-item-active" : ""}`}
-              >
-                <span className="material-symbols-outlined text-lg">{tab.icon}</span>
-                {tab.label}
-              </button>
-            ))}
+          <div className="relative">
+            {/* Scroll fade indicators */}
+            <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-void/80 to-transparent z-10 pointer-events-none md:hidden" />
+            <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-void/80 to-transparent z-10 pointer-events-none md:hidden" />
+            <div className="tab-bar overflow-x-auto scrollbar-hide" role="tablist">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`tab-item whitespace-nowrap ${activeTab === tab.id ? "tab-item-active" : ""}`}
+                >
+                  <span className="material-symbols-outlined text-lg">{tab.icon}</span>
+                  <span className="hidden sm:inline">{tab.label}</span>
+                  <span className="sm:hidden">{tab.label.split(" ")[0]}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -404,23 +433,23 @@ export default function SessionDetail() {
         {activeTab === "sources" && <SourcesBrowser sessionId={sessionId} />}
 
         {activeTab === "agents" && (
-          <div className="w-full h-[calc(100vh-320px)] min-h-[600px]">
-            <iframe
-              src={`/session/${sessionId}/agents`}
-              className="w-full h-full border-0 rounded-2xl bg-surface"
-              title="Agent Transparency"
-            />
-          </div>
+          <SubPagePlaceholder
+            icon="psychology"
+            title="Agent Transparency"
+            description="Explore the decision audit trail — see how each agent reasoned, what actions they took, and how they collaborated."
+            linkHref={`/session/${sessionId}/agents`}
+            linkText="Open Agent View"
+          />
         )}
 
         {activeTab === "verify" && (
-          <div className="w-full h-[calc(100vh-320px)] min-h-[600px]">
-            <iframe
-              src={`/session/${sessionId}/verify`}
-              className="w-full h-full border-0 rounded-2xl bg-surface"
-              title="CoVe Verification Pipeline"
-            />
-          </div>
+          <SubPagePlaceholder
+            icon="verified"
+            title="CoVe Verification Pipeline"
+            description="Inspect the Chain-of-Verification and CRITIC pipeline results for each finding, including confidence scoring and contradiction detection."
+            linkHref={`/session/${sessionId}/verify`}
+            linkText="Open Verification View"
+          />
         )}
       </main>
 

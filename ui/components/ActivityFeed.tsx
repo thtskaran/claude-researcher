@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { ResearchWebSocket, AgentEvent } from "@/lib/websocket";
+import { ResearchWebSocket, AgentEvent, ConnectionStatus } from "@/lib/websocket";
 
 interface ActivityFeedProps {
   sessionId: string;
@@ -11,6 +11,8 @@ interface ActivityFeedProps {
 export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps) {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [connected, setConnected] = useState(false);
+  const [connStatus, setConnStatus] = useState<ConnectionStatus>("disconnected");
+  const [connDetail, setConnDetail] = useState<string | undefined>();
   const wsRef = useRef<ResearchWebSocket | null>(null);
   const [query, setQuery] = useState("");
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
@@ -90,6 +92,12 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
     }
     wsRef.current = ws;
 
+    const unsubStatus = ws.onStatusChange((status, detail) => {
+      setConnStatus(status);
+      setConnDetail(detail);
+      setConnected(status === "connected");
+    });
+
     const checkConnection = setInterval(() => {
       setConnected(ws.isConnected());
     }, 1000);
@@ -98,6 +106,7 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
       cancelled = true;
       clearInterval(checkConnection);
       unsubscribe();
+      unsubStatus();
       if (ownsWs) {
         ws.disconnect();
       }
@@ -281,11 +290,16 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
           <div className="flex items-center gap-2">
             <div
               className={`w-2 h-2 rounded-full ${
-                connected ? "bg-emerald" : "bg-text-muted"
-              } ${connected ? "animate-breathe" : ""}`}
+                connStatus === "connected" ? "bg-emerald animate-breathe"
+                : connStatus === "reconnecting" ? "bg-gold animate-pulse"
+                : "bg-text-muted"
+              }`}
             />
             <span className="text-sm text-text-secondary">
-              {connected ? "Connected" : "Disconnected"}
+              {connStatus === "connected" ? "Connected"
+               : connStatus === "reconnecting" ? "Reconnecting"
+               : connStatus === "connecting" ? "Connecting"
+               : "Disconnected"}
             </span>
           </div>
         </div>
@@ -347,6 +361,29 @@ export default function ActivityFeed({ sessionId, sharedWs }: ActivityFeedProps)
           ))}
         </div>
       </div>
+
+      {/* Connection Status Banner */}
+      {connStatus === "reconnecting" && (
+        <div className="mb-3 flex items-center gap-2 text-xs bg-gold/10 border border-gold/30 text-gold rounded-2xl px-4 py-2.5">
+          <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+          <span>Reconnecting{connDetail ? ` — ${connDetail}` : "..."}</span>
+        </div>
+      )}
+      {connStatus === "disconnected" && connDetail && (
+        <div className="mb-3 flex items-center justify-between gap-2 text-xs bg-rose/10 border border-rose/30 text-rose rounded-2xl px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-sm">cloud_off</span>
+            <span>Disconnected — {connDetail}. Live updates paused.</span>
+          </div>
+          <button
+            type="button"
+            className="chip text-xs"
+            onClick={() => wsRef.current?.connect()}
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Events List */}
       {unseenCount > 0 ? (

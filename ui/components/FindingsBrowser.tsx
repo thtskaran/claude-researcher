@@ -29,6 +29,7 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
   const [minConfidence, setMinConfidence] = useState(0);
   const [order, setOrder] = useState<"desc" | "asc">("desc");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [visibleCount, setVisibleCount] = useState(50);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,6 +53,7 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
         if (!cancelled) setLoadingFindings(false);
       }
     })();
+    setVisibleCount(50);
     return () => { cancelled = true; };
   }, [sessionId, search, findingType, minConfidence, order]);
 
@@ -140,31 +142,42 @@ export default function FindingsBrowser({ sessionId }: FindingsBrowserProps) {
                 No findings yet. Run a research session to populate this view.
               </div>
             ) : (
-              findings.map((finding) => {
-                const isActive = finding.id === (selectedFinding?.id ?? findings[0]?.id);
-                return (
+              <>
+                {findings.slice(0, visibleCount).map((finding) => {
+                  const isActive = finding.id === (selectedFinding?.id ?? findings[0]?.id);
+                  return (
+                    <button
+                      key={finding.id}
+                      onClick={() => setSelectedId(finding.id)}
+                      className={`w-full text-left flex flex-col gap-2 p-3 rounded-2xl transition-all border cursor-pointer ${isActive
+                        ? "bg-surface-hover border-amber/40 ring-1 ring-amber/20"
+                        : "bg-surface-inset/60 border-border hover:border-amber/30"
+                        }`}
+                      style={isActive ? { boxShadow: "var(--shadow-md)" } : undefined}
+                    >
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className={`badge ${getFindingBadge(finding.finding_type)}`}>
+                          {finding.finding_type}
+                        </span>
+                        {typeof finding.confidence === "number" && (
+                          <ConfidenceRing value={finding.confidence} />
+                        )}
+                      </div>
+                      <p className="text-sm text-text line-clamp-2 leading-snug">{finding.content}</p>
+                      <span className="text-xs text-text-muted font-mono">{formatDate(finding.created_at)}</span>
+                    </button>
+                  );
+                })}
+                {findings.length > visibleCount && (
                   <button
-                    key={finding.id}
-                    onClick={() => setSelectedId(finding.id)}
-                    className={`w-full text-left flex flex-col gap-2 p-3 rounded-2xl transition-all border cursor-pointer ${isActive
-                      ? "bg-surface-hover border-amber/40 ring-1 ring-amber/20"
-                      : "bg-surface-inset/60 border-border hover:border-amber/30"
-                      }`}
-                    style={isActive ? { boxShadow: "var(--shadow-md)" } : undefined}
+                    type="button"
+                    onClick={() => setVisibleCount((c) => c + 50)}
+                    className="w-full text-center py-3 text-xs text-amber hover:text-amber/80 transition-colors border border-dashed border-amber/30 rounded-2xl hover:bg-amber/5"
                   >
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className={`badge ${getFindingBadge(finding.finding_type)}`}>
-                        {finding.finding_type}
-                      </span>
-                      {typeof finding.confidence === "number" && (
-                        <ConfidenceRing value={finding.confidence} />
-                      )}
-                    </div>
-                    <p className="text-sm text-text line-clamp-2 leading-snug">{finding.content}</p>
-                    <span className="text-xs text-text-muted font-mono">{formatDate(finding.created_at)}</span>
+                    Show more ({findings.length - visibleCount} remaining)
                   </button>
-                );
-              })
+                )}
+              </>
             )}
           </div>
         </div>
