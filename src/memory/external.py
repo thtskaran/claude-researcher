@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -46,6 +47,9 @@ class ExternalMemoryStore:
     - Persistent storage of findings and context
     - Searchable archive by tags and content
     - Session-scoped memory management
+
+    Requires explicit connect()/close() lifecycle, or lazy auto-connect
+    via _ensure_connected().
     """
 
     def __init__(self, db_path: str = "memory.db"):
@@ -56,51 +60,70 @@ class ExternalMemoryStore:
         """
         self.db_path = Path(db_path)
         self._connection: aiosqlite.Connection | None = None
-        self._connection_lock = asyncio.Lock()
-        self._initialized = False
+        self._connect_lock = asyncio.Lock()
 
-    async def _ensure_initialized(self) -> None:
-        """Ensure database is initialized (lazy initialization)."""
-        if self._initialized:
-            return
-        async with self._connection_lock:
-            if self._initialized:
-                return
-            await self._init_db()
-            self._initialized = True
+    async def connect(self) -> None:
+        """Open persistent DB connection, create schema."""
+        logger.info("External memory connecting: %s", self.db_path)
+        self._connection = await aiosqlite.connect(self.db_path)
+        try:
+            await self._connection.execute("PRAGMA busy_timeout=5000")
+            await self._connection.execute("PRAGMA journal_mode=WAL")
+            await self._init_schema()
+        except Exception:
+            await self._connection.close()
+            self._connection = None
+            raise
 
-    async def _init_db(self) -> None:
-        """Initialize database schema."""
-        async with aiosqlite.connect(self.db_path) as conn:
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS memories (
-                    id TEXT PRIMARY KEY,
-                    session_id TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    memory_type TEXT NOT NULL,
-                    tags TEXT,
-                    created_at TEXT NOT NULL,
-                    metadata TEXT
-                )
-            """)
+    async def close(self) -> None:
+        """Close the persistent DB connection."""
+        if self._connection:
+            await self._connection.close()
+            self._connection = None
 
-            await conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_memory_session
-                ON memories(session_id)
-            """)
+    async def _ensure_connected(self) -> aiosqlite.Connection:
+        """Return the persistent connection, lazily connecting if needed."""
+        if self._connection is not None:
+            return self._connection
+        async with self._connect_lock:
+            # Double-check after acquiring lock
+            if self._connection is not None:
+                return self._connection
+            await self.connect()
+        return self._connection
 
-            await conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_memory_type
-                ON memories(memory_type)
-            """)
+    async def _init_schema(self) -> None:
+        """Initialize database schema on the persistent connection."""
+        conn = self._connection
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS memories (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                content TEXT NOT NULL,
+                memory_type TEXT NOT NULL,
+                tags TEXT,
+                created_at TEXT NOT NULL,
+                metadata TEXT
+            )
+        """)
 
-            # Full-text search table
-            await conn.execute("""
-                CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts
-                USING fts5(content, tags, tokenize='porter')
-            """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memory_session
+            ON memories(session_id)
+        """)
 
-            await conn.commit()
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memory_type
+            ON memories(memory_type)
+        """)
+
+        # Full-text search table
+        await conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts
+            USING fts5(content, tags, tokenize='porter')
+        """)
+
+        await conn.commit()
 
     async def store(
         self,
@@ -122,42 +145,43 @@ class ExternalMemoryStore:
         Returns:
             ID of stored memory
         """
-        await self._ensure_initialized()
-        import uuid
+        conn = await self._ensure_connected()
 
         memory_id = str(uuid.uuid4())[:8]
         tags = tags or []
         metadata = metadata or {}
         created_at = datetime.now()
 
-        async with aiosqlite.connect(self.db_path) as conn:
-            try:
-                # Store in main table
-                await conn.execute("""
-                    INSERT INTO memories (id, session_id, content, memory_type, tags, created_at, metadata)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    memory_id,
-                    session_id,
-                    content,
-                    memory_type,
-                    json.dumps(tags),
-                    created_at.isoformat(),
-                    json.dumps(metadata),
-                ))
+        try:
+            await conn.execute("""
+                INSERT INTO memories
+                    (id, session_id, content, memory_type,
+                     tags, created_at, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                memory_id,
+                session_id,
+                content,
+                memory_type,
+                json.dumps(tags),
+                created_at.isoformat(),
+                json.dumps(metadata),
+            ))
 
-                # Store in FTS table — use explicit rowid lookup instead of
-                # last_insert_rowid() which is fragile if any INSERT is added above
-                await conn.execute("""
-                    INSERT INTO memories_fts (rowid, content, tags)
-                    VALUES ((SELECT rowid FROM memories WHERE id = ?), ?, ?)
-                """, (memory_id, content, ' '.join(tags)))
+            # Use explicit rowid lookup instead of last_insert_rowid()
+            await conn.execute("""
+                INSERT INTO memories_fts (rowid, content, tags)
+                VALUES (
+                    (SELECT rowid FROM memories WHERE id = ?),
+                    ?, ?
+                )
+            """, (memory_id, content, ' '.join(tags)))
 
-                await conn.commit()
-            except Exception:
-                await conn.rollback()
-                logger.error("External memory error", exc_info=True)
-                raise
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            logger.error("External memory store error", exc_info=True)
+            raise
 
         return memory_id
 
@@ -174,18 +198,22 @@ class ExternalMemoryStore:
 
         Note: Prefer using the async `store` method when possible.
         """
-        import asyncio
+        import asyncio as _asyncio
         try:
-            loop = asyncio.get_running_loop()
-            # If we're in an async context, we need to use run_coroutine_threadsafe
-            future = asyncio.run_coroutine_threadsafe(
-                self.store(session_id, content, memory_type, tags, metadata),
-                loop
+            loop = _asyncio.get_running_loop()
+            future = _asyncio.run_coroutine_threadsafe(
+                self.store(
+                    session_id, content, memory_type, tags, metadata
+                ),
+                loop,
             )
             return future.result(timeout=30)
         except RuntimeError:
-            # No running event loop, create one
-            return asyncio.run(self.store(session_id, content, memory_type, tags, metadata))
+            return _asyncio.run(
+                self.store(
+                    session_id, content, memory_type, tags, metadata
+                )
+            )
 
     async def search(
         self,
@@ -205,69 +233,57 @@ class ExternalMemoryStore:
         Returns:
             List of matching memories
         """
-        await self._ensure_initialized()
+        conn = await self._ensure_connected()
 
-        async with aiosqlite.connect(self.db_path) as conn:
-            conn.row_factory = aiosqlite.Row
+        sql = """
+            SELECT m.id, m.session_id, m.content,
+                   m.memory_type, m.tags, m.created_at,
+                   m.metadata
+            FROM memories m
+            JOIN memories_fts fts ON m.rowid = fts.rowid
+            WHERE memories_fts MATCH ?
+        """
+        params: list = [query]
 
-            # Build query
+        if session_id is not None:
+            sql += " AND m.session_id = ?"
+            params.append(session_id)
+
+        if memory_type is not None:
+            sql += " AND m.memory_type = ?"
+            params.append(memory_type)
+
+        sql += " ORDER BY rank LIMIT ?"
+        params.append(limit)
+
+        try:
+            cursor = await conn.execute(sql, params)
+            rows = await cursor.fetchall()
+        except aiosqlite.OperationalError:
+            # FTS query failed, fall back to LIKE
             sql = """
-                SELECT m.id, m.session_id, m.content, m.memory_type, m.tags, m.created_at, m.metadata
-                FROM memories m
-                JOIN memories_fts fts ON m.rowid = fts.rowid
-                WHERE memories_fts MATCH ?
+                SELECT id, session_id, content,
+                       memory_type, tags, created_at, metadata
+                FROM memories
+                WHERE content LIKE ?
             """
-            params: list = [query]
+            params = [f"%{query}%"]
 
             if session_id is not None:
-                sql += " AND m.session_id = ?"
+                sql += " AND session_id = ?"
                 params.append(session_id)
 
             if memory_type is not None:
-                sql += " AND m.memory_type = ?"
+                sql += " AND memory_type = ?"
                 params.append(memory_type)
 
-            sql += " ORDER BY rank LIMIT ?"
+            sql += " ORDER BY created_at DESC LIMIT ?"
             params.append(limit)
 
-            try:
-                cursor = await conn.execute(sql, params)
-                rows = await cursor.fetchall()
-            except aiosqlite.OperationalError:
-                # FTS query failed, fall back to LIKE
-                sql = """
-                    SELECT id, session_id, content, memory_type, tags, created_at, metadata
-                    FROM memories
-                    WHERE content LIKE ?
-                """
-                params = [f"%{query}%"]
+            cursor = await conn.execute(sql, params)
+            rows = await cursor.fetchall()
 
-                if session_id is not None:
-                    sql += " AND session_id = ?"
-                    params.append(session_id)
-
-                if memory_type is not None:
-                    sql += " AND memory_type = ?"
-                    params.append(memory_type)
-
-                sql += " ORDER BY created_at DESC LIMIT ?"
-                params.append(limit)
-
-                cursor = await conn.execute(sql, params)
-                rows = await cursor.fetchall()
-
-        return [
-            StoredMemory(
-                id=row[0],
-                session_id=row[1],
-                content=row[2],
-                memory_type=row[3],
-                tags=json.loads(row[4]) if row[4] else [],
-                created_at=datetime.fromisoformat(row[5]),
-                metadata=json.loads(row[6]) if row[6] else {},
-            )
-            for row in rows
-        ]
+        return [self._row_to_memory(row) for row in rows]
 
     async def get_by_session(
         self,
@@ -283,38 +299,27 @@ class ExternalMemoryStore:
         Returns:
             List of memories
         """
-        await self._ensure_initialized()
+        conn = await self._ensure_connected()
 
-        async with aiosqlite.connect(self.db_path) as conn:
-            if memory_type:
-                cursor = await conn.execute("""
-                    SELECT id, session_id, content, memory_type, tags, created_at, metadata
-                    FROM memories
-                    WHERE session_id = ? AND memory_type = ?
-                    ORDER BY created_at
-                """, (session_id, memory_type))
-            else:
-                cursor = await conn.execute("""
-                    SELECT id, session_id, content, memory_type, tags, created_at, metadata
-                    FROM memories
-                    WHERE session_id = ?
-                    ORDER BY created_at
-                """, (session_id,))
+        if memory_type:
+            cursor = await conn.execute("""
+                SELECT id, session_id, content,
+                       memory_type, tags, created_at, metadata
+                FROM memories
+                WHERE session_id = ? AND memory_type = ?
+                ORDER BY created_at
+            """, (session_id, memory_type))
+        else:
+            cursor = await conn.execute("""
+                SELECT id, session_id, content,
+                       memory_type, tags, created_at, metadata
+                FROM memories
+                WHERE session_id = ?
+                ORDER BY created_at
+            """, (session_id,))
 
-            rows = await cursor.fetchall()
-
-        return [
-            StoredMemory(
-                id=row[0],
-                session_id=row[1],
-                content=row[2],
-                memory_type=row[3],
-                tags=json.loads(row[4]) if row[4] else [],
-                created_at=datetime.fromisoformat(row[5]),
-                metadata=json.loads(row[6]) if row[6] else {},
-            )
-            for row in rows
-        ]
+        rows = await cursor.fetchall()
+        return [self._row_to_memory(row) for row in rows]
 
     async def get_recent(
         self,
@@ -330,31 +335,19 @@ class ExternalMemoryStore:
         Returns:
             List of recent memories
         """
-        await self._ensure_initialized()
+        conn = await self._ensure_connected()
 
-        async with aiosqlite.connect(self.db_path) as conn:
-            cursor = await conn.execute("""
-                SELECT id, session_id, content, memory_type, tags, created_at, metadata
-                FROM memories
-                WHERE session_id = ?
-                ORDER BY created_at DESC
-                LIMIT ?
-            """, (session_id, limit))
+        cursor = await conn.execute("""
+            SELECT id, session_id, content,
+                   memory_type, tags, created_at, metadata
+            FROM memories
+            WHERE session_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (session_id, limit))
 
-            rows = await cursor.fetchall()
-
-        return [
-            StoredMemory(
-                id=row[0],
-                session_id=row[1],
-                content=row[2],
-                memory_type=row[3],
-                tags=json.loads(row[4]) if row[4] else [],
-                created_at=datetime.fromisoformat(row[5]),
-                metadata=json.loads(row[6]) if row[6] else {},
-            )
-            for row in rows
-        ]
+        rows = await cursor.fetchall()
+        return [self._row_to_memory(row) for row in rows]
 
     async def delete_session(self, session_id: str) -> int:
         """Delete all memories for a session.
@@ -365,52 +358,65 @@ class ExternalMemoryStore:
         Returns:
             Number of memories deleted
         """
-        await self._ensure_initialized()
+        conn = await self._ensure_connected()
 
-        async with aiosqlite.connect(self.db_path) as conn:
-            cursor = await conn.execute(
-                "SELECT COUNT(*) FROM memories WHERE session_id = ?",
-                (session_id,)
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM memories WHERE session_id = ?",
+            (session_id,),
+        )
+        row = await cursor.fetchone()
+        count = row[0] if row else 0
+
+        try:
+            await conn.execute(
+                "DELETE FROM memories WHERE session_id = ?",
+                (session_id,),
             )
-            row = await cursor.fetchone()
-            count = row[0] if row else 0
-
-            try:
-                await conn.execute(
-                    "DELETE FROM memories WHERE session_id = ?",
-                    (session_id,)
-                )
-                await conn.commit()
-            except Exception:
-                await conn.rollback()
-                logger.error("External memory error", exc_info=True)
-                raise
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            logger.error("External memory delete error", exc_info=True)
+            raise
 
         return count
 
     async def get_stats(self) -> dict:
         """Get memory store statistics."""
-        await self._ensure_initialized()
+        conn = await self._ensure_connected()
 
-        async with aiosqlite.connect(self.db_path) as conn:
-            cursor = await conn.execute("SELECT COUNT(*) FROM memories")
-            row = await cursor.fetchone()
-            total = row[0] if row else 0
+        cursor = await conn.execute("SELECT COUNT(*) FROM memories")
+        row = await cursor.fetchone()
+        total = row[0] if row else 0
 
-            cursor = await conn.execute("""
-                SELECT memory_type, COUNT(*) as count
-                FROM memories
-                GROUP BY memory_type
-            """)
-            rows = await cursor.fetchall()
-            by_type = {row[0]: row[1] for row in rows}
+        cursor = await conn.execute("""
+            SELECT memory_type, COUNT(*) as count
+            FROM memories
+            GROUP BY memory_type
+        """)
+        rows = await cursor.fetchall()
+        by_type = {row[0]: row[1] for row in rows}
 
-            cursor = await conn.execute("SELECT COUNT(DISTINCT session_id) FROM memories")
-            row = await cursor.fetchone()
-            sessions = row[0] if row else 0
+        cursor = await conn.execute(
+            "SELECT COUNT(DISTINCT session_id) FROM memories"
+        )
+        row = await cursor.fetchone()
+        sessions = row[0] if row else 0
 
         return {
             'total_memories': total,
             'by_type': by_type,
             'sessions': sessions,
         }
+
+    @staticmethod
+    def _row_to_memory(row) -> StoredMemory:
+        """Convert a database row to a StoredMemory."""
+        return StoredMemory(
+            id=row[0],
+            session_id=row[1],
+            content=row[2],
+            memory_type=row[3],
+            tags=json.loads(row[4]) if row[4] else [],
+            created_at=datetime.fromisoformat(row[5]),
+            metadata=json.loads(row[6]) if row[6] else {},
+        )

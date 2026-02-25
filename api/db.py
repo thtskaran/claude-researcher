@@ -70,7 +70,7 @@ class APIDatabase:
         return True
 
     async def delete_session(self, session_id: str) -> bool:
-        """Delete a session and all related data."""
+        """Delete a session and all related data atomically."""
         tables = [
             "findings", "topics", "messages", "verification_results",
             "credibility_audit", "agent_decisions", "events",
@@ -78,17 +78,22 @@ class APIDatabase:
         pool = self._core._check_pool()
         async with pool.acquire() as conn:
             try:
+                # Acquire write lock upfront so all DELETEs run
+                # in one atomic transaction
+                await conn.execute("BEGIN IMMEDIATE")
                 for table in tables:
                     await conn.execute(
-                        f"DELETE FROM {table} WHERE session_id = ?", (session_id,)
+                        f"DELETE FROM {table} WHERE session_id = ?",
+                        (session_id,),
                     )
                 cursor = await conn.execute(
-                    "DELETE FROM sessions WHERE id = ?", (session_id,)
+                    "DELETE FROM sessions WHERE id = ?",
+                    (session_id,),
                 )
-                await conn.commit()
+                await conn.execute("COMMIT")
                 return cursor.rowcount > 0
             except Exception:
-                await conn.rollback()
+                await conn.execute("ROLLBACK")
                 raise
 
     async def mark_crashed_sessions(self) -> int:

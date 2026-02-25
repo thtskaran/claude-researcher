@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import random
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -1520,7 +1521,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
 
         # Eagerly initialize external memory DB
         try:
-            await self.external_memory._ensure_initialized()
+            await self.external_memory._ensure_connected()
         except Exception:
             logger.debug("External memory initialization failed", exc_info=True)
 
@@ -1546,15 +1547,37 @@ Be thorough and insightful. Note where findings have lower confidence."""
             # Phase 1: Parallel initial research (if enabled and pool available)
             if use_parallel_init and self.intern_pool:
                 self._current_phase = "parallel_init"
-                try:
-                    await self._run_parallel_initial_research(goal, max_aspects=self.pool_size)
-                except Exception as e:
-                    logger.error("Parallel initial research failed: %s", e, exc_info=True)
-                    self._log(
-                        f"[PARALLEL] Initial research failed ({type(e).__name__}), "
-                        "continuing with sequential research",
-                        style="yellow",
-                    )
+                max_retries = 2
+                for attempt in range(max_retries):
+                    try:
+                        await self._run_parallel_initial_research(
+                            goal, max_aspects=self.pool_size,
+                        )
+                        break
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            delay = (2 ** attempt) + random.uniform(0, 0.5)
+                            logger.warning(
+                                "Parallel initial research attempt %d/%d failed: %s, "
+                                "retrying in %.1fs",
+                                attempt + 1, max_retries, e, delay,
+                            )
+                            self._log(
+                                f"[PARALLEL] Attempt {attempt + 1} failed, "
+                                f"retrying in {delay:.0f}s...",
+                                style="yellow",
+                            )
+                            await asyncio.sleep(delay)
+                        else:
+                            logger.error(
+                                "Parallel initial research failed after %d attempts: %s",
+                                max_retries, e, exc_info=True,
+                            )
+                            self._log(
+                                f"[PARALLEL] Failed after {max_retries} attempts "
+                                f"({type(e).__name__}), continuing sequentially",
+                                style="yellow",
+                            )
 
             # Initialize with the main goal as the first topic (if not enough findings yet)
             if len(self.all_findings) < 5:
@@ -1618,6 +1641,20 @@ Be thorough and insightful. Note where findings have lower confidence."""
 
         # Generate final report if not already done
         return await self._synthesize_report()
+
+    async def cleanup(self) -> None:
+        """Close persistent connections for KG store and external memory.
+
+        Must be called when the Manager is no longer needed (e.g. harness exit).
+        """
+        try:
+            await self.kg_store.close()
+        except Exception:
+            logger.debug("KG store close failed", exc_info=True)
+        try:
+            await self.external_memory.close()
+        except Exception:
+            logger.debug("External memory close failed", exc_info=True)
 
     async def reset(self, clear_knowledge_graph: bool = False, clear_memory: bool = False) -> None:
         """Reset the manager state.

@@ -1183,22 +1183,33 @@ Return as JSON array:
             stats['fast_ner'] = self.fast_ner.get_stats()
         return stats
 
-    def _find_entity_in_kg(self, name: str) -> str | None:
+    def _find_entity_in_kg(
+        self,
+        name: str,
+        snapshot: dict[str, str] | None = None,
+    ) -> str | None:
         """Find an entity ID in the KG using exact, alias, and substring matching.
+
+        Args:
+            name: Entity name to look up
+            snapshot: Optional pre-captured snapshot of entity_by_name.
+                      Avoids dict-changed-during-iteration when called
+                      from async methods that yield between reads.
 
         Returns entity_id if found, None otherwise.
         """
+        names = snapshot if snapshot is not None else self.entity_by_name
         key = name.lower().strip()
         if not key or len(key) < 2:
             return None
 
         # 1. Exact match
-        if key in self.entity_by_name:
-            return self.entity_by_name[key]
+        if key in names:
+            return names[key]
 
         # 2. Check if any KG entity name contains this name or vice versa
         #    (e.g., "Cursor" matches "Cursor AI", "GitHub Copilot" matches "Copilot")
-        for kg_name, entity_id in self.entity_by_name.items():
+        for kg_name, entity_id in names.items():
             if len(kg_name) < 3 or len(key) < 3:
                 continue
             if key in kg_name or kg_name in key:
@@ -1224,19 +1235,25 @@ Return as JSON array:
         Returns:
             Tuple of (support_score, entity_match_count, supporting_relation_count)
         """
+        # Snapshot entity_by_name to avoid dict-changed-during-iteration
+        # when add_finding modifies it concurrently via _resolve_entity
+        name_snapshot = dict(self.entity_by_name)
+
         matched_entity_ids: set[str] = set()
         supporting_relations = 0
 
         # --- Approach 1: Extract entities from content, look up in KG ---
         entities = await self._quick_entity_extract(content)
         for entity_name in entities:
-            entity_id = self._find_entity_in_kg(entity_name)
+            entity_id = self._find_entity_in_kg(
+                entity_name, snapshot=name_snapshot,
+            )
             if entity_id:
                 matched_entity_ids.add(entity_id)
 
         # --- Approach 2: Check which KG entities appear in the content ---
         content_lower = content.lower()
-        for kg_name, entity_id in self.entity_by_name.items():
+        for kg_name, entity_id in name_snapshot.items():
             if len(kg_name) >= 3 and kg_name in content_lower:
                 matched_entity_ids.add(entity_id)
 
@@ -1254,7 +1271,7 @@ Return as JSON array:
 
         # Calculate score: 60% entity match density + 40% relation support
         # Use total KG entity count as denominator for a meaningful ratio
-        total_kg_entities = max(len(set(self.entity_by_name.values())), 1)
+        total_kg_entities = max(len(set(name_snapshot.values())), 1)
         entity_score = min(entity_match_count / min(total_kg_entities, 10), 1.0)
         relation_score = min(supporting_relations / max(entity_match_count * 3, 1), 1.0)
 
@@ -1337,9 +1354,13 @@ Return as JSON array:
 
         content_lower = content.lower()
 
+        # Snapshot to avoid dict-changed-during-iteration if
+        # add_finding modifies entity_by_name concurrently
+        name_snapshot = dict(self.entity_by_name)
+
         # Find all KG entities mentioned in the content
         matched_ids: set[str] = set()
-        for kg_name, entity_id in self.entity_by_name.items():
+        for kg_name, entity_id in name_snapshot.items():
             if len(kg_name) >= 3 and kg_name in content_lower:
                 matched_ids.add(entity_id)
 

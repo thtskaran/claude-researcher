@@ -727,7 +727,8 @@ Output ONLY the search query (15-25 words max), nothing else."""
 
                     except Exception as e:
                         logger.warning("Verification error: %s", e, exc_info=True)
-                        self._log(f"[VERIFY] Error: {e}", style="dim")
+                        self._log(f"[VERIFY] Error: {e}", style="yellow")
+                        finding.verification_status = "error"
 
                 await self.db.save_finding(finding)
 
@@ -816,8 +817,11 @@ Output ONLY the search query (15-25 words max), nothing else."""
                             )
                             finding.kg_support_score = verification_result.kg_support_score
                         except Exception:
-                            logger.warning("Verification error during fallback finding extraction", exc_info=True)
-                            pass
+                            logger.warning(
+                                "Verification error during fallback finding extraction",
+                                exc_info=True,
+                            )
+                            finding.verification_status = "error"
 
                     await self.db.save_finding(finding)
 
