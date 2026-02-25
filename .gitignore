@@ -1,23 +1,39 @@
+# Python
+*.pyc
+__pycache__/
+*.egg-info/
 /myenv
+/.venv
+/venv
+
+# Databases
 *.db
 *.db-shm
 *.db-wal
-*.pyc
+
+# Research output
 /output
-/docs
-todo.md
 /research_retrieval
-.env*
+/docs
+
+# Environment
+.env
+.env.local
+!.env.example
+
 # UI
 /ui/node_modules
 /ui/.next
 /ui/out
 /ui/.env*.local
+ui/tsconfig.tsbuildinfo
+ui/package-lock.json
 
-# Development logs and PIDs
+# Development
 *.log
 *.pid
 /tmp
-ui/tsconfig.tsbuildinfo
-ui/package-lock.json
+todo.md
+
+# Claude Code
 /.claude

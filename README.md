@@ -2,37 +2,66 @@
 
 A deep research tool for people who actually need answers, not paragraphs of fluff.
 
-Most "AI research" tools give you a wall of vaguely-sourced text that sounds authoritative but says nothing specific. This one deploys a hierarchy of AI agents that independently search the web, extract discrete findings, build a knowledge graph, detect contradictions between sources, verify claims, and then synthesize everything into a report with inline citations you can trace back to the original source.
+Most "AI research" tools give you a wall of vaguely-sourced text that sounds authoritative but says nothing specific. This one deploys a hierarchy of AI agents that independently search the web, extract discrete findings, build a knowledge graph, detect contradictions between sources, verify claims, and synthesize everything into a report with inline citations you can trace back to the original source.
 
-The result: 100-300+ findings from 50-150+ sources, a live knowledge graph with entity relationships and contradiction detection, and a report where every claim cites its source.
+The result: **100-300+ findings** from **50-150+ sources**, a live knowledge graph with entity relationships and contradiction detection, and a report where every claim cites its source.
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Prerequisites](#prerequisites)
+- [How Web Search Works](#how-web-search-works-bright-data)
+- [How Academic Search Works](#how-academic-search-works)
+- [What Makes This Different](#what-makes-this-different)
+- [Usage](#usage)
+- [How It Works](#how-it-works)
+- [Web UI](#web-ui)
+- [Key Systems](#key-systems)
+- [Output](#output)
+- [Configuration](#configuration)
+- [Project Structure](#project-structure)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
 
 ## Quick Start
 
 ```bash
 # Clone and install
-git clone <repo-url>
+git clone https://github.com/thtskaran/claude-researcher.git
 cd claude-researcher
 python -m venv .venv && source .venv/bin/activate
 pip install -e .
 
-# Run research from CLI (results viewable in UI later)
+# Download spaCy model (required for knowledge graph NER)
+python -m spacy download en_core_web_sm
+
+# Set up your Bright Data API token
+cp .env.example .env
+# Edit .env and add your BRIGHT_DATA_API_TOKEN
+
+# Run research from CLI
 researcher "Your research question" --iterations 10
 
-# Or launch the web UI directly
+# Or launch the web UI
 researcher ui
 ```
 
-That's it. Two commands: `pip install -e .`, then `researcher`.
+Two commands to get started: `pip install -e .`, then `researcher`.
 
-### Prerequisites
+---
 
-1. **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)** -- must be installed and authenticated. The system uses Claude's API through the CLI, so the `claude` command must work in your terminal. This is the backbone that powers all three agent tiers (Director, Manager, Interns).
+## Prerequisites
 
-2. **[Bright Data](https://brightdata.com/) API token** -- set the `BRIGHT_DATA_API_TOKEN` environment variable. This powers general web search and page scraping (see [How Web Search Works](#how-web-search-works) below). Academic search (Semantic Scholar, arXiv) does **not** require this token. Optionally set `BRIGHT_DATA_ZONE` (defaults to `mcp_unlocker`).
+1. **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)** -- must be installed and authenticated. The system uses Claude's API through the CLI, so the `claude` command must work in your terminal. This is the backbone that powers all three agent tiers.
+
+2. **[Bright Data](https://brightdata.com/) API token** -- set `BRIGHT_DATA_API_TOKEN` in your `.env` file. This powers web search and page scraping (see [How Web Search Works](#how-web-search-works-bright-data) below). Academic search (Semantic Scholar, arXiv) does **not** require this token. Optionally set `BRIGHT_DATA_ZONE` (defaults to `mcp_unlocker`).
 
 3. **Python 3.10+**
 
-4. **Node.js 18+** (for the web UI -- auto-installs deps on first `researcher ui`)
+4. **Node.js 18+** (for the web UI only -- auto-installs npm deps on first `researcher ui`)
 
 ---
 
@@ -40,29 +69,29 @@ That's it. Two commands: `pip install -e .`, then `researcher`.
 
 Most AI research tools hit a wall the moment a website blocks their scraper. claude-researcher doesn't have that problem.
 
-General web search and page scraping goes through [Bright Data](https://brightdata.com/)'s infrastructure, which gives the system two capabilities that generic HTTP requests can't match:
+General web search and page scraping goes through [Bright Data](https://brightdata.com/)'s infrastructure:
 
-**SERP API** -- Google search results returned as structured data (titles, URLs, snippets) via Bright Data's `parsed_light` format. No HTML parsing, no breaking when Google changes their layout. The system gets clean, structured search results every time.
+**SERP API** -- Google search results returned as structured data (titles, URLs, snippets) via Bright Data's `parsed_light` format. No HTML parsing, no breaking when Google changes their layout. Clean, structured search results every time.
 
-**Web Unlocker** -- Full page scraping that bypasses bot detection, CAPTCHAs, and anti-scraping measures. Pages are returned as clean markdown, ready for the LLM to process. This means the system can read paywalled research blogs, JavaScript-heavy SPAs, and sites that would return a 403 to a normal `requests.get()`. Bright Data handles proxy rotation, browser fingerprinting, and CAPTCHA solving transparently.
+**Web Unlocker** -- Full page scraping that bypasses bot detection, CAPTCHAs, and anti-scraping measures. Pages are returned as clean markdown, ready for the LLM to process. This means the system can read paywalled research blogs, JavaScript-heavy SPAs, and sites that would return a 403 to a normal `requests.get()`.
 
-Why this matters for research quality:
+Why this matters:
 - **Access**: Sites that block scrapers (news sites, research platforms, corporate blogs) are readable
 - **Reliability**: Proxy rotation and automatic retries mean searches don't fail randomly
-- **Clean data**: Markdown output means no HTML parsing bugs, no broken extractors
+- **Clean data**: Markdown output means no HTML parsing bugs
 - **Scale**: 50-150+ sources per session without getting rate-limited or blocked
 
-Without Bright Data, you'd be limited to whatever Google's basic search API returns and whatever sites don't block your IP. With it, the interns can actually read the pages they find.
+---
 
-## How Academic Search Works (Direct APIs -- No Bright Data)
+## How Academic Search Works
 
 For academic and scholarly research, interns also query free academic APIs **directly** -- these calls do **not** go through Bright Data:
 
-**[Semantic Scholar](https://api.semanticscholar.org/)** -- 200M+ papers with citation graphs, TLDRs, and paper recommendations. Free tier (100 requests per 5 minutes, no API key needed). Returns structured metadata: titles, abstracts, authors, citation counts, venues, DOIs, and open-access PDF links.
+**[Semantic Scholar](https://api.semanticscholar.org/)** -- 200M+ papers with citation graphs, TLDRs, and paper recommendations. Free tier (100 requests per 5 minutes, no API key needed).
 
-**[arXiv](https://info.arxiv.org/help/api/)** -- 2.4M+ preprints across physics, math, CS, biology, economics, and more. Free, no API key required. Supports category-filtered search and provides full-text PDF access.
+**[arXiv](https://info.arxiv.org/help/api/)** -- 2.4M+ preprints across physics, math, CS, biology, economics, and more. Free, no API key required. Supports category-filtered search and full-text PDF access.
 
-When the research topic contains academic indicators (e.g., "research", "study", "clinical trial", "algorithm"), interns automatically query these APIs **in parallel** with the Bright Data web search. Academic results are prioritized at the top of merged search results and converted to `SearchResult` objects for seamless integration with the existing pipeline.
+When the research topic contains academic indicators (e.g., "research", "study", "clinical trial"), interns automatically query these APIs **in parallel** with web search.
 
 ---
 
@@ -88,13 +117,13 @@ Things claude-researcher found that ChatGPT missed entirely:
 - US Federal Register RFI on AI agent security
 - Hexstrike-AI's 150-agent orchestration architecture
 
-The difference isn't just "more sources." It's that the system builds a knowledge graph as it researches, detects when sources contradict each other, identifies gaps in what it knows, and directs follow-up research to fill those gaps. It doesn't just search and summarize -- it reasons about what it's learning.
+The difference isn't just "more sources." The system builds a knowledge graph as it researches, detects when sources contradict each other, identifies gaps in what it knows, and directs follow-up research to fill those gaps. It doesn't just search and summarize -- it reasons about what it's learning.
 
 ---
 
 ## Usage
 
-### CLI (start research, view later in UI)
+### CLI
 
 ```bash
 # Basic research (default 5 iterations)
@@ -121,38 +150,6 @@ Every research session saves to `output/{topic}_{session-id}/` with:
 - `findings.json` -- All structured findings
 
 All sessions are also persisted in SQLite, so you can view any past session in the UI at any time.
-
-### Web UI (view everything)
-
-```bash
-researcher ui
-```
-
-This starts the API server (port 8080) and Next.js frontend (port 3000), then opens your browser. From the UI you can:
-
-- **Start new research** -- Launch research sessions directly from the UI with configurable iterations and clarification
-- **Sessions list** -- See all past and active research sessions
-- **Live progress** -- Watch agents work in real-time via WebSocket
-- **Report** -- Read the full report with working table of contents, inline citations, tables, and proper formatting
-- **Findings** -- Browse all extracted findings with confidence scores and verification status
-- **Knowledge Graph** -- Interactive visualization with entity types, relation labels, contradiction highlighting, and node detail panels
-- **Sources** -- See every source analyzed with credibility scores
-- **Verification** -- Review the Chain-of-Verification results
-- **Agent Decisions** -- Full audit trail of every decision every agent made
-
-```bash
-# Open UI for a specific session
-researcher ui abc123e
-
-# Custom API port
-researcher ui --port 9000
-
-# Start without opening browser
-researcher ui --no-browser
-
-# Don't restart existing servers on port conflicts
-researcher ui --no-restart
-```
 
 ### CLI Options
 
@@ -184,7 +181,7 @@ The Director talks to you. The Manager thinks. The Interns search.
 
 1. **Clarification** -- Director asks 2-4 questions to refine your goal (skip with `--no-clarify`)
 2. **Decomposition** -- Manager breaks your question into 3+ parallel research threads
-3. **Parallel search** -- 3 interns simultaneously search the web + academic APIs (Semantic Scholar, arXiv), extract findings, save to DB
+3. **Parallel search** -- 3 interns simultaneously search the web + academic APIs, extract findings, save to DB
 4. **Knowledge graph** -- Entities and relations extracted in real-time (spaCy NER + LLM)
 5. **Critique loop** -- Manager reviews findings, identifies gaps and contradictions, queues follow-up research
 6. **Deep dive** -- Iterative cycles of search/critique/follow-up for the configured number of iterations
@@ -224,6 +221,35 @@ The system goes up to depth 5 by default. Each level is driven by what the knowl
 
 ---
 
+## Web UI
+
+```bash
+# Launch UI (starts API on :8080 + Next.js on :3000, opens browser)
+researcher ui
+
+# Open a specific session
+researcher ui abc123e
+
+# Custom API port
+researcher ui --port 9000
+
+# Start without opening browser
+researcher ui --no-browser
+```
+
+The web UI lets you:
+
+- **Start new research** directly from the browser with configurable iterations
+- **Watch live progress** as agents search, extract, and analyze in real-time via WebSocket
+- **Read the full report** with working table of contents, inline citations, tables, and formatting
+- **Browse findings** with confidence scores, verification status, and source links
+- **Explore the knowledge graph** -- interactive visualization with entity types, relations, and contradiction highlighting
+- **Review sources** with credibility scores and metadata
+- **Inspect verification results** from the CoVe + CRITIC pipeline
+- **Audit agent decisions** -- full trail of every decision every agent made
+
+---
+
 ## Key Systems
 
 ### Knowledge Graph
@@ -232,9 +258,9 @@ Built incrementally as research progresses:
 - **Entities**: Concepts, claims, evidence, methods, metrics, organizations
 - **Relations**: supports, contradicts, causes, cites, implements, outperforms
 - **Gap detection**: Graph analysis identifies under-researched areas
-- **Contradiction detection**: Flags conflicting claims across sources with severity
+- **Contradiction detection**: Flags conflicting claims across sources with severity levels
 
-The Manager uses KG insights to decide what to research next. The report writer uses KG data (key concepts, contradictions, gaps) to enrich section content.
+The Manager uses KG insights to decide what to research next. The report writer uses KG context to enrich section content.
 
 ### Report Generation
 
@@ -252,9 +278,7 @@ Reports use **dynamic AI-driven section planning** -- the AI analyzes your findi
 | **Gaps** | Open questions and contradictions |
 | **Conclusions** | Always last -- recommendations and next steps |
 
-Every section gets findings **selected specifically for that section** (keyword relevance + type affinity + verification status), not just the same top-N findings repeated.
-
-Claims cite their sources inline using `[N]` notation that maps to the numbered reference list.
+Every section gets findings **selected specifically for that section** (keyword relevance + type affinity + verification status), not just the same top-N findings repeated. Claims cite their sources inline using `[N]` notation.
 
 ### Fact Verification
 
@@ -296,12 +320,37 @@ A typical 5-iteration session costs $2-5. A 10+ iteration deep dive costs $5-15 
 
 ---
 
+## Configuration
+
+### Environment Variables
+
+Create a `.env` file in the project root (see `.env.example`):
+
+```env
+# Required: Bright Data API token for web search and scraping
+BRIGHT_DATA_API_TOKEN=your_token_here
+
+# Optional: Bright Data zone (default: mcp_unlocker)
+BRIGHT_DATA_ZONE=mcp_unlocker
+
+# Optional: Anthropic API key (falls back to Claude Code CLI credentials)
+ANTHROPIC_API_KEY=your_key_here
+
+# Optional: API key to protect the web UI API (no auth in local dev by default)
+CLAUDE_RESEARCHER_API_KEY=your_secret_key
+
+# Optional: Allowed CORS origins for the API (default: localhost:3000)
+CLAUDE_RESEARCHER_CORS_ORIGINS=http://localhost:3000
+```
+
+---
+
 ## Project Structure
 
 ```
 claude-researcher/
 +-- src/
-|   +-- agents/           # Director, Manager, Intern, ReAct loop
+|   +-- agents/           # Director, Manager, Intern, ReAct loop, parallel pool
 |   +-- knowledge/        # KG construction, gap detection, contradiction detection
 |   +-- reports/          # Dynamic section planning, inline citations
 |   +-- retrieval/        # Hybrid search (BM25 + vector + reranker)
@@ -310,25 +359,29 @@ claude-researcher/
 |   +-- interaction/      # User clarification, mid-research guidance
 |   +-- costs/            # API cost tracking
 |   +-- audit/            # Agent decision logging
-|   +-- tools/            # Web search (Bright Data) + academic search (Semantic Scholar, arXiv)
+|   +-- tools/            # Web search (Bright Data) + academic (Semantic Scholar, arXiv)
 |   +-- models/           # Pydantic data models
 |   +-- storage/          # SQLite persistence
+|   +-- events/           # WebSocket event system
 |   +-- main.py           # CLI entry point
 +-- api/                  # FastAPI backend for the web UI
-+-- ui/                   # Next.js frontend
-+-- output/               # Generated reports
-+-- pyproject.toml
-+-- CLAUDE.md             # AI coding assistant instructions
-+-- README.md
+|   +-- server.py         # FastAPI app, middleware, WebSocket endpoint
+|   +-- routes/           # REST API endpoints
++-- ui/                   # Next.js 16 + React 19 frontend
+|   +-- app/              # Pages (sessions list, detail, graph, verify, sources)
+|   +-- components/       # React components (findings browser, activity feed, etc.)
++-- output/               # Generated research reports
++-- pyproject.toml        # Python project config
++-- .env.example          # Environment variable template
 ```
 
 ---
 
 ## Troubleshooting
 
-**"claude: command not found"** -- Install and authenticate [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code).
+**"claude: command not found"** -- Install and authenticate [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code). The `claude` command must work in your terminal.
 
-**Web searches failing** -- Set `BRIGHT_DATA_API_TOKEN` env var. Optionally set `BRIGHT_DATA_ZONE` (defaults to `mcp_unlocker`).
+**Web searches failing** -- Check that `BRIGHT_DATA_API_TOKEN` is set in your `.env` file. Optionally set `BRIGHT_DATA_ZONE` (defaults to `mcp_unlocker`).
 
 **spaCy model missing** -- Run `python -m spacy download en_core_web_sm`.
 
@@ -336,14 +389,55 @@ claude-researcher/
 
 **Knowledge graph slow with 1000+ nodes** -- In the graph view, disable physics from the bottom toolbar.
 
+**Port already in use** -- `researcher ui` will offer to restart existing servers. Use `--port` to pick a different API port.
+
+---
+
+## Contributing
+
+Contributions are welcome! Here are some ways to help:
+
+- Report bugs by [opening an issue](https://github.com/thtskaran/claude-researcher/issues)
+- Submit pull requests for bug fixes or new features
+- Improve documentation
+- Share your research results and feedback
+
+### Development Setup
+
+```bash
+git clone https://github.com/thtskaran/claude-researcher.git
+cd claude-researcher
+python -m venv .venv && source .venv/bin/activate
+pip install -e .
+python -m spacy download en_core_web_sm
+
+# Lint
+ruff check src/
+ruff format src/
+
+# Integration test (short autonomous run)
+researcher "Test query" --autonomous --iterations 2
+```
+
 ---
 
 ## Credits
 
-Built with [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), [Claude Agent SDK](https://docs.anthropic.com/), [Bright Data](https://brightdata.com/) (SERP API + Web Unlocker), [Semantic Scholar API](https://api.semanticscholar.org/), [arXiv API](https://info.arxiv.org/help/api/), [Rich](https://github.com/Textualize/rich), [NetworkX](https://networkx.org/), [Sentence Transformers](https://sbert.net/), [ChromaDB](https://www.trychroma.com/), [FastAPI](https://fastapi.tiangolo.com/), [Next.js](https://nextjs.org/).
+Built with [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), [Claude Agent SDK](https://docs.anthropic.com/), [Bright Data](https://brightdata.com/), [Semantic Scholar API](https://api.semanticscholar.org/), [arXiv API](https://info.arxiv.org/help/api/), [Rich](https://github.com/Textualize/rich), [NetworkX](https://networkx.org/), [Sentence Transformers](https://sbert.net/), [ChromaDB](https://www.trychroma.com/), [FastAPI](https://fastapi.tiangolo.com/), [Next.js](https://nextjs.org/).
 
 Inspired by [Gemini Deep Research](https://gemini.google/overview/deep-research/), [Perplexity](https://www.perplexity.ai/), [GPT Researcher](https://github.com/assafelovic/gpt-researcher), [Stanford STORM](https://arxiv.org/abs/2402.14207).
 
+---
+
+## Author
+
+**Karan Prasad**
+
+- Blog & more: [karanprasad.com](https://karanprasad.com)
+- Email: [hello@karanprasad.com](mailto:hello@karanprasad.com)
+
+---
+
 ## License
 
-MIT
+[MIT](LICENSE)
