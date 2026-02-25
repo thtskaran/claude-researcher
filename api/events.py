@@ -1,7 +1,7 @@
 """
 Event emitter system for broadcasting agent events to WebSocket clients.
 
-Agents emit events → EventEmitter → WebSocket → UI
+Agents emit events -> EventEmitter -> WebSocket -> UI
 """
 import asyncio
 import json
@@ -38,7 +38,7 @@ class AgentEvent:
             "event_type": self.event_type,
             "agent": self.agent,
             "timestamp": self.timestamp.isoformat(),
-            "data": self.data
+            "data": self.data,
         }
 
     def to_json(self) -> str:
@@ -80,7 +80,7 @@ class EventEmitter:
             if session_id not in self._subscribers:
                 self._subscribers[session_id] = set()
             self._subscribers[session_id].add(websocket)
-            logger.info(f"WebSocket subscribed to session {session_id}")
+        logger.info("WebSocket subscribed to session %s", session_id)
 
     async def unsubscribe(self, session_id: str, websocket: WebSocket):
         """Unsubscribe a WebSocket from a session."""
@@ -89,14 +89,14 @@ class EventEmitter:
                 self._subscribers[session_id].discard(websocket)
                 if not self._subscribers[session_id]:
                     del self._subscribers[session_id]
-                logger.info(f"WebSocket unsubscribed from session {session_id}")
+        logger.info("WebSocket unsubscribed from session %s", session_id)
 
     async def emit(
         self,
         session_id: str,
         event_type: str,
         agent: str,
-        data: dict[str, Any]
+        data: dict[str, Any],
     ):
         """
         Emit an event to all subscribers of a session.
@@ -108,7 +108,6 @@ class EventEmitter:
             data: Event data
         """
         event = AgentEvent(session_id, event_type, agent, data)
-        print(f"📤 Emitting event: [{event_type}] {agent} for session {session_id}")
 
         # Persist event for later playback (best-effort)
         try:
@@ -124,38 +123,42 @@ class EventEmitter:
                 created_at=event.timestamp.isoformat(),
             )
         except Exception as e:
-            logger.debug(f"Failed to persist event: {e}")
+            logger.debug("Failed to persist event: %s", e)
 
+        # Snapshot subscribers under lock, then send outside lock
+        # to avoid holding the lock during slow network I/O.
         async with self._subscribers_lock:
-            if session_id not in self._subscribers:
-                # No subscribers, but log the event
-                print(f"   ⚠️  No subscribers for session {session_id}")
-                logger.debug(f"Event emitted but no subscribers for {session_id}: {event_type}")
+            subs = self._subscribers.get(session_id)
+            if not subs:
                 return
+            subscribers = list(subs)
 
-            subscribers = list(self._subscribers[session_id])
-            print(f"   ✓ Sending to {len(subscribers)} subscriber(s)")
-
-        # Send to all subscribers concurrently (outside lock to avoid blocking)
         event_dict = event.to_dict()
 
         async def _send(ws: WebSocket) -> WebSocket | None:
             try:
-                await asyncio.wait_for(ws.send_json(event_dict), timeout=5.0)
+                await asyncio.wait_for(
+                    ws.send_json(event_dict), timeout=5.0,
+                )
                 return None
             except Exception as e:
-                logger.warning(f"Failed to send to WebSocket: {e}")
+                logger.warning("Failed to send to WebSocket: %s", e)
                 return ws
 
-        results = await asyncio.gather(*[_send(ws) for ws in subscribers])
+        results = await asyncio.gather(
+            *[_send(ws) for ws in subscribers],
+        )
         dead_connections = [ws for ws in results if ws is not None]
 
-        # Clean up dead connections
+        # Clean up dead connections under lock
         if dead_connections:
             async with self._subscribers_lock:
-                if session_id in self._subscribers:
+                alive = self._subscribers.get(session_id)
+                if alive is not None:
                     for ws in dead_connections:
-                        self._subscribers[session_id].discard(ws)
+                        alive.discard(ws)
+                    if not alive:
+                        del self._subscribers[session_id]
 
     def get_subscriber_count(self, session_id: str) -> int:
         """Get number of active subscribers for a session."""
@@ -180,7 +183,7 @@ async def emit_event(
     session_id: str,
     event_type: str,
     agent: str,
-    data: dict[str, Any]
+    data: dict[str, Any],
 ):
     """Emit an event to all subscribers."""
     emitter = get_event_emitter()

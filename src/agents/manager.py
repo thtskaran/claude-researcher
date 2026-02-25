@@ -13,7 +13,6 @@ from ..knowledge import (
     CredibilityScorer,
     HybridKnowledgeGraphStore,
     IncrementalKnowledgeGraph,
-    KGFinding,
     ManagerQueryInterface,
 )
 from ..logging_config import get_logger
@@ -37,6 +36,7 @@ from ..verification import (
 )
 from .base import AgentConfig, BaseAgent, DecisionType
 from .intern import InternAgent
+from .kg_processor import KGProcessor
 from .parallel import ParallelInternPool
 
 logger = get_logger(__name__)
@@ -134,6 +134,13 @@ class ManagerAgent(BaseAgent):
         self.findings_retriever = get_findings_retriever(
             persist_dir=str(db.db_path).replace(".db", "_retrieval"),
             use_reranker=True,  # Quality is priority
+        )
+
+        # KG processing (extracted from ManagerAgent to reduce complexity)
+        self.kg_processor = KGProcessor(
+            knowledge_graph=self.knowledge_graph,
+            findings_retriever=self.findings_retriever,
+            log=self._log,
         )
 
         # Verification pipeline for hallucination reduction
@@ -443,7 +450,7 @@ Think step by step about the best next action."""
                     self.all_findings.extend(intern_report.findings)
 
                 # Process findings into knowledge graph
-                await self._process_findings_to_kg(intern_report.findings)
+                await self.kg_processor.process_findings(intern_report.findings, self.session_id)
 
                 # Critique the report
                 critique = await self._critique_report(intern_report)
@@ -586,7 +593,7 @@ Think step by step about the best next action."""
                 self.current_depth = max(self.current_depth, topic.depth)
 
             # Process findings into knowledge graph
-            await self._process_findings_to_kg(intern_report.findings)
+            await self.kg_processor.process_findings(intern_report.findings, self.session_id)
 
             # Track in memory
             await self.memory.add_message(
@@ -758,80 +765,6 @@ Think step by step about the best next action."""
             )
 
         return response
-
-    async def _process_findings_to_kg(self, findings: list[Finding]) -> None:
-        """Process findings into the knowledge graph and hybrid retrieval index.
-
-        Uses batch processing for speed (multiple findings per LLM call)
-        while still building the full KG that agents can query during research.
-        Also indexes findings for semantic search via hybrid retrieval.
-
-        Args:
-            findings: List of findings to process
-        """
-        if not findings:
-            return
-
-        self._log(f"[KG] Processing {len(findings)} findings into knowledge graph", style="dim")
-
-        # Index findings for hybrid retrieval (semantic + lexical search)
-        try:
-            self.findings_retriever.add_findings(
-                findings=findings,
-                session_id=self.session_id,
-            )
-            self._log(
-                f"[RETRIEVAL] Indexed {len(findings)} findings for semantic search", style="dim"
-            )
-        except Exception as e:
-            self._log(f"[RETRIEVAL] Error indexing findings: {e}", style="yellow")
-            logger.warning("KG processing error: %s", e, exc_info=True)
-
-        # Convert all findings to KGFindings
-        kg_findings = []
-        for finding in findings:
-            try:
-                kg_finding = KGFinding(
-                    id=str(finding.id or hash(finding.content)),
-                    content=finding.content,
-                    source_url=finding.source_url or "",
-                    source_title=finding.source_url.split("/")[-1] if finding.source_url else "",
-                    timestamp=finding.created_at.isoformat(),
-                    credibility_score=finding.confidence,
-                    finding_type=finding.finding_type.value,
-                    search_query=finding.search_query,
-                )
-                kg_findings.append(kg_finding)
-            except Exception as e:
-                self._log(f"[KG] Error converting finding: {e}", style="dim")
-                logger.warning("KG processing error: %s", e, exc_info=True)
-
-        # Use batch processing for speed (5 findings per LLM call)
-        if len(kg_findings) > 3:
-            result = await self.knowledge_graph.add_findings_batch(kg_findings, batch_size=5)
-            self._log(
-                f"[KG] Extracted {result['total_entities']} entities, "
-                f"{result['total_relations']} relations",
-                style="dim",
-            )
-            if result["total_contradictions"] > 0:
-                self._log(
-                    f"[KG] Contradictions detected: {result['total_contradictions']}",
-                    style="yellow",
-                )
-        else:
-            # Process individually for small batches
-            for kg_finding in kg_findings:
-                try:
-                    result = await self.knowledge_graph.add_finding(kg_finding, fast_mode=True)
-                    if result.get("contradictions_found", 0) > 0:
-                        self._log(
-                            f"[KG] Contradiction detected: {result['contradictions_found']} conflicts",
-                            style="yellow",
-                        )
-                except Exception as e:
-                    self._log(f"[KG] Error processing finding: {e}", style="dim")
-                    logger.warning("KG processing error: %s", e, exc_info=True)
 
     def _should_synthesize(self, thought: str) -> bool:
         """Determine if it's time to synthesize results (iteration-based)."""
@@ -1311,7 +1244,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
         self.current_depth = max(self.current_depth, 1)
 
         # Process all findings into KG in real-time (fast mode)
-        await self._process_findings_to_kg(result.total_findings)
+        await self.kg_processor.process_findings(result.total_findings, self.session_id)
 
         # Store findings summary in external memory for later retrieval
         if result.total_findings:
@@ -1394,7 +1327,7 @@ Be thorough and insightful. Note where findings have lower confidence."""
             await self.db.update_topic_status(topic.id, "completed", findings_per_topic)
 
         # Process findings to KG
-        await self._process_findings_to_kg(result.total_findings)
+        await self.kg_processor.process_findings(result.total_findings, self.session_id)
 
         # Compress memory if needed
         await self.memory.maybe_compress()

@@ -1,20 +1,46 @@
 """
 Event emission helpers for agents to send real-time updates to WebSocket clients.
+
+Uses a registry pattern to decouple the agent layer from the API layer.
+The API server registers its emitter at startup via register_emitter().
+When running in CLI mode (no API server), events are proxied over HTTP.
 """
+
 import asyncio
 import os
-import sys
-from pathlib import Path
-from typing import Any, Dict
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 from ..logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Add api directory to path for importing
-api_path = str(Path(__file__).parent.parent.parent / "api")
-if api_path not in sys.path:
-    sys.path.insert(0, api_path)
+# Type for the registered emitter callback
+EmitterCallback = Callable[[str, str, str, dict[str, Any]], Coroutine[Any, Any, None]]
+SubscriberCountCallback = Callable[[str], int]
+
+# Registry: the API layer registers its emitter here at startup
+_registered_emitter: EmitterCallback | None = None
+_registered_subscriber_count: SubscriberCountCallback | None = None
+
+
+def register_emitter(
+    emitter: EmitterCallback,
+    subscriber_count: SubscriberCountCallback | None = None,
+) -> None:
+    """Register the event emitter callback.
+
+    Called by the API server at startup to wire its emit_event function
+    into the agent layer without the agent layer importing from api/.
+
+    Args:
+        emitter: async function(session_id, event_type, agent, data) -> None
+        subscriber_count: optional function(session_id) -> int
+    """
+    global _registered_emitter, _registered_subscriber_count
+    _registered_emitter = emitter
+    _registered_subscriber_count = subscriber_count
+    logger.info("Event emitter registered")
 
 
 def _should_proxy_event(local_subscribers: int | None) -> bool:
@@ -35,7 +61,9 @@ async def _emit_remote_event(
     data: dict[str, Any],
 ) -> None:
     """Forward event to the API server for WebSocket broadcasting."""
-    base_url = os.environ.get("CLAUDE_RESEARCHER_API_URL", "http://localhost:8080").rstrip("/")
+    base_url = os.environ.get(
+        "CLAUDE_RESEARCHER_API_URL", "http://localhost:8080"
+    ).rstrip("/")
     if not base_url:
         return
 
@@ -53,9 +81,7 @@ async def _emit_remote_event(
                 },
             )
     except Exception:
-        # Silent failure - don't interrupt research if API is unavailable
         logger.debug("Remote event emission failed", exc_info=True)
-        return
 
 
 async def emit_agent_event(
@@ -68,41 +94,26 @@ async def emit_agent_event(
     Emit an event from an agent to all WebSocket subscribers.
 
     This is fire-and-forget - errors are logged but don't interrupt research.
-
-    Args:
-        session_id: Research session ID
-        event_type: Event type (thinking, action, finding, synthesis, error)
-        agent: Agent name (director, manager, intern)
-        data: Event data dict
-
-    Examples:
-        await emit_agent_event(
-            session_id="abc123",
-            event_type="thinking",
-            agent="director",
-            data={"message": "Analyzing research goal..."}
-        )
+    Uses the registered emitter if available (API server mode), otherwise
+    proxies to the API server over HTTP (CLI mode).
     """
     local_subscribers: int | None = None
-    try:
-        # Import here to avoid circular dependencies
-        from api.events import emit_event, get_event_emitter
 
-        # Fire and forget - don't block research if WebSocket fails
+    if _registered_emitter is not None:
         try:
-            asyncio.create_task(emit_event(session_id, event_type, agent, data))
-        except RuntimeError:
-            # Fallback if no running loop (should be rare)
-            await emit_event(session_id, event_type, agent, data)
+            try:
+                asyncio.create_task(
+                    _registered_emitter(session_id, event_type, agent, data)
+                )
+            except RuntimeError:
+                await _registered_emitter(session_id, event_type, agent, data)
 
-        local_subscribers = get_event_emitter().get_subscriber_count(session_id)
-    except Exception as e:
-        # Log errors but don't interrupt research
-        print(f"⚠️  Event emission error: {e}")
-        import traceback
-        traceback.print_exc()
+            if _registered_subscriber_count is not None:
+                local_subscribers = _registered_subscriber_count(session_id)
+        except Exception as e:
+            logger.warning("Event emission error: %s", e, exc_info=True)
 
-    # Proxy to API server if we have no local subscribers (CLI -> UI bridge)
+    # Proxy to API server if no registered emitter or no local subscribers
     if _should_proxy_event(local_subscribers):
         try:
             asyncio.create_task(
@@ -118,7 +129,7 @@ async def emit_thinking(session_id: str, agent: str, thought: str) -> None:
         session_id=session_id,
         event_type="thinking",
         agent=agent,
-        data={"thought": thought}
+        data={"thought": thought},
     )
 
 
@@ -126,10 +137,10 @@ async def emit_action(
     session_id: str,
     agent: str,
     action: str,
-    details: dict[str, Any] | None = None
+    details: dict[str, Any] | None = None,
 ) -> None:
     """Emit an action event."""
-    data = {"action": action}
+    data: dict[str, Any] = {"action": action}
     if details:
         data.update(details)
 
@@ -137,7 +148,7 @@ async def emit_action(
         session_id=session_id,
         event_type="action",
         agent=agent,
-        data=data
+        data=data,
     )
 
 
@@ -146,10 +157,10 @@ async def emit_finding(
     agent: str,
     content: str,
     source: str | None = None,
-    confidence: float | None = None
+    confidence: float | None = None,
 ) -> None:
     """Emit a finding discovery event."""
-    data = {"content": content}
+    data: dict[str, Any] = {"content": content}
     if source:
         data["source"] = source
     if confidence is not None:
@@ -159,7 +170,7 @@ async def emit_finding(
         session_id=session_id,
         event_type="finding",
         agent=agent,
-        data=data
+        data=data,
     )
 
 
@@ -167,10 +178,10 @@ async def emit_synthesis(
     session_id: str,
     agent: str,
     message: str,
-    progress: int | None = None
+    progress: int | None = None,
 ) -> None:
     """Emit a synthesis/report generation event."""
-    data = {"message": message}
+    data: dict[str, Any] = {"message": message}
     if progress is not None:
         data["progress"] = progress
 
@@ -178,7 +189,7 @@ async def emit_synthesis(
         session_id=session_id,
         event_type="synthesis",
         agent=agent,
-        data=data
+        data=data,
     )
 
 
@@ -186,12 +197,12 @@ async def emit_error(
     session_id: str,
     agent: str,
     error: str,
-    recoverable: bool = True
+    recoverable: bool = True,
 ) -> None:
     """Emit an error event."""
     await emit_agent_event(
         session_id=session_id,
         event_type="error",
         agent=agent,
-        data={"error": error, "recoverable": recoverable}
+        data={"error": error, "recoverable": recoverable},
     )
