@@ -156,6 +156,7 @@ All sessions are also persisted in SQLite, so you can view any past session in t
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--iterations`, `-n` | Number of research iterations (1-30) | 5 |
+| `--depth` | Maximum research depth for follow-up exploration (1-10) | 5 |
 | `--db`, `-d` | SQLite database path | research.db |
 | `--no-clarify` | Skip pre-research clarification | False |
 | `--autonomous`, `-a` | No user interaction at all | False |
@@ -224,7 +225,7 @@ The system goes up to depth 5 by default. Each level is driven by what the knowl
 ## Web UI
 
 ```bash
-# Launch UI (starts API on :8080 + Next.js on :3000, opens browser)
+# Launch UI (starts API on :9090 + Next.js on :4004, opens browser)
 researcher ui
 
 # Open a specific session
@@ -339,8 +340,8 @@ ANTHROPIC_API_KEY=your_key_here
 # Optional: API key to protect the web UI API (no auth in local dev by default)
 CLAUDE_RESEARCHER_API_KEY=your_secret_key
 
-# Optional: Allowed CORS origins for the API (default: localhost:3000)
-CLAUDE_RESEARCHER_CORS_ORIGINS=http://localhost:3000
+# Optional: Allowed CORS origins for the API (default: localhost:4004)
+CLAUDE_RESEARCHER_CORS_ORIGINS=http://localhost:4004
 ```
 
 ---

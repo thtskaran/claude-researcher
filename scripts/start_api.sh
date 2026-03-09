@@ -14,7 +14,7 @@ echo -e "${BLUE}  Claude Researcher API Server${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 # Check if port is in use
-PORT="${1:-8080}"
+PORT="${1:-9090}"
 if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null 2>&1; then
     echo -e "${RED}✗ Port $PORT is already in use${NC}"
     echo -e "  Kill it with: ${BLUE}lsof -ti:$PORT | xargs kill -9${NC}"

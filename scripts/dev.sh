@@ -16,22 +16,22 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # Check if ports are in use
-if lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null 2>&1; then
-    echo -e "${YELLOW}⚠ Port 8080 is in use${NC}"
-    echo -e "  Kill it with: ${BLUE}lsof -ti:8080 | xargs kill -9${NC}"
+if lsof -Pi :9090 -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo -e "${YELLOW}⚠ Port 9090 is in use${NC}"
+    echo -e "  Kill it with: ${BLUE}lsof -ti:9090 | xargs kill -9${NC}"
     exit 1
 fi
 
-if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
-    echo -e "${YELLOW}⚠ Port 3000 is in use${NC}"
-    echo -e "  Kill it with: ${BLUE}lsof -ti:3000 | xargs kill -9${NC}"
+if lsof -Pi :4004 -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo -e "${YELLOW}⚠ Port 4004 is in use${NC}"
+    echo -e "  Kill it with: ${BLUE}lsof -ti:4004 | xargs kill -9${NC}"
     exit 1
 fi
 
 # Get project root
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-echo -e "${GREEN}✓${NC} Starting API server on port 8080..."
+echo -e "${GREEN}✓${NC} Starting API server on port 9090..."
 cd "$PROJECT_ROOT"
 python -m api.server > /tmp/claude_api.log 2>&1 &
 API_PID=$!
@@ -45,7 +45,7 @@ if ! ps -p $API_PID > /dev/null; then
     exit 1
 fi
 
-echo -e "${GREEN}✓${NC} Starting Next.js UI on port 3000..."
+echo -e "${GREEN}✓${NC} Starting Next.js UI on port 4004..."
 cd "$PROJECT_ROOT/ui"
 npm run dev > /tmp/claude_ui.log 2>&1 &
 UI_PID=$!
@@ -64,9 +64,9 @@ echo ""
 echo -e "${GREEN}✓✓ All servers started!${NC}"
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "  ${GREEN}Frontend:${NC}  http://localhost:3000"
-echo -e "  ${GREEN}API:${NC}       http://localhost:8080"
-echo -e "  ${GREEN}API Docs:${NC}  http://localhost:8080/docs"
+echo -e "  ${GREEN}Frontend:${NC}  http://localhost:4004"
+echo -e "  ${GREEN}API:${NC}       http://localhost:9090"
+echo -e "  ${GREEN}API Docs:${NC}  http://localhost:9090/docs"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo -e "${YELLOW}Logs:${NC}"

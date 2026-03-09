@@ -42,6 +42,7 @@ class DirectorAgent(BaseAgent):
         console: Console | None = None,
         interaction_config: InteractionConfig | None = None,
         owns_db: bool = False,
+        max_depth: int = 5,
     ):
         super().__init__(AgentRole.DIRECTOR, db, config, console)
         self._owns_db = owns_db  # Only close db if we own it (not injected by caller)
@@ -59,6 +60,7 @@ class DirectorAgent(BaseAgent):
         self.manager = ManagerAgent(
             db, self.intern, config, console,
             interaction=self.interaction,
+            max_depth=max_depth,
         )
         self.current_session: ResearchSession | None = None
         self._progress_task = None
@@ -602,12 +604,14 @@ class ResearchHarness:
         self,
         db_path: str = "research.db",
         interaction_config: InteractionConfig | None = None,
+        max_depth: int = 5,
     ):
         self.db_path = db_path
         self.db: ResearchDatabase | None = None
         self.director: DirectorAgent | None = None
         self.console = Console()
         self.interaction_config = interaction_config
+        self.max_depth = max_depth
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -617,6 +621,7 @@ class ResearchHarness:
             self.db,
             console=self.console,
             interaction_config=self.interaction_config,
+            max_depth=self.max_depth,
         )
         return self
 

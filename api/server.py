@@ -138,7 +138,7 @@ _cors_origins = (
     ["*"] if _cors_env == "*"
     else [o.strip() for o in _cors_env.split(",") if o.strip()]
     if _cors_env
-    else ["http://localhost:3000", "http://127.0.0.1:3000"]
+    else ["http://localhost:4004", "http://127.0.0.1:4004"]
 )
 app.add_middleware(
     CORSMiddleware,
@@ -302,15 +302,15 @@ if __name__ == "__main__":
     print("=" * 60)
     print("🔬 Claude Researcher API Server")
     print("=" * 60)
-    print("📍 Server: http://localhost:8080")
-    print("📍 Docs: http://localhost:8080/docs")
-    print("📍 WebSocket: ws://localhost:8080/ws/{session_id}")
+    print("📍 Server: http://localhost:9090")
+    print("📍 Docs: http://localhost:9090/docs")
+    print("📍 WebSocket: ws://localhost:9090/ws/{session_id}")
     print("=" * 60)
 
     uvicorn.run(
         "api.server:app",
         host="0.0.0.0",
-        port=8080,
+        port=9090,
         reload=True,
         log_level="info"
     )

@@ -71,6 +71,13 @@ def main(
         min=10,
         max=300,
     ),
+    depth: int = typer.Option(
+        5,
+        "--depth",
+        help="Maximum research depth for follow-up exploration (default: 5)",
+        min=1,
+        max=10,
+    ),
 ):
     """Run a deep research session on a topic.
 
@@ -120,7 +127,7 @@ def main(
     async def run():
         global _harness
 
-        async with ResearchHarness(db_path, interaction_config=interaction_config) as harness:
+        async with ResearchHarness(db_path, interaction_config=interaction_config, max_depth=depth) as harness:
             _harness = harness
 
             # Create listener but don't start it yet - will be started after clarification
@@ -161,9 +168,9 @@ def ui(
         help="Optional session ID to open directly in UI"
     ),
     port: int = typer.Option(
-        8080,
+        9090,
         "--port", "-p",
-        help="Port for API server (default: 8080)",
+        help="Port for API server (default: 9090)",
     ),
     no_browser: bool = typer.Option(
         False,
@@ -270,7 +277,7 @@ def ui(
                         break
 
             # Clean up Next.js stale lock file if killing UI
-            if port_num == 3000:
+            if port_num == 4004:
                 lock_file = (
                     Path(__file__).parent.parent / "ui" / ".next"
                     / "dev" / "lock"
@@ -292,15 +299,15 @@ def ui(
             )
 
     api_running = check_port(port)
-    ui_running = check_port(3000)
+    ui_running = check_port(4004)
 
     if api_running:
         kill_port(port, "API")
     if ui_running:
-        kill_port(3000, "UI")
+        kill_port(4004, "UI")
 
     api_running = check_port(port)
-    ui_running = check_port(3000)
+    ui_running = check_port(4004)
 
     # Start API server if not running
     if api_running:
@@ -342,8 +349,8 @@ def ui(
     ui_needs_install = (not node_modules.exists()) or (not react_markdown_dir.exists())
 
     if ui_running and ui_needs_install:
-        kill_port(3000, "UI")
-        ui_running = check_port(3000)
+        kill_port(4004, "UI")
+        ui_running = check_port(4004)
 
     if ui_needs_install:
         console.print("[cyan]Installing UI dependencies (npm install)...[/cyan]")
@@ -355,9 +362,9 @@ def ui(
         )
 
     if ui_running:
-        console.print("[yellow]UI server already running on port 3000[/yellow]")
+        console.print("[yellow]UI server already running on port 4004[/yellow]")
     else:
-        console.print("[cyan]Starting Next.js UI server on port 3000...[/cyan]")
+        console.print("[cyan]Starting Next.js UI server on port 4004...[/cyan]")
         try:
             # Remove stale lock before starting
             lock_file = ui_path / ".next" / "dev" / "lock"
@@ -379,7 +386,7 @@ def ui(
             for i in range(max_wait):
                 try:
                     urllib.request.urlopen(
-                        "http://localhost:3000", timeout=1,
+                        "http://localhost:4004", timeout=1,
                     )
                     console.print("[green]✓ UI server started[/green]")
                     break
@@ -393,13 +400,13 @@ def ui(
             console.print(f"[red]Error starting UI server: {e}[/red]")
             sys.exit(1)
 
-    # Construct UI URL (port 3000, not API port)
-    url = "http://localhost:3000"
+    # Construct UI URL (port 4004, not API port)
+    url = "http://localhost:4004"
     if session_id:
         url += f"/session/{session_id}"
 
     console.print("\n[bold green]✓ All servers ready[/bold green]")
-    console.print("[dim]Frontend: http://localhost:3000[/dim]")
+    console.print("[dim]Frontend: http://localhost:4004[/dim]")
     console.print(f"[dim]API: http://localhost:{port}[/dim]")
     console.print(f"[dim]API Docs: http://localhost:{port}/docs[/dim]")
 

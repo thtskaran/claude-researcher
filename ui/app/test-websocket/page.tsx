@@ -13,7 +13,7 @@ export default function TestWebSocket() {
   const sendTestEvent = async () => {
     setSending(true);
     try {
-      const apiHost = process.env.NEXT_PUBLIC_API_HOST || "localhost:8080";
+      const apiHost = process.env.NEXT_PUBLIC_API_HOST || "localhost:9090";
       const response = await fetch(
         `http://${apiHost}/api/test/emit/${sessionId}?event_type=${eventType}&message=${encodeURIComponent(
           message

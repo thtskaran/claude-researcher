@@ -62,7 +62,7 @@ async def _emit_remote_event(
 ) -> None:
     """Forward event to the API server for WebSocket broadcasting."""
     base_url = os.environ.get(
-        "CLAUDE_RESEARCHER_API_URL", "http://localhost:8080"
+        "CLAUDE_RESEARCHER_API_URL", "http://localhost:9090"
     ).rstrip("/")
     if not base_url:
         return

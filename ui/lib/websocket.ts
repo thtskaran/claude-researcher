@@ -54,7 +54,7 @@ export class ResearchWebSocket {
 
   connect(): void {
     // [HARDENED] CONF-001: Derive WebSocket URL from window.location or env var
-    const apiHost = process.env.NEXT_PUBLIC_API_HOST || "localhost:8080";
+    const apiHost = process.env.NEXT_PUBLIC_API_HOST || "localhost:9090";
     const wsProtocol = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss" : "ws";
     const url = `${wsProtocol}://${apiHost}/ws/${this.sessionId}`;
     this.intentionalDisconnect = false;

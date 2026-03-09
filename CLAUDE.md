@@ -12,7 +12,7 @@ pip install -e .
 # Run research (CLI -- results persist in SQLite, viewable in UI later)
 researcher "Your research question" --iterations 10
 
-# Launch web UI (starts API on :8080 + Next.js on :3000, opens browser)
+# Launch web UI (starts API on :9090 + Next.js on :4004, opens browser)
 researcher ui
 
 # CLI options
@@ -22,6 +22,7 @@ researcher "topic" --no-clarify        # Skip pre-research clarification
 researcher "topic" --autonomous        # No user interaction
 researcher "topic" --db my.db          # Custom SQLite database path
 researcher "topic" --timeout 30        # Timeout for mid-research questions
+researcher "topic" --depth 8           # Max follow-up depth (default: 5)
 
 # UI options
 researcher ui                          # Launch UI + API servers
@@ -83,7 +84,7 @@ Next.js app with these pages:
 - `/session/[id]/verify` -- Verification results
 - `/session/[id]/sources` -- Source credibility analysis
 
-API server: `api/server.py` (FastAPI on :8080). WebSocket endpoint (`/ws/{session_id}`) for real-time progress. CORS allows all origins.
+API server: `api/server.py` (FastAPI on :9090). WebSocket endpoint (`/ws/{session_id}`) for real-time progress. CORS allows all origins.
 
 ### Model Routing
 

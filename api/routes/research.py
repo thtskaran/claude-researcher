@@ -26,6 +26,7 @@ class StartResearchRequest(BaseModel):
     """Request to start research."""
     goal: str
     max_iterations: int = 5
+    max_depth: int = 5
     autonomous: bool = True
     enable_mid_questions: bool = False
 
@@ -76,7 +77,7 @@ class ResearchStatusResponse(BaseModel):
     message: str | None = None
 
 
-async def run_research_background(session_id: str, goal: str, max_iterations: int, autonomous: bool = True, enable_mid_questions: bool = False):
+async def run_research_background(session_id: str, goal: str, max_iterations: int, max_depth: int = 5, autonomous: bool = True, enable_mid_questions: bool = False):
     """
     Run research in the background.
 
@@ -119,7 +120,8 @@ async def run_research_background(session_id: str, goal: str, max_iterations: in
         print("🚀 Starting research harness...")
         async with ResearchHarness(
             db_path="research.db",
-            interaction_config=interaction_config
+            interaction_config=interaction_config,
+            max_depth=max_depth,
         ) as harness:
             print("✓ Harness initialized")
 
@@ -217,8 +219,9 @@ async def start_research(
             session_id,
             request.goal,
             request.max_iterations,
+            request.max_depth,
             request.autonomous,
-            request.enable_mid_questions
+            request.enable_mid_questions,
         )
     )
     running_research[session_id] = task

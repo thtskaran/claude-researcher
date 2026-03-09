@@ -68,6 +68,7 @@ class ManagerAgent(BaseAgent):
         pool_size: int = 3,
         use_parallel: bool = True,
         interaction: Optional["UserInteraction"] = None,
+        max_depth: int = 5,
     ):
         # Force Opus model for manager's deep reasoning
         if config is None:
@@ -82,7 +83,7 @@ class ManagerAgent(BaseAgent):
         self.all_findings: list[Finding] = []
         self.all_reports: list[InternReport] = []
         self.current_depth: int = 0
-        self.max_depth: int = 5
+        self.max_depth: int = max_depth
         self.start_time: datetime | None = None
         self.time_limit_minutes: int = 0  # Kept for stats only, not used for stopping
         self._current_phase: str = "init"
